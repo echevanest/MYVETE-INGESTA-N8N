@@ -1,0 +1,7 @@
+.DS_Store
+Thumbs.db
+.vscode/
+node_modules/
+
+# Contiene informes clínicos reales de pacientes — nunca indexar (27/07/2026)
+MODELOS DE INFORMES/

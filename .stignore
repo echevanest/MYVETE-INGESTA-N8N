@@ -1,0 +1,16 @@
+﻿// Entornos virtuales de Python
+venv
+.venv
+python312_portable
+
+// Cache de Python
+__pycache__
+*.pyc
+
+// Dependencias de Node.js
+node_modules
+
+// Archivos temporales del sistema
+Thumbs.db
+desktop.ini
+*.tmp

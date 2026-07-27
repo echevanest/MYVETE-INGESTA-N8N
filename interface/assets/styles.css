@@ -1,0 +1,304 @@
+/*
+ * Estilos base del panel flotante.
+ * Ver INFORME-ARQUITECTURA-MYVETE-V2.7.md, Sección 3 (SECCIÓN 5), punto 4.2 —
+ * la ventana es un panel flotante propio, no debe imitar ni heredar estilos de MyVete.
+ *
+ * Implementado por ahora: reset mínimo + bloque de Tratamiento crónico
+ * (ver ESPECIFICACIÓN-MEDICACION-V2.9, mensaje del 2026-07-15) + bloques de
+ * Filiación y Consulta de hoy (INFORME_CODE V2.1, mensaje del 2026-07-16).
+ * TODO: layout de #bloque-resumen
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #1a1a1a;
+  background: #f7f8fa;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin: 0 0 1rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  color: #33475b;
+}
+
+section {
+  background: #ffffff;
+  border: 1px solid #d8dde3;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* --- Tratamiento crónico ------------------------------------------------ */
+
+.lista-medicacion {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fila-medicamento {
+  display: grid;
+  grid-template-columns: auto 1.5fr 1fr 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e2e6eb;
+  border-radius: 6px;
+  background: #fafbfc;
+  transition: opacity 0.15s ease;
+}
+
+.fila-medicamento.en-edicion {
+  border-color: #4f8ef7;
+  background: #f0f6ff;
+}
+
+/* Sección 1, punto 3 de ESPECIFICACIÓN-MEDICACION-V2.9:
+   opacidad reducida + texto tachado, sin salir del DOM. */
+.fila-medicamento.suspendido {
+  opacity: 0.4;
+}
+
+.fila-medicamento.suspendido .campo-medicamento {
+  text-decoration: line-through;
+}
+
+.estado-badge {
+  justify-self: start;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #e8edf5;
+  color: #33475b;
+  white-space: nowrap;
+}
+
+.fila-medicamento[data-estado="nueva"] .estado-badge {
+  background: #e1f6e8;
+  color: #1c7a3d;
+}
+
+.fila-medicamento[data-estado="modificada"] .estado-badge {
+  background: #fdf1d9;
+  color: #92620a;
+}
+
+.fila-medicamento[data-estado="suspendida"] .estado-badge {
+  background: #fbe4e2;
+  color: #b3261e;
+}
+
+.campo-medicamento {
+  font-weight: 500;
+}
+
+.campo-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  color: #6b7785;
+  gap: 0.15rem;
+}
+
+.campo-dosis,
+.campo-frecuencia {
+  font-size: 0.9rem;
+  font-family: inherit;
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #1a1a1a;
+}
+
+.campo-dosis:read-only,
+.campo-frecuencia:read-only {
+  border-color: transparent;
+  background: transparent;
+}
+
+.campo-dosis:not(:read-only),
+.campo-frecuencia:not(:read-only) {
+  border-color: #4f8ef7;
+  background: #ffffff;
+}
+
+.acciones-fila {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.btn-icono {
+  border: 1px solid #d8dde3;
+  background: #ffffff;
+  border-radius: 6px;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.btn-icono:hover {
+  background: #f0f2f5;
+}
+
+.btn-icono:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn {
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #d8dde3;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #f0f2f5;
+}
+
+.btn-secundario {
+  color: #33475b;
+}
+
+.btn-primario {
+  border-color: #2e6fe0;
+  background: #2e6fe0;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-primario:hover {
+  background: #2559b8;
+}
+
+/* --- Envío del formulario ------------------------------------------------ */
+
+.acciones-envio {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.aviso-formulario {
+  font-size: 0.8rem;
+  color: #b3261e;
+}
+
+/* --- Filiación / Consulta de hoy — campos de formulario ----------------- */
+
+.grid-filiacion,
+.grid-constantes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.campo-ancho {
+  grid-column: 1 / -1;
+  margin-bottom: 0.75rem;
+}
+
+.input-control,
+.textarea-control {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #d8dde3;
+  background: #ffffff;
+  color: #1a1a1a;
+  width: 100%;
+}
+
+.input-control:disabled,
+.textarea-control:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: #1a1a1a;
+  padding-left: 0;
+}
+
+.textarea-control {
+  resize: vertical;
+}
+
+@media (max-width: 480px) {
+  .grid-filiacion,
+  .grid-constantes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Bloque Métrico (Ecocardiograma / Electro) — colapsable ------------- */
+
+.bloque-metrico {
+  margin-bottom: 0.75rem;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+
+.bloque-metrico summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #33475b;
+  padding: 0.3rem 0;
+}
+
+.bloque-metrico[open] summary {
+  margin-bottom: 0.5rem;
+}
+
+.grid-metricas {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem 1rem;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+
+.grid-metricas legend {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7785;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0 0 0.25rem;
+}
+
+@media (max-width: 480px) {
+  .grid-metricas {
+    grid-template-columns: 1fr;
+  }
+}

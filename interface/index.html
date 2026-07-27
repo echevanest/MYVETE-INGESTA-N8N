@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MyVete — Panel de carga</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+  <!--
+    Esqueleto del Bot/Panel flotante.
+    Ver INFORME-ARQUITECTURA-MYVETE-V2.7.md, Sección 2 (SECCIÓN 3) y Sección 3 (SECCIÓN 5).
+
+    Cada bloque implementa el patrón "Modo Lectura / Modo Edición" descrito en la
+    tabla de la Sección 2.2 (Estados del Formulario). El comportamiento de esos estados
+    y el envío/recepción de datos se resuelve en ./app.js, no acá.
+  -->
+
+  <main id="panel-carga">
+    <header>
+      <h1>Carga de consulta</h1>
+      <!-- TODO: indicador de paciente recurrente / historial vacío (Sección 4.2) -->
+    </header>
+
+    <!-- Bloque Filiación — Tutor / Mascota (Sección 2.2, fila 1).
+         Mismo patrón Modo Lectura/Edición que Medicación: precarga bloqueada,
+         un clic en "Editar" habilita los campos y fija bloqueFiliacionEditado = true
+         (Contrato de Datos V2.7, Sección 2.1) de forma permanente para este envío,
+         aunque el médico vuelva a bloquear los campos después. -->
+    <section id="bloque-filiacion" data-modo="lectura">
+      <h2>Tutor y mascota</h2>
+      <div class="grid-filiacion">
+        <label class="campo-label">
+          Nombre de la mascota
+          <input type="text" id="paciente-nombre" class="input-control" placeholder="Ej: Tyson" disabled required />
+        </label>
+        <label class="campo-label">
+          Especie
+          <select id="paciente-especie" class="input-control" disabled required>
+            <option value="canino">Canino</option>
+            <option value="felino">Felino</option>
+          </select>
+        </label>
+        <label class="campo-label">
+          Raza
+          <input type="text" id="paciente-raza" class="input-control" placeholder="Ej: Boxer" disabled required />
+        </label>
+        <label class="campo-label">
+          Peso (kg)
+          <input type="number" step="0.1" id="paciente-peso" class="input-control" placeholder="Ej: 28.5" disabled required />
+        </label>
+        <label class="campo-label">
+          Nombre del tutor
+          <input type="text" id="tutor-nombre" class="input-control" placeholder="Ej: Juan Pérez" disabled required />
+        </label>
+        <label class="campo-label">
+          Teléfono del tutor
+          <input type="tel" id="tutor-telefono" class="input-control" placeholder="Ej: 11 2345-6789" disabled />
+        </label>
+        <label class="campo-label">
+          E-mail del tutor
+          <input type="email" id="tutor-email" class="input-control" placeholder="Ej: juan@mail.com" disabled />
+        </label>
+      </div>
+      <button type="button" id="btn-editar-filiacion" class="btn btn-secundario">
+        ✏️ Editar
+      </button>
+    </section>
+
+    <!--
+      Bloque Clínica — Tratamiento crónico (Sección 2.2, fila 2 del informe;
+      comportamiento de edición por excepción especificado en ESPECIFICACIÓN-MEDICACION-V2.9.md).
+      Cada <li> representa un fármaco y lleva su estado en data-estado:
+      "continua" | "nueva" | "modificada" | "suspendida" (ver CONTRATO-DE-DATOS-V2.7.md, Sección 2.1).
+      El estado "continua" es el default silencioso — no se muestra insignia para no
+      romper la premisa de "el médico solo interactúa con lo que cambia".
+    -->
+    <section id="bloque-medicacion" data-modo="lectura">
+      <h2>Tratamiento crónico</h2>
+      <ul id="lista-medicacion" class="lista-medicacion">
+        <!-- Filas inyectadas por app.js: desde el historial recuperado de n8n (estado "continua")
+             o agregadas manualmente por el médico (estado "nueva", botón de abajo). -->
+      </ul>
+      <button type="button" id="btn-agregar-medicamento" class="btn btn-secundario">
+        + Agregar medicamento
+      </button>
+    </section>
+
+    <!-- Plantilla de fila — clonada por app.js, nunca renderizada directamente -->
+    <template id="plantilla-fila-medicamento">
+      <li class="fila-medicamento" data-estado="continua">
+        <span class="estado-badge" hidden></span>
+
+        <span class="campo-medicamento" data-campo="medicamento"></span>
+
+        <label class="campo-label">
+          Dosis
+          <input class="campo-dosis" data-campo="dosis" type="text" readonly />
+        </label>
+
+        <label class="campo-label">
+          Intervalo
+          <input class="campo-frecuencia" data-campo="frecuencia" type="text" readonly />
+        </label>
+
+        <div class="acciones-fila">
+          <button type="button" class="btn-icono btn-editar" title="Editar dosis / intervalo" aria-label="Editar">✏️</button>
+          <button type="button" class="btn-icono btn-suspender" title="Suspender tratamiento" aria-label="Suspender">🛑</button>
+        </div>
+      </li>
+    </template>
+
+    <!-- Texto clínico de la consulta de hoy (Sección 2.3).
+         El bloque "consulta" del payload de salida mantiene la forma ya fijada en
+         CONTRATO-DE-DATOS-V2.7.md, Sección 2 (anamnesis / diagnostico / indicaciones),
+         con "constantes" agregado como sub-objeto (resolución del 2026-07-16).
+         "consulta-motivo" es ayuda visual para el médico: no tiene lugar en ese
+         contrato todavía, así que no se incluye en el payload (ver app.js). -->
+    <section id="bloque-texto-clinico">
+      <h2>Consulta de hoy</h2>
+
+      <!-- Atajo de carga: precarga constantes/anamnesis/diagnóstico/indicaciones desde
+           PERFILES_CLINICOS (app.js). Los campos quedan editables después de aplicar
+           el perfil; esto es solo un punto de partida, no un bloqueo. -->
+      <label class="campo-label campo-ancho">
+        Perfil clínico
+        <select id="control-perfil-clinico" class="input-control">
+          <option value="">Seleccionar perfil...</option>
+          <option value="sano">Sano</option>
+          <option value="acvim_b1">ACVIM B1</option>
+          <option value="acvim_b2">ACVIM B2</option>
+          <option value="personalizado">Personalizado</option>
+        </select>
+      </label>
+
+      <label class="campo-label campo-ancho">
+        Motivo de la consulta
+        <input type="text" id="consulta-motivo" class="input-control" placeholder="Ej: Control cardiológico por tos nocturna" />
+      </label>
+
+      <div class="grid-constantes">
+        <label class="campo-label">
+          Frecuencia cardíaca (lpm)
+          <input type="number" id="clinica-fc" class="input-control" placeholder="Ej: 120" />
+        </label>
+        <label class="campo-label">
+          Frecuencia respiratoria (rpm)
+          <input type="number" id="clinica-fr" class="input-control" placeholder="Ej: 24" />
+        </label>
+        <label class="campo-label">
+          Mucosas
+          <select id="clinica-mucosas" class="input-control">
+            <option value="rosadas">Rosadas / Normales</option>
+            <option value="palidas">Pálidas</option>
+            <option value="congestivas">Congestivas</option>
+            <option value="cianoticas">Cianóticas</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Apéndice Métrico — Ecocardiograma / Electro (INFORME_CODE V4.8, congelado
+           2026-07-26; reemplaza el set provisorio de V4.4/V4.6). Colapsado por defecto
+           para no saturar la carga diaria: la mayoría de las consultas no trae estudio
+           de imagen. Las llaves eco_*/ekg_* que arma app.js (MAPEO_METRICAS) son ahora
+           el contrato final de bloque_metrico — agregar un campo nuevo a futuro implica
+           sumar una entrada en MAPEO_METRICAS, no reestructurar el motor de envío
+           (criterio de modularidad V4.8). Nunca se precargan por PERFILES_CLINICOS
+           (restricción explícita V4.4): los campos siempre empiezan vacíos. -->
+      <details id="bloque-metrico" class="bloque-metrico">
+        <summary>Apéndice Métrico (Ecocardiograma / Electro)</summary>
+
+        <fieldset class="grid-metricas">
+          <legend>Ecocardiograma — Core (MINE Score 2)</legend>
+          <label class="campo-label">
+            Relación AI/Ao (lineal)
+            <input type="number" step="0.01" id="metrica-eco-ai-ao" class="input-control" placeholder="Ej: 1.3" />
+          </label>
+          <label class="campo-label">
+            Relación AI/Ao (área, planimetría 2D)
+            <input type="number" step="0.01" id="metrica-eco-ai-ao-area" class="input-control" placeholder="Ej: 1.4" />
+          </label>
+          <label class="campo-label">
+            LVIDDn (normalizado)
+            <input type="number" step="0.01" id="metrica-eco-lviddn" class="input-control" placeholder="Ej: 1.7" />
+          </label>
+          <label class="campo-label">
+            Velocidad E (m/s)
+            <input type="number" step="0.01" id="metrica-eco-e-vel" class="input-control" placeholder="Ej: 0.9" />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Ecocardiograma — Tradicional y volumétrico</legend>
+          <label class="campo-label">
+            Fracción de Acortamiento — FS (%)
+            <input type="number" step="0.1" id="metrica-eco-fs" class="input-control" placeholder="Ej: 35" />
+          </label>
+          <label class="campo-label">
+            Fracción de Eyección — Teichholz (%)
+            <input type="number" step="0.1" id="metrica-eco-fe-teichholz" class="input-control" placeholder="Ej: 65" />
+          </label>
+          <label class="campo-label">
+            Fracción de Eyección — Simpson (%)
+            <input type="number" step="0.1" id="metrica-eco-fe-simpson" class="input-control" placeholder="Ej: 60" />
+          </label>
+          <label class="campo-label">
+            Volumen Atrial Izquierdo — LAV (mL)
+            <input type="number" step="0.01" id="metrica-eco-lav" class="input-control" placeholder="Ej: 8.5" />
+          </label>
+          <label class="campo-label">
+            LAV Indexado — LAVI (mL/kg)
+            <input type="number" step="0.01" id="metrica-eco-lavi" class="input-control" placeholder="Ej: 1.2" />
+          </label>
+          <label class="campo-label">
+            LVIDd crudo (mm)
+            <input type="number" step="0.01" id="metrica-eco-lvid-d-crudo" class="input-control" placeholder="Ej: 32.0" />
+          </label>
+          <label class="campo-label">
+            LVIDs crudo (mm)
+            <input type="number" step="0.01" id="metrica-eco-lvid-s-crudo" class="input-control" placeholder="Ej: 20.0" />
+          </label>
+          <label class="campo-label">
+            SIVd (mm)
+            <input type="number" step="0.01" id="metrica-eco-sivd" class="input-control" placeholder="Ej: 6.5" />
+          </label>
+          <label class="campo-label">
+            PPd (mm)
+            <input type="number" step="0.01" id="metrica-eco-ppd" class="input-control" placeholder="Ej: 7.0" />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Electrocardiograma</legend>
+          <label class="campo-label">
+            FC electro (lpm)
+            <input type="number" id="metrica-ekg-fc" class="input-control" placeholder="Ej: 130" />
+          </label>
+          <label class="campo-label">
+            Ritmo
+            <input type="text" id="metrica-ekg-ritmo" class="input-control" placeholder="Ej: Sinusal" />
+          </label>
+          <label class="campo-label">
+            Eje eléctrico (°)
+            <input type="number" id="metrica-ekg-eje" class="input-control" placeholder="Ej: 70" />
+          </label>
+          <label class="campo-label">
+            Duración P (ms)
+            <input type="number" id="metrica-ekg-p-ms" class="input-control" placeholder="Ej: 40" />
+          </label>
+        </fieldset>
+      </details>
+
+      <label class="campo-label campo-ancho">
+        Anamnesis y examen físico
+        <textarea id="consulta-anamnesis" class="textarea-control" rows="4" placeholder="Soplo holosistólico mitral grado IV/VI, pulso femoral concordante y simétrico..."></textarea>
+      </label>
+
+      <label class="campo-label campo-ancho">
+        Diagnóstico
+        <textarea id="consulta-diagnostico" class="textarea-control" rows="2" placeholder="Ej: Insuficiencia mitral crónica compensada"></textarea>
+      </label>
+
+      <label class="campo-label campo-ancho">
+        Indicaciones
+        <textarea id="consulta-indicaciones" class="textarea-control" rows="2" placeholder="Ej: Continuar tratamiento, control en 30 días"></textarea>
+      </label>
+    </section>
+
+    <!-- Envío del payload hacia n8n (Sección 2.3) -->
+    <footer>
+      <div class="acciones-envio">
+        <span id="aviso-formulario" class="aviso-formulario" role="alert" hidden></span>
+        <button type="button" id="btn-submit-formulario" class="btn btn-primario">
+          ✔ Enviar Consulta a n8n
+        </button>
+      </div>
+    </footer>
+
+    <!-- Vista previa editable del resumen clínico devuelto por n8n (Sección 3.2, punto 5) -->
+    <section id="bloque-resumen" hidden>
+      <h2>Resumen clínico</h2>
+      <!-- TODO: textarea editable con el resumen devuelto -->
+      <!-- TODO: botón "Confirmar y enviar a MyVete" (dispara postMessage) -->
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

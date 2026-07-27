@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check \"/c/Users/Lenovo/Documents/myvete-ingesta-n8n/interface/app.js\")",
+      "Bash(node --check \"interface/app.js\")"
+    ]
+  }
+}
