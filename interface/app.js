@@ -273,12 +273,9 @@ window.consolidarPayloadFinal = consolidarPayloadFinal;
 // ---------------------------------------------------------------------------
 // 6. Envío del formulario — Fase 2: POST directo al webhook de n8n
 // ---------------------------------------------------------------------------
-// Pendiente: pegar acá la URL del webhook una vez que el workflow esté
-// publicado en n8n Cloud (ver n8n/README.md — "Sin contenido todavía" al
-// 27/07/2026). Se deja vacío a propósito en vez de una URL de ejemplo para
-// que el guard de abajo lo bloquee con un aviso claro, en vez de intentar
-// enviar datos clínicos a un endpoint inventado.
-const WEBHOOK_URL_N8N = '';
+// Workflow "MYVETE - Ingesta Filiación & Orquestador Core" (id 5gGWXOjY2BBOAfuw)
+// publicado y activo en n8n Cloud el 28/07/2026 — ver n8n/README.md.
+const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion-v4';
 
 const btnSubmitFormulario = document.getElementById('btn-submit-formulario');
 const avisoFormulario = document.getElementById('aviso-formulario');

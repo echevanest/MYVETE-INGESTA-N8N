@@ -46,8 +46,9 @@
 *   **Objetivo:** Implementar el handshake de dos pasos descrito en el Contrato de Datos V2.7 (Sección 0.1): la ventana flotante avisa "lista" a `window.opener` al cargar, y recién ahí el bookmarklet responde con el Payload de Apertura completo.
 *   **Estado (27/07):** todavía no implementado. Lo que sí existe es el listener pasivo de `MYVETE_FILIACION` (recibe y precarga si algo le llega), pero sin la señal activa de "lista" — sin ella, el emisor no tiene garantía de que el mensaje no se pierda por condición de carrera.
 
-### Paso E: Workflow de n8n
-*   **Objetivo:** Armar y publicar el workflow en n8n Cloud que reciba el POST de `#btn-submit-formulario`, y pegar esa URL en `WEBHOOK_URL_N8N` (`interface/app.js`).
+### Paso E: Workflow de n8n — ✅ Hecho (28/07/2026)
+*   Workflow `MYVETE - Ingesta Filiación & Orquestador Core` (id `5gGWXOjY2BBOAfuw`) creado, publicado y activo en n8n Cloud. `WEBHOOK_URL_N8N` en `interface/app.js` ya apunta a la Production URL. Validado end-to-end (ver `n8n/README.md`).
+*   **Nota:** el workflow hoy solo confirma recepción (200 OK) — todavía no persiste el payload clínico a ningún destino. Eso queda para una próxima sesión.
 
 ---
 
