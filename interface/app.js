@@ -4,29 +4,218 @@
 // INFORME_CODE "reconstrucción app.js" para el alcance exacto de esta versión.
 
 // ---------------------------------------------------------------------------
-// 1. Perfiles clínicos — placeholder modular (Paso A pendiente, ver STATUS.md)
+// 1. Perfiles clínicos — por especie, con persistencia en localStorage
 // ---------------------------------------------------------------------------
-// PROPUESTA-MODELO-ELASTICO-V3.5.md plantea dar de baja el diccionario fijo
-// que existía acá y reemplazarlo por datos dinámicos (Sheets/Supabase). Esa
-// decisión sigue abierta, así que este objeto queda vacío a propósito: no se
-// inventan valores clínicos. Cuando se resuelva, cada clave (sano/acvim_b1/
-// acvim_b2) debe mapear a { fc, fr, mucosas, anamnesis, diagnostico, indicaciones }.
-const PERFILES_CLINICOS = {};
+// Reemplaza el placeholder vacío de V4.8 (Paso A). Decisión confirmada por
+// Marcelo el 28/07/2026: los valores numéricos de PERFILES_BASE vienen del
+// INFORME_CODE "Sección B" tal cual fueron entregados (no son un dato
+// clínico validado acá — quedan como punto de partida editable). PAM/PAD no
+// venían en ese informe, así que no se inventan: los perfiles solo precargan
+// fc/fr/pas, y PAM/PAD quedan en blanco para que el médico los cargue.
+const PERFILES_BASE = {
+  canino: [
+    {
+      id: 'can_sano',
+      etiqueta: 'Chequeo Sano',
+      valores: {
+        fc: 100,
+        fr: 24,
+        pas: 120,
+        anamnesis: 'Paciente asintomático. Activo, tolerante al ejercicio. Sin tos ni disnea.',
+      },
+    },
+    {
+      id: 'can_b2',
+      etiqueta: 'MVD B2 (Asintomático)',
+      valores: {
+        fc: 110,
+        fr: 28,
+        pas: 130,
+        anamnesis: 'Detección de soplo sistólico apical izquierdo. Sin signos clínicos de falla cardíaca.',
+      },
+    },
+  ],
+  felino: [
+    {
+      id: 'fel_incidental',
+      etiqueta: 'Soplo Incidental',
+      valores: {
+        fc: 180,
+        fr: 30,
+        pas: 125,
+        anamnesis: 'Soplo detectado en consulta de rutina. Paciente asintomático en hogar.',
+      },
+    },
+  ],
+};
 
-const controlPerfilClinico = document.getElementById('control-perfil-clinico');
-if (controlPerfilClinico) {
-  controlPerfilClinico.addEventListener('change', (evento) => {
-    const perfil = PERFILES_CLINICOS[evento.target.value];
-    if (!perfil) return; // 'personalizado' y perfiles aún no definidos: no-op
+// Mapeo clave de perfil → id de campo en el DOM.
+const CAMPOS_PERFIL = {
+  fc: 'clinica-fc',
+  fr: 'clinica-fr',
+  pas: 'clinica-pas',
+  pam: 'clinica-pam',
+  pad: 'clinica-pad',
+  anamnesis: 'consulta-anamnesis',
+};
 
-    if (perfil.fc !== undefined) document.getElementById('clinica-fc').value = perfil.fc;
-    if (perfil.fr !== undefined) document.getElementById('clinica-fr').value = perfil.fr;
-    if (perfil.mucosas !== undefined) document.getElementById('clinica-mucosas').value = perfil.mucosas;
-    if (perfil.anamnesis !== undefined) document.getElementById('consulta-anamnesis').value = perfil.anamnesis;
-    if (perfil.diagnostico !== undefined) document.getElementById('consulta-diagnostico').value = perfil.diagnostico;
-    if (perfil.indicaciones !== undefined) document.getElementById('consulta-indicaciones').value = perfil.indicaciones;
+function obtenerPerfilesGuardados(especie) {
+  try {
+    return JSON.parse(localStorage.getItem(`perfiles_${especie}`)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function guardarPerfilesGuardados(especie, lista) {
+  localStorage.setItem(`perfiles_${especie}`, JSON.stringify(lista));
+}
+
+// Combina PERFILES_BASE con lo guardado en localStorage. Si un perfil guardado
+// reusa el id de uno base, gana el guardado (así funciona "sobrescribir" un
+// perfil base: queda un override en localStorage con el mismo id).
+function obtenerPerfilesPorEspecie(especie) {
+  const combinados = [...(PERFILES_BASE[especie] || [])];
+  obtenerPerfilesGuardados(especie).forEach((perfilGuardado) => {
+    const indice = combinados.findIndex((p) => p.id === perfilGuardado.id);
+    if (indice >= 0) {
+      combinados[indice] = perfilGuardado;
+    } else {
+      combinados.push(perfilGuardado);
+    }
+  });
+  return combinados;
+}
+
+function aplicarPerfil(perfil) {
+  if (!perfil) return;
+  Object.entries(perfil.valores || {}).forEach(([clave, valor]) => {
+    const idCampo = CAMPOS_PERFIL[clave];
+    const campo = idCampo && document.getElementById(idCampo);
+    if (campo && valor !== undefined && valor !== null) campo.value = valor;
   });
 }
+
+const MAX_BOTONES_RAPIDOS = 6;
+let perfilActivo = null; // { id, especie } — último perfil aplicado, para "Guardar"
+
+const selectEspecie = document.getElementById('paciente-especie');
+const gridPerfilesRapidos = document.getElementById('grid-perfiles-rapidos');
+const selectPerfilesCompletos = document.getElementById('select-perfiles-completos');
+const btnGuardarPerfil = document.getElementById('btn-guardar-perfil');
+
+function especieActual() {
+  return selectEspecie ? selectEspecie.value : 'canino';
+}
+
+function renderizarPerfiles() {
+  const especie = especieActual();
+  const perfiles = obtenerPerfilesPorEspecie(especie);
+
+  if (selectPerfilesCompletos) {
+    selectPerfilesCompletos.innerHTML = '<option value="">Seleccionar perfil...</option>';
+    perfiles.forEach((perfil) => {
+      const opcion = document.createElement('option');
+      opcion.value = perfil.id;
+      opcion.textContent = perfil.etiqueta;
+      selectPerfilesCompletos.appendChild(opcion);
+    });
+  }
+
+  if (gridPerfilesRapidos) {
+    gridPerfilesRapidos.innerHTML = '';
+    perfiles.slice(0, MAX_BOTONES_RAPIDOS).forEach((perfil) => {
+      const boton = document.createElement('button');
+      boton.type = 'button';
+      boton.className = 'btn btn-secundario btn-perfil';
+      boton.textContent = perfil.etiqueta;
+      boton.addEventListener('click', () => seleccionarPerfil(perfil.id));
+      gridPerfilesRapidos.appendChild(boton);
+    });
+  }
+}
+
+function seleccionarPerfil(perfilId) {
+  const especie = especieActual();
+  const perfil = obtenerPerfilesPorEspecie(especie).find((p) => p.id === perfilId);
+  if (!perfil) return;
+  aplicarPerfil(perfil);
+  perfilActivo = { id: perfil.id, especie };
+  if (selectPerfilesCompletos) selectPerfilesCompletos.value = perfil.id;
+}
+
+if (selectPerfilesCompletos) {
+  selectPerfilesCompletos.addEventListener('change', (evento) => {
+    if (!evento.target.value) {
+      perfilActivo = null;
+      return;
+    }
+    seleccionarPerfil(evento.target.value);
+  });
+}
+
+if (selectEspecie) {
+  selectEspecie.addEventListener('change', () => {
+    perfilActivo = null;
+    renderizarPerfiles();
+  });
+}
+
+function leerValoresFormularioParaPerfil() {
+  const valores = {};
+  ['fc', 'fr', 'pas', 'pam', 'pad'].forEach((clave) => {
+    const campo = document.getElementById(CAMPOS_PERFIL[clave]);
+    if (campo && campo.value !== '') valores[clave] = Number(campo.value);
+  });
+  const anamnesis = document.getElementById('consulta-anamnesis').value.trim();
+  if (anamnesis !== '') valores.anamnesis = anamnesis;
+  return valores;
+}
+
+function generarIdPerfilPersonalizado(etiqueta) {
+  const slug = etiqueta.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return `custom_${slug || 'perfil'}_${Date.now()}`;
+}
+
+if (btnGuardarPerfil) {
+  btnGuardarPerfil.addEventListener('click', () => {
+    const especie = especieActual();
+    const valores = leerValoresFormularioParaPerfil();
+
+    let perfilSeleccionado = null;
+    if (perfilActivo && perfilActivo.especie === especie) {
+      perfilSeleccionado = obtenerPerfilesPorEspecie(especie).find((p) => p.id === perfilActivo.id) || null;
+    }
+
+    const sobrescribir = perfilSeleccionado
+      ? window.confirm(`¿Sobrescribir el perfil "${perfilSeleccionado.etiqueta}" con los valores actuales?\n\nAceptar = sobrescribir.\nCancelar = crear un perfil nuevo.`)
+      : false;
+
+    if (sobrescribir) {
+      const guardados = obtenerPerfilesGuardados(especie);
+      const indice = guardados.findIndex((p) => p.id === perfilActivo.id);
+      const perfilActualizado = { id: perfilActivo.id, etiqueta: perfilSeleccionado.etiqueta, valores };
+      if (indice >= 0) guardados[indice] = perfilActualizado;
+      else guardados.push(perfilActualizado);
+      guardarPerfilesGuardados(especie, guardados);
+      renderizarPerfiles();
+      seleccionarPerfil(perfilActivo.id);
+    } else {
+      const nombre = window.prompt('Nombre para el nuevo perfil:', '');
+      if (nombre === null) return; // cancelado
+      const etiqueta = nombre.trim();
+      if (!etiqueta) return;
+      const id = generarIdPerfilPersonalizado(etiqueta);
+      const guardados = obtenerPerfilesGuardados(especie);
+      guardados.push({ id, etiqueta, valores });
+      guardarPerfilesGuardados(especie, guardados);
+      renderizarPerfiles();
+      seleccionarPerfil(id);
+    }
+  });
+}
+
+renderizarPerfiles(); // estado inicial (especie por defecto del <select>)
 
 // ---------------------------------------------------------------------------
 // 2. Bloque Filiación — modo lectura / edición
@@ -88,7 +277,13 @@ window.addEventListener('message', (evento) => {
 
   if (mascota) {
     if (mascota.nombre != null) document.getElementById('paciente-nombre').value = mascota.nombre;
-    if (mascota.especie != null) asignarValorSelect(document.getElementById('paciente-especie'), mascota.especie);
+    if (mascota.especie != null) {
+      asignarValorSelect(document.getElementById('paciente-especie'), mascota.especie);
+      // asignarValorSelect fija .value directo (sin evento 'change'), así que
+      // hay que re-renderizar la grilla de perfiles a mano para la nueva especie.
+      perfilActivo = null;
+      renderizarPerfiles();
+    }
     if (mascota.raza != null) document.getElementById('paciente-raza').value = mascota.raza;
 
     const pesoRaw = mascota.pesoActual ?? mascota.peso;
@@ -258,6 +453,9 @@ function consolidarPayloadFinal() {
     consulta: {
       fc: document.getElementById('clinica-fc').value === '' ? null : Number(document.getElementById('clinica-fc').value),
       fr: document.getElementById('clinica-fr').value === '' ? null : Number(document.getElementById('clinica-fr').value),
+      pas: document.getElementById('clinica-pas').value === '' ? null : Number(document.getElementById('clinica-pas').value),
+      pam: document.getElementById('clinica-pam').value === '' ? null : Number(document.getElementById('clinica-pam').value),
+      pad: document.getElementById('clinica-pad').value === '' ? null : Number(document.getElementById('clinica-pad').value),
       mucosas: document.getElementById('clinica-mucosas').value,
       anamnesis: document.getElementById('consulta-anamnesis').value.trim(),
       diagnostico: document.getElementById('consulta-diagnostico').value.trim(),
@@ -274,15 +472,33 @@ window.consolidarPayloadFinal = consolidarPayloadFinal;
 // 6. Envío del formulario — Fase 2: POST directo al webhook de n8n
 // ---------------------------------------------------------------------------
 // Workflow "MYVETE - Ingesta Filiación & Orquestador Core" (id 5gGWXOjY2BBOAfuw)
-// publicado y activo en n8n Cloud el 28/07/2026 — ver n8n/README.md.
+// publicado y activo en n8n Cloud el 28/07/2026 — ver n8n/README.md. El nodo
+// "IA - Estructurar Anamnesis" (31/07/2026) devuelve el borrador en la clave
+// `borrador_medico` de la respuesta del webhook.
 const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion-v4';
 
 const btnSubmitFormulario = document.getElementById('btn-submit-formulario');
 const avisoFormulario = document.getElementById('aviso-formulario');
+const bloqueResumen = document.getElementById('bloque-resumen');
+const resumenClinicoTexto = document.getElementById('resumen-clinico-texto');
 
 function mostrarAviso(mensaje) {
   avisoFormulario.textContent = mensaje;
   avisoFormulario.hidden = false;
+}
+
+function mostrarBorradorMedico(borradorMedico) {
+  if (!bloqueResumen || !resumenClinicoTexto || !borradorMedico) return;
+  if (typeof borradorMedico === 'string') {
+    try {
+      resumenClinicoTexto.value = JSON.stringify(JSON.parse(borradorMedico), null, 2);
+    } catch {
+      resumenClinicoTexto.value = borradorMedico;
+    }
+  } else {
+    resumenClinicoTexto.value = JSON.stringify(borradorMedico, null, 2);
+  }
+  bloqueResumen.hidden = false;
 }
 
 if (btnSubmitFormulario) {
@@ -314,6 +530,9 @@ if (btnSubmitFormulario) {
       });
       if (!respuesta.ok) throw new Error(`n8n respondió ${respuesta.status}`);
 
+      const datos = await respuesta.json();
+      mostrarBorradorMedico(datos.borrador_medico);
+
       btnSubmitFormulario.textContent = 'Reporte generado';
       if (window.opener) {
         window.opener.postMessage({ type: 'MYVETE_SUBMIT_OK' }, '*');
@@ -327,3 +546,86 @@ if (btnSubmitFormulario) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// 7. Dictado por voz — Web Speech API nativa (INFORME_CODE Sección B, 28/07/2026)
+// ---------------------------------------------------------------------------
+// Sin librerías nuevas: usa el reconocimiento de voz nativo del navegador.
+// Un botón .btn-dictado por campo (data-target = id del textarea). Solo uno
+// puede estar escuchando a la vez; al iniciar uno se apaga el anterior. El
+// texto reconocido se concatena al final del campo, nunca borra lo existente.
+const ReconocimientoVoz = window.SpeechRecognition || window.webkitSpeechRecognition;
+let dictadoActivo = null; // { recognition, boton }
+
+function detenerDictadoActivo() {
+  if (dictadoActivo) dictadoActivo.recognition.stop();
+}
+
+document.querySelectorAll('.btn-dictado').forEach((boton) => {
+  if (!ReconocimientoVoz) {
+    boton.disabled = true;
+    boton.title = 'Dictado por voz no soportado en este navegador';
+    return;
+  }
+
+  const campo = document.getElementById(boton.dataset.target);
+  if (!campo) return;
+
+  const textoOriginalBoton = boton.textContent;
+
+  boton.addEventListener('click', () => {
+    const eraElActivo = dictadoActivo && dictadoActivo.boton === boton;
+    detenerDictadoActivo();
+    if (eraElActivo) return; // click sobre el propio botón activo = apagar
+
+    const recognition = new ReconocimientoVoz();
+    recognition.lang = 'es-AR';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let textoBase = campo.value + (campo.value && !/\s$/.test(campo.value) ? ' ' : '');
+
+    // En cada evento 'result' se recorre solo el tramo nuevo (desde
+    // resultIndex): los tramos ya marcados isFinal se suman una única vez a
+    // textoBase (commit definitivo, no se vuelven a tocar); el tramo interino
+    // (todavía no confirmado por el motor) se recalcula entero en cada evento
+    // y se pisa sobre sí mismo al final de campo.value — así se ve la
+    // transcripción en vivo sin duplicar ni perder el texto ya confirmado.
+    recognition.addEventListener('result', (evento) => {
+      let textoInterino = '';
+      for (let i = evento.resultIndex; i < evento.results.length; i += 1) {
+        const resultado = evento.results[i];
+        if (resultado.isFinal) {
+          textoBase += `${resultado[0].transcript.trim()} `;
+        } else {
+          textoInterino += resultado[0].transcript;
+        }
+      }
+      campo.value = textoBase + textoInterino;
+      campo.classList.toggle('campo-dictado-interino', textoInterino.trim() !== '');
+    });
+
+    recognition.addEventListener('error', (evento) => {
+      console.error('Error de dictado por voz:', evento.error);
+    });
+
+    recognition.addEventListener('end', () => {
+      // Al cortar el reconocimiento, cualquier resto interino sin confirmar
+      // se descarta del DOM: el campo vuelve a valer exactamente textoBase
+      // (lo que sí llegó a isFinal), para que no quede una frase a mitad
+      // transcribir pegada en el textarea.
+      campo.value = textoBase;
+      campo.classList.remove('campo-dictado-interino');
+      campo.classList.remove('campo-dictado-activo');
+      boton.textContent = textoOriginalBoton;
+      boton.classList.remove('btn-dictado-activo');
+      if (dictadoActivo && dictadoActivo.boton === boton) dictadoActivo = null;
+    });
+
+    dictadoActivo = { recognition, boton };
+    boton.textContent = '🔴 Escuchando...';
+    boton.classList.add('btn-dictado-activo');
+    campo.classList.add('campo-dictado-activo');
+    recognition.start();
+  });
+});

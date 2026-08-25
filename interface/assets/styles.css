@@ -302,3 +302,83 @@ section {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Dictado por voz (Sección B) ----------------------------------------- */
+
+.campo-con-dictado {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.campo-con-dictado .textarea-control {
+  flex: 1;
+}
+
+.btn-dictado {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.btn-dictado-activo {
+  border-color: #b3261e;
+  background: #fbe4e2;
+  color: #b3261e;
+  font-weight: 600;
+}
+
+/* Campo en escucha: borde rojo tenue durante toda la grabación. */
+.campo-dictado-activo {
+  border-color: #b3261e;
+  box-shadow: 0 0 0 2px rgba(179, 38, 30, 0.12);
+}
+
+/* Además, mientras hay una frase interina (todavía sin confirmar por el
+   motor de reconocimiento) el borde pulsa para distinguir "esto puede
+   cambiar todavía" de "esto ya quedó fijo". */
+.campo-dictado-interino {
+  animation: dictado-pulso 1.1s ease-in-out infinite;
+}
+
+@keyframes dictado-pulso {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(179, 38, 30, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(179, 38, 30, 0.28);
+  }
+}
+
+/* --- Perfiles clínicos (Sección B) --------------------------------------- */
+
+.grid-perfiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.btn-perfil {
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.fila-perfiles-completos {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.fila-perfiles-completos .input-control {
+  flex: 1;
+}
+
+@media (max-width: 480px) {
+  .grid-perfiles {
+    grid-template-columns: 1fr;
+  }
+
+  .campo-con-dictado {
+    flex-direction: column;
+  }
+}

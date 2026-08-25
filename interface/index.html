@@ -119,19 +119,23 @@
     <section id="bloque-texto-clinico">
       <h2>Consulta de hoy</h2>
 
-      <!-- Atajo de carga: precarga constantes/anamnesis/diagnóstico/indicaciones desde
-           PERFILES_CLINICOS (app.js). Los campos quedan editables después de aplicar
-           el perfil; esto es solo un punto de partida, no un bloqueo. -->
-      <label class="campo-label campo-ancho">
-        Perfil clínico
-        <select id="control-perfil-clinico" class="input-control">
-          <option value="">Seleccionar perfil...</option>
-          <option value="sano">Sano</option>
-          <option value="acvim_b1">ACVIM B1</option>
-          <option value="acvim_b2">ACVIM B2</option>
-          <option value="personalizado">Personalizado</option>
-        </select>
-      </label>
+      <!-- Perfiles clínicos por especie (INFORME_CODE Sección B, 28/07/2026).
+           Combina PERFILES_BASE (app.js) con los perfiles personalizados guardados
+           en localStorage bajo la clave `perfiles_${especie}`. La grilla de 6 botones
+           y el desplegable completo se re-renderizan solos al cambiar #paciente-especie.
+           Los campos que precarga un perfil quedan 100% editables después. -->
+      <div class="campo-label campo-ancho">
+        Perfiles clínicos
+        <div id="grid-perfiles-rapidos" class="grid-perfiles"></div>
+        <div class="fila-perfiles-completos">
+          <select id="select-perfiles-completos" class="input-control">
+            <option value="">Seleccionar perfil...</option>
+          </select>
+          <button type="button" id="btn-guardar-perfil" class="btn btn-secundario">
+            💾 Guardar Perfil
+          </button>
+        </div>
+      </div>
 
       <label class="campo-label campo-ancho">
         Motivo de la consulta
@@ -146,6 +150,18 @@
         <label class="campo-label">
           Frecuencia respiratoria (rpm)
           <input type="number" id="clinica-fr" class="input-control" placeholder="Ej: 24" />
+        </label>
+        <label class="campo-label">
+          Presión arterial sistólica — PAS (mmHg)
+          <input type="number" id="clinica-pas" class="input-control" placeholder="Ej: 120" />
+        </label>
+        <label class="campo-label">
+          Presión arterial media — PAM (mmHg)
+          <input type="number" id="clinica-pam" class="input-control" placeholder="Ej: 90" />
+        </label>
+        <label class="campo-label">
+          Presión arterial diastólica — PAD (mmHg)
+          <input type="number" id="clinica-pad" class="input-control" placeholder="Ej: 70" />
         </label>
         <label class="campo-label">
           Mucosas
@@ -250,19 +266,32 @@
         </fieldset>
       </details>
 
+      <!-- Dictado por voz (Web Speech API nativa, sin librerías): cada botón
+           .btn-dictado agrega a #app.js el reconocimiento en español que concatena
+           el texto dictado al final del campo indicado en data-target, sin borrar
+           lo ya escrito. Solo un campo puede estar "escuchando" a la vez. -->
       <label class="campo-label campo-ancho">
         Anamnesis y examen físico
-        <textarea id="consulta-anamnesis" class="textarea-control" rows="4" placeholder="Soplo holosistólico mitral grado IV/VI, pulso femoral concordante y simétrico..."></textarea>
+        <div class="campo-con-dictado">
+          <textarea id="consulta-anamnesis" class="textarea-control" rows="4" placeholder="Soplo holosistólico mitral grado IV/VI, pulso femoral concordante y simétrico..."></textarea>
+          <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-anamnesis">🎙️ Dictar</button>
+        </div>
       </label>
 
       <label class="campo-label campo-ancho">
         Diagnóstico
-        <textarea id="consulta-diagnostico" class="textarea-control" rows="2" placeholder="Ej: Insuficiencia mitral crónica compensada"></textarea>
+        <div class="campo-con-dictado">
+          <textarea id="consulta-diagnostico" class="textarea-control" rows="2" placeholder="Ej: Insuficiencia mitral crónica compensada"></textarea>
+          <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-diagnostico">🎙️ Dictar</button>
+        </div>
       </label>
 
       <label class="campo-label campo-ancho">
         Indicaciones
-        <textarea id="consulta-indicaciones" class="textarea-control" rows="2" placeholder="Ej: Continuar tratamiento, control en 30 días"></textarea>
+        <div class="campo-con-dictado">
+          <textarea id="consulta-indicaciones" class="textarea-control" rows="2" placeholder="Ej: Continuar tratamiento, control en 30 días"></textarea>
+          <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-indicaciones">🎙️ Dictar</button>
+        </div>
       </label>
     </section>
 
@@ -278,8 +307,8 @@
 
     <!-- Vista previa editable del resumen clínico devuelto por n8n (Sección 3.2, punto 5) -->
     <section id="bloque-resumen" hidden>
-      <h2>Resumen clínico</h2>
-      <!-- TODO: textarea editable con el resumen devuelto -->
+      <h2>Resumen clínico (borrador IA)</h2>
+      <textarea id="resumen-clinico-texto" class="textarea-control" rows="10"></textarea>
       <!-- TODO: botón "Confirmar y enviar a MyVete" (dispara postMessage) -->
     </section>
   </main>
