@@ -1,8 +1,8 @@
 # 🗺️ ESTADO DEL PROYECTO: INTERFAZ LOCAL & n8n
 
-*   **Última actualización:** 2026-08-24
-*   **Versión de la Arquitectura:** V4.9 (Streaming de Dictado Interino + Conexión End-to-End n8n Cloud Validada + Nodo IA en producción + Fix de renderizado de `borrador_medico` + Bookmarklet de Filiación implementado)
-*   **Control de versión:** Repositorio Git local inicializado (branch `master`). Cambios de hoy sin commitear todavía.
+*   **Última actualización:** 2026-08-25
+*   **Versión de la Arquitectura:** V4.9 (Streaming de Dictado Interino + Conexión End-to-End n8n Cloud Validada + Nodo IA en producción + Fix de renderizado de `borrador_medico` + Bookmarklet de Filiación validado E2E contra MyVete real, extracción de mascota)
+*   **Control de versión:** Repositorio Git local inicializado (branch `master`). Commit `762454b` (V4.9 consolidado) y fix defensivo del bookmarklet en curso de commit.
 
 ---
 
@@ -37,9 +37,11 @@
 
 ---
 
-### E. Bookmarklet de Filiación (`bookmarklet/launcher.js`) — Implementado (24/08/2026)
-*   **Estado:** Implementado (Pendiente de validación visual en entorno real MyVete). Deja de ser un stub con TODOs: el raspado de la Sección 3.2 punto 1 (`INFORME-ARQUITECTURA-MYVETE-V2.7.md`) ya corre sobre selectores DOM reales.
-*   **Selectores confirmados:** mascota vía `.patient-info h1`; especie/raza vía el `div` interno cuyo texto combina "Especie, Raza, Color" separado por comas (el color se descarta, no forma parte del contrato de datos). Tutor todavía sin selector real confirmado — viaja con sus 3 campos en `null` (raspado de mejor esfuerzo).
+### E. Bookmarklet de Filiación (`bookmarklet/launcher.js`) — Mascota validada E2E (25/08/2026)
+*   **Estado:** Extracción de mascota (`nombre`/`especie`/`raza`) **validada visualmente contra el DOM real de MyVete**, con handshake y `postMessage` hacia la SPA local 100% funcionando.
+*   **Bug encontrado y corregido (paciente "Mentira"):** el `.find()` original sobre `querySelectorAll('div')` tomaba el primer `div` con una coma en su `innerText`, recorriendo en orden de documento. Un `div` contenedor ubicado antes del bloque de perfil (que también envuelve los datos de contacto del tutor) concatena todo su texto interno y ganaba la búsqueda por tener una coma "de casualidad" — resultado observado: `raza` = `"Yanina1164885523benitezocampo@hotmail.comMentira17 años y 8 mes"`.
+*   **Fix aplicado (doble blindaje):** (1) se descartan los `div` que tengan `div` anidados, quedándose solo con nodos hoja; (2) se exige que el primer segmento tras el `split(',')` coincida con una especie conocida (`canino`, `felino`, `equino`, `ave`, `aviar`, `exotico`). Confirmado sin contaminación en "Mentira" (post-fix) y en "Molly" (Canino/Caniche).
+*   **Selectores confirmados:** mascota vía `.patient-info h1`; especie/raza vía el `div` hoja interno cuyo texto combina "Especie, Raza, Color" separado por comas (el color se descarta, no forma parte del contrato de datos). Tutor todavía sin selector real confirmado — viaja con sus 3 campos en `null` (raspado de mejor esfuerzo).
 *   **Contrato `postMessage` oficial (bookmarklet → SPA), calzado con el listener ya existente en `interface/app.js` Sección 2:**
     ```json
     {
@@ -53,7 +55,7 @@
     Nota: esta forma (payload con `tutor`/`mascota` a nivel raíz) es la que efectivamente consume `app.js` hoy — distinta de la envoltura `meta`/`tutor`/`mascota` propuesta originalmente en `CONTRATO-DE-DATOS-V2.7.md` Sección 1.2, que queda como diseño no implementado.
 *   **`window.open()` síncrono:** se dispara en el mismo hilo del clic (sin pasos async antes), respetando la mitigación de bloqueo de pop-ups de la Sección 4.1 del informe de arquitectura.
 *   **Reintentos en vez de handshake:** como `app.js` todavía no emite señal de "ventana lista" (handshake de la Sección 0.1 del Contrato de Datos V2.7, ver pendiente #6 abajo), el mensaje se reenvía cada 400ms durante 5 intentos (~2s) en lugar de un único `postMessage` a ciegas. Es seguro porque `app.js` solo asigna valores a campos (idempotente).
-*   **Pendiente real:** no se probó todavía contra el DOM en vivo de MyVete (¿el `div` combinado de especie/raza/color es siempre el primero con coma dentro de `.patient-info`, o puede haber otro que lo confunda?). Selector de tutor sigue sin confirmar.
+*   **Pendiente real:** selector de tutor (nombre/teléfono/email) sigue sin confirmar contra el DOM en vivo — ver plan de inspección en Sección 3, pendiente #2.
 
 ---
 
@@ -66,10 +68,13 @@ Sin frentes activos por el momento — próximo trabajo en la sección de pendie
 ## 🔴 3. PENDIENTES PRÓXIMOS
 
 1. **Confirmar visualmente el renderizado de `borrador_medico`:** repetir la prueba manual de dictado en `http://localhost:8080/interface/index.html` y verificar que `#bloque-resumen` se muestre y `#resumen-clinico-texto` traiga el objeto formateado (el fix de `mostrarBorradorMedico()` quedó aplicado pero sin confirmación visual en esta sesión).
-2. **Bookmarklet de Filiación (`bookmarklet/launcher.js`):** implementado (ver Sección 1.E) con selectores reales de mascota/especie/raza — pendiente de: (a) validación visual real contra la pestaña de MyVete abierta (¿el `div` combinado elegido es siempre el correcto?), (b) selector real de tutor (nombre/teléfono/email), todavía no confirmado sobre el DOM.
+2. **Bookmarklet de Filiación (`bookmarklet/launcher.js`) — Datos del tutor:** extracción de mascota ya validada E2E (ver Sección 1.E); falta confirmar selector real de `tutor.nombre` / `tutor.telefono` / `tutor.email` sobre el DOM en vivo. Plan de inspección propuesto:
+   *   Con la ficha de un paciente real abierta en MyVete, usar DevTools (`F12` → pestaña Elements) e `inspeccionar elemento` directamente sobre el nombre del tutor, el teléfono y el email visibles en pantalla, para ubicar el contenedor exacto (clase/`id`) que los envuelve — no asumir que están dentro de `.patient-info` (el bug de "Mentira" sugiere que ese contenedor puede ser un ancestro común más amplio).
+   *   Alternativa sin DevTools manual: correr un snippet de diagnóstico de una sola vez (consola o bookmarklet temporal) que haga `console.table` o `console.log` del `outerHTML`/`className` de todos los `div`/`span` dentro del panel de datos del paciente, para mapear la estructura sin depender de que el usuario sepa usar el inspector.
+   *   Una vez identificado el contenedor, aplicar la misma estrategia defensiva ya usada para especie/raza (nodos hoja + validación de forma del dato: email por `@`, teléfono por regex numérico, nombre por exclusión) en vez de confiar en una sola coincidencia de texto.
    *   **Quirk de Chrome a tener en cuenta:** el campo URL del editor de marcadores bloquea el pegado directo de una URL `javascript:...` completa (protección anti-XSS) — hay que escribir `javascript:` a mano en ese campo y recién ahí pegar el resto del código.
 3. **Persistencia del borrador de IA:** el workflow de n8n todavía no reenvía `borrador_medico` ni el payload original a un destino final (Sheets/Supabase/orquestador real) — solo lo devuelve en la respuesta HTTP.
 4. **Botón "Confirmar y enviar a MyVete"** en `#bloque-resumen`: falta el `postMessage` que confirme el borrador editado de vuelta al bookmarklet.
 5. **Implementación de la Sección C en SPA (Estudios Complementarios):** Maquetado de métricas de Ecocardiograma, Electrocardiograma y Observaciones de Estudios en `index.html` y `app.js`.
 6. **Sincronización de Handshake (`PostMessage`):** Protocolo de confirmación de carga de la ventana flotante con el Bookmarklet de MyVete (Sección 5 de `INFORME-ARQUITECTURA-MYVETE-V2.7.md`).
-7. **Control de Versiones (Git):** repositorio ya inicializado localmente; falta resolver el archivo de conflicto de sincronización sin trackear (`interface/app.sync-conflict-*.js`), revisar/commitear los cambios de hoy (`STATUS.md`, `interface/app.js`, `interface/index.html`, `n8n/README.md`, `n8n/workflow_v4_current.json`) y confirmar remoto.
+7. **Control de Versiones (Git):** resuelto — archivo de conflicto de sincronización eliminado, cambios de V4.9 consolidados en el commit `762454b`. Falta confirmar remoto (todavía no configurado/pusheado).

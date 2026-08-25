@@ -26,6 +26,17 @@
   //       por interface/app.js — no hay query param que lo consuma del otro lado).
   // TODO: selector real de tutor (nombre/teléfono/email) — no confirmado aún sobre
   //       el DOM de MyVete, viaja en null hasta poder verificarlo en pantalla.
+  //
+  // Blindaje anti-contaminación (detectado 25/08/2026, paciente "Mentira"): un div
+  // contenedor previo al bloque de perfil puede envolver también los datos de
+  // contacto del tutor, y como querySelectorAll('div') recorre en orden de
+  // documento, ese ancestro (cuyo innerText concatena TODO su contenido) puede
+  // llegar antes que el div hoja real y ganar el .find() por tener una coma
+  // "de casualidad". Se descartan los divs con hijos <div> (solo interesan
+  // nodos hoja) y además se exige que el primer segmento coincida con una
+  // especie conocida, para no depender únicamente de la forma del DOM.
+  const ESPECIES_VALIDAS = ["canino", "felino", "equino", "ave", "aviar", "exotico"];
+
   function rasparFiliacion() {
     const vacio = {
       tutor: { nombre: null, telefono: null, email: null },
@@ -38,9 +49,13 @@
 
       const nombreMascota = root.querySelector("h1")?.innerText.trim() || null;
 
-      const divCombinado = Array.from(root.querySelectorAll("div")).find(
-        (d) => d.innerText && d.innerText.includes(",")
-      );
+      const divCombinado = Array.from(root.querySelectorAll("div")).find((d) => {
+        if (d.querySelector("div")) return false;
+        const texto = d.innerText && d.innerText.trim();
+        if (!texto || texto.indexOf(",") === -1) return false;
+        const primeraParte = texto.split(",")[0].trim().toLowerCase();
+        return ESPECIES_VALIDAS.includes(primeraParte);
+      });
       const partes = divCombinado
         ? divCombinado.innerText.split(",").map((s) => s.trim())
         : [];
