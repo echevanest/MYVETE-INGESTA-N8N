@@ -9,9 +9,10 @@
  *
  * Contrato del mensaje (debe calzar con el listener de interface/app.js Sección 2):
  *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...} } }
- * `tutor` todavía no tiene selector real confirmado en el DOM de MyVete — viaja
- * con sus 3 campos en null (raspado de mejor esfuerzo, ver Contrato de Datos V2.7
- * Sección 1.2). `mascota` sí tiene selectores confirmados (24/08/2026, ver abajo).
+ * `tutor` y `mascota` tienen selectores confirmados sobre el DOM real de MyVete
+ * (mascota: 24/08/2026; tutor: 25/08/2026, ver abajo). Ambos raspan con la misma
+ * estrategia defensiva de mejor esfuerzo: si la sección esperada no aparece en
+ * pantalla, los campos viajan en `null` en vez de romper el flujo.
  */
 (function () {
   "use strict";
@@ -22,10 +23,18 @@
   //   - Especie/Raza/Color: div interno con texto combinado por comas,
   //                         ej. "Canino, ovejero suizo, BLANCO" (color se descarta,
   //                         no forma parte del contrato de datos de mascota).
+  // Selectores reales confirmados sobre la sección "Datos del Cliente" (tutor):
+  //   - Encabezado: cualquier elemento del DOM (no una etiqueta de título
+  //     específica — en MyVete real puede ser un SPAN/DIV sin clase de título)
+  //     cuyo innerText normalizado sea exacto "datos del cliente"; si hay
+  //     varios candidatos se prefiere el más específico (menos descendientes).
+  //   - Contenedor: se sube desde ese encabezado hasta el primer ancestro cuyo
+  //     innerText incluya tanto "Teléfono celular" como "Email personal".
+  //   - Nombre/Teléfono/Email: DIV.col-sm-8.col-xs-12 posterior (en orden de
+  //     documento) al DIV hoja con el texto de etiqueta correspondiente
+  //     ("Nombre:", "Teléfono celular:", "Email personal:").
   // TODO: extraer el ID del paciente desde window.location.href (no usado todavía
   //       por interface/app.js — no hay query param que lo consuma del otro lado).
-  // TODO: selector real de tutor (nombre/teléfono/email) — no confirmado aún sobre
-  //       el DOM de MyVete, viaja en null hasta poder verificarlo en pantalla.
   //
   // Blindaje anti-contaminación (detectado 25/08/2026, paciente "Mentira"): un div
   // contenedor previo al bloque de perfil puede envolver también los datos de
@@ -36,6 +45,94 @@
   // nodos hoja) y además se exige que el primer segmento coincida con una
   // especie conocida, para no depender únicamente de la forma del DOM.
   const ESPECIES_VALIDAS = ["canino", "felino", "equino", "ave", "aviar", "exotico"];
+
+  // Blindaje análogo para tutor (misma fecha): la búsqueda de etiquetas está
+  // acotada al contenedor de "Datos del Cliente" (nunca a document completo)
+  // para no confundir el "Nombre:" del tutor con el de la mascota, y el valor
+  // asociado se valida por forma (regex de teléfono/email) antes de aceptarlo.
+  const REGEX_TELEFONO = /^[+\d][\d\s\-()]{5,}$/;
+  const REGEX_EMAIL = /\S+@\S+\.\S+/;
+
+  function normalizarTexto(texto) {
+    return (texto || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  function encontrarSeccionDatosCliente() {
+    try {
+      // No se asume una etiqueta HTML de título estándar (h1..h5, legend, etc.):
+      // en el DOM real de MyVete "Datos del Cliente" puede vivir en un SPAN/DIV
+      // sin clase de título (detectado 25/08/2026, primera corrida E2E). Se
+      // buscan TODOS los elementos cuyo innerText normalizado calce exacto y,
+      // si hay varios candidatos (p. ej. un ancestro que también contiene el
+      // texto por acumulación), se prefiere el más específico — el de menos
+      // elementos descendientes — evitando el mismo patrón de contaminación
+      // ya visto en el bug de mascota ("Mentira").
+      const candidatos = Array.from(document.querySelectorAll("body *")).filter(
+        (n) => normalizarTexto(n.innerText) === "datos del cliente"
+      );
+      if (!candidatos.length) return null;
+      candidatos.sort((a, b) => a.querySelectorAll("*").length - b.querySelectorAll("*").length);
+      const encabezado = candidatos[0];
+
+      let contenedor = encabezado.parentElement;
+      let saltos = 0;
+      while (contenedor && saltos < 10) {
+        const texto = normalizarTexto(contenedor.innerText);
+        if (texto.includes("teléfono celular") && texto.includes("email personal")) {
+          return contenedor;
+        }
+        contenedor = contenedor.parentElement;
+        saltos += 1;
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function extraerValorPorEtiqueta(root, etiqueta) {
+    if (!root) return null;
+    const divs = Array.from(root.querySelectorAll("div"));
+    const nodoEtiqueta = divs.find(
+      (d) => !d.querySelector("div") && normalizarTexto(d.innerText) === normalizarTexto(etiqueta)
+    );
+    if (!nodoEtiqueta) return null;
+
+    const valores = divs.filter(
+      (d) =>
+        !d.querySelector("div") &&
+        d.classList.contains("col-sm-8") &&
+        d.classList.contains("col-xs-12")
+    );
+    const nodoValor = valores.find(
+      (v) => nodoEtiqueta.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    if (!nodoValor) return null;
+
+    const texto = (nodoValor.innerText || "").trim();
+    return texto || null;
+  }
+
+  function rasparTutor() {
+    const vacio = { nombre: null, telefono: null, email: null };
+    try {
+      const seccion = encontrarSeccionDatosCliente();
+      if (!seccion) return vacio;
+
+      const nombre = extraerValorPorEtiqueta(seccion, "Nombre:");
+      const telefono = extraerValorPorEtiqueta(seccion, "Teléfono celular:");
+      const email = extraerValorPorEtiqueta(seccion, "Email personal:");
+
+      return {
+        nombre: nombre || null,
+        telefono: telefono && REGEX_TELEFONO.test(telefono) ? telefono : null,
+        email: email && REGEX_EMAIL.test(email) ? email : null,
+      };
+    } catch (error) {
+      console.error("MyVete Bookmarklet: error al raspar tutor.", error);
+      return vacio;
+    }
+  }
 
   function rasparFiliacion() {
     const vacio = {
@@ -61,7 +158,7 @@
         : [];
 
       return {
-        tutor: vacio.tutor,
+        tutor: rasparTutor(),
         mascota: {
           nombre: nombreMascota,
           especie: partes[0] || null,
