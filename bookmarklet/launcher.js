@@ -17,6 +17,25 @@
 (function () {
   "use strict";
 
+  // ===== CONFIGURACIÓN =====
+  // URL de la ventana flotante (interface/index.html). interface/app.js tiene que
+  // estar servido por HTTP en algún lado —`python -m http.server 8080` desde la
+  // raíz del repo, `npx serve`, GitHub Pages, etc.—; si no hay nada escuchando el
+  // navegador corta con ERR_CONNECTION_REFUSED.
+  //
+  // Para apuntar a otra URL sin reeditar el bookmarklet, definir el override una
+  // sola vez desde la consola de MyVete:
+  //   localStorage.setItem('myvete_panel_url', 'https://usuario.github.io/panel/index.html')
+  // y para volver al valor por defecto:
+  //   localStorage.removeItem('myvete_panel_url')
+  const PANEL_URL_DEFAULT = "http://localhost:8080/interface/index.html";
+  let PANEL_URL = PANEL_URL_DEFAULT;
+  try {
+    PANEL_URL = localStorage.getItem("myvete_panel_url") || PANEL_URL_DEFAULT;
+  } catch (error) {
+    // localStorage puede no estar disponible (modo restringido): se usa el default.
+  }
+
   // Paso 1 — Activación y raspado de entrada (Sección 3.2, punto 1)
   // Selectores reales confirmados sobre el DOM de la ficha clínica (div.patient-info):
   //   - Mascota:            '.patient-info h1' -> ej. "Baco"
@@ -218,9 +237,18 @@
   // El ID de tutor viaja por query param: interface/app.js corre en el origen del
   // panel (no en MyVete), así que la URL es el único canal disponible al cargar
   // el documento — el postMessage (más abajo) lo repite solo como respaldo.
+  const params = new URLSearchParams();
+  if (idTutor) params.set("idTutor", idTutor);
+  const queryString = params.toString();
   const urlPanel =
-    "http://localhost:8080/interface/index.html" +
-    (idTutor ? "?idTutor=" + encodeURIComponent(idTutor) : "");
+    PANEL_URL +
+    (queryString ? (PANEL_URL.indexOf("?") === -1 ? "?" : "&") + queryString : "");
+
+  console.log("MyVete Bookmarklet: abriendo panel en", urlPanel);
+  console.log(
+    "MyVete Bookmarklet: para cambiar la URL del panel ->",
+    "localStorage.setItem('myvete_panel_url', '<url>')"
+  );
   const ventana = window.open(urlPanel, "MYVETE_PANEL");
 
   if (!ventana) {
