@@ -18,17 +18,19 @@
   "use strict";
 
   // ===== CONFIGURACIÓN =====
-  // URL de la ventana flotante (interface/index.html). interface/app.js tiene que
-  // estar servido por HTTP en algún lado —`python -m http.server 8080` desde la
-  // raíz del repo, `npx serve`, GitHub Pages, etc.—; si no hay nada escuchando el
-  // navegador corta con ERR_CONNECTION_REFUSED.
+  // URL de la ventana flotante (interface/index.html), servida por GitHub Pages.
+  // IMPORTANTE: reemplazar `TU-USUARIO` por el usuario real de GitHub una vez
+  // creado el repo y activado Pages (Settings -> Pages -> Deploy from branch).
+  // Si se sube el repo completo, Pages sirve desde la raíz y el panel queda en
+  // /MYVETE-INGESTA-N8N/interface/index.html (ese es el path de abajo).
   //
   // Para apuntar a otra URL sin reeditar el bookmarklet, definir el override una
   // sola vez desde la consola de MyVete:
-  //   localStorage.setItem('myvete_panel_url', 'https://usuario.github.io/panel/index.html')
+  //   localStorage.setItem('myvete_panel_url', 'https://otra.url/index.html')
   // y para volver al valor por defecto:
   //   localStorage.removeItem('myvete_panel_url')
-  const PANEL_URL_DEFAULT = "http://localhost:8080/interface/index.html";
+  const PANEL_URL_DEFAULT =
+    "https://TU-USUARIO.github.io/MYVETE-INGESTA-N8N/interface/index.html";
   let PANEL_URL = PANEL_URL_DEFAULT;
   try {
     PANEL_URL = localStorage.getItem("myvete_panel_url") || PANEL_URL_DEFAULT;

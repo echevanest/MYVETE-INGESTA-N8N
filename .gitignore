@@ -5,3 +5,11 @@ node_modules/
 
 # Contiene informes clínicos reales de pacientes — nunca indexar (27/07/2026)
 MODELOS DE INFORMES/
+
+# Credenciales/secretos locales — nunca versionar (25/08/2026)
+.secrets/
+
+# Dumps de ejecución n8n y backups de workflow — pueden traer datos reales de
+# pacientes y/o claves de Supabase; nunca versionar (01/09/2026)
+exec_*.json
+workflow_backup*.json
