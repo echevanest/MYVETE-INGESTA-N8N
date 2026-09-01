@@ -222,6 +222,14 @@ renderizarPerfiles(); // estado inicial (especie por defecto del <select>)
 // ---------------------------------------------------------------------------
 let bloqueFiliacionEditado = false;
 
+// ID de tutor de MyVete (segmento numérico de /customers/{id}). Este archivo
+// corre en el origen del panel, no en MyVete, así que NO puede leerlo de la URL
+// de MyVete: lo raspa el bookmarklet (launcher.js) y lo pasa como query param
+// `?idTutor=` al abrir el panel, con respaldo dentro del payload del postMessage.
+// Viaja en el payload de salida como filiacion.tutor.id_myvete y es la clave de
+// upsert prevista para la tabla `tutores`.
+let idTutorMyVete = new URLSearchParams(window.location.search).get('idTutor') || null;
+
 const btnEditarFiliacion = document.getElementById('btn-editar-filiacion');
 const camposFiliacion = [
   'paciente-nombre', 'paciente-especie', 'paciente-raza', 'paciente-peso',
@@ -268,6 +276,12 @@ window.addEventListener('message', (evento) => {
   if (!evento.data || evento.data.type !== 'MYVETE_FILIACION') return;
 
   const { tutor, mascota } = evento.data.payload || {};
+
+  // Respaldo del query param: si el bookmarklet no pudo poner el idTutor en la
+  // URL (o el panel ya estaba abierto de antes), todavía llega dentro del mensaje.
+  if (!idTutorMyVete && evento.data.payload && evento.data.payload.idTutor != null) {
+    idTutorMyVete = String(evento.data.payload.idTutor);
+  }
 
   if (tutor) {
     if (tutor.nombre != null) document.getElementById('tutor-nombre').value = tutor.nombre;
@@ -438,6 +452,7 @@ function consolidarPayloadFinal() {
   return {
     filiacion: {
       tutor: {
+        id_myvete: idTutorMyVete,
         nombre: document.getElementById('tutor-nombre').value.trim(),
         telefono: document.getElementById('tutor-telefono').value.trim() || null,
         email: document.getElementById('tutor-email').value.trim() || null,

@@ -8,7 +8,7 @@
  * eso vive del lado de /interface/app.js.
  *
  * Contrato del mensaje (debe calzar con el listener de interface/app.js Sección 2):
- *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...} } }
+ *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...}, idTutor: 'string | null' } }
  * `tutor` y `mascota` tienen selectores confirmados sobre el DOM real de MyVete
  * (mascota: 24/08/2026; tutor: 25/08/2026, ver abajo). Ambos raspan con la misma
  * estrategia defensiva de mejor esfuerzo: si la sección esperada no aparece en
@@ -33,8 +33,11 @@
   //   - Nombre/Teléfono/Email: DIV.col-sm-8.col-xs-12 posterior (en orden de
   //     documento) al DIV hoja con el texto de etiqueta correspondiente
   //     ("Nombre:", "Teléfono celular:", "Email personal:").
-  // TODO: extraer el ID del paciente desde window.location.href (no usado todavía
-  //       por interface/app.js — no hay query param que lo consuma del otro lado).
+  // El ID de tutor (segmento numérico de /customers/{id}) ya se extrae —ver
+  // extraerIdTutor() más abajo, validado E2E el 01/09/2026 sobre el DOM real de
+  // MyVete— y viaja al panel por query param `?idTutor=` + respaldo en el
+  // postMessage. TODO pendiente: el ID de paciente (/patient/{id}/charts o
+  // /customers/{c}/patients/{id}), necesario para la consulta de historial.
   //
   // Blindaje anti-contaminación (detectado 25/08/2026, paciente "Mentira"): un div
   // contenedor previo al bloque de perfil puede envolver también los datos de
@@ -172,16 +175,53 @@
     }
   }
 
+  // Extracción del ID de tutor (cliente/dueño) desde la pantalla de MyVete.
+  // Validado E2E el 01/09/2026 sobre el DOM real: MyVete usa dos formas de URL
+  // para la ficha de un paciente y en ambas el ID de tutor es recuperable:
+  //   a) /customers/{cid}/patients/{pid}  -> el cid está en la propia URL.
+  //   b) /patient/{pid}/charts            -> la URL no lo trae, pero el botón
+  //      flotante "editar paciente" del DOM lleva href="/customers/{cid}/patients/{pid}".
+  // El enlace "/customers/0" (acción "Nuevo Cliente") aparece en todas las
+  // pantallas: se descarta explícitamente el id "0" en cada paso.
+  function extraerIdTutor() {
+    try {
+      const enUrl = window.location.pathname.match(/\/customers\/(\d+)\/patients\/\d+/);
+      if (enUrl && enUrl[1] !== "0") return enUrl[1];
+
+      const anclasPaciente = Array.from(
+        document.querySelectorAll('a[href*="/customers/"][href*="/patients/"]')
+      );
+      for (const ancla of anclasPaciente) {
+        const m = (ancla.getAttribute("href") || "").match(/\/customers\/(\d+)\/patients\/\d+/);
+        if (m && m[1] !== "0") return m[1];
+      }
+
+      const anclasCliente = Array.from(document.querySelectorAll('a[href*="/customers/"]'));
+      for (const ancla of anclasCliente) {
+        const m = (ancla.getAttribute("href") || "").match(/\/customers\/(\d+)/);
+        if (m && m[1] !== "0") return m[1];
+      }
+    } catch (error) {
+      console.error("MyVete Bookmarklet: error al extraer idTutor.", error);
+    }
+    return null;
+  }
+
   // Paso 2 — Despliegue del panel externo (Sección 3.2, punto 2)
   // IMPORTANTE (Sección 4.1 — bloqueadores de pop-ups): window.open() debe dispararse
   // en el mismo hilo de ejecución del clic sobre el bookmarklet, sin pasos asíncronos
   // intermedios (fetch, await, setTimeout) entre el clic y la apertura. El raspado de
   // arriba es 100% síncrono, así que no rompe esta regla.
   const datosFiliacion = rasparFiliacion();
-  const ventana = window.open(
-    "http://localhost:8080/interface/index.html",
-    "MYVETE_PANEL"
-  );
+  const idTutor = extraerIdTutor();
+
+  // El ID de tutor viaja por query param: interface/app.js corre en el origen del
+  // panel (no en MyVete), así que la URL es el único canal disponible al cargar
+  // el documento — el postMessage (más abajo) lo repite solo como respaldo.
+  const urlPanel =
+    "http://localhost:8080/interface/index.html" +
+    (idTutor ? "?idTutor=" + encodeURIComponent(idTutor) : "");
+  const ventana = window.open(urlPanel, "MYVETE_PANEL");
 
   if (!ventana) {
     console.error("MyVete Bookmarklet: window.open() bloqueado por el navegador.");
@@ -194,7 +234,10 @@
   // el envío del mismo mensaje varias veces a intervalo corto: interface/app.js
   // solo asigna valores a campos (idempotente), así que recibir el mensaje más de
   // una vez no tiene efecto colateral.
-  const mensaje = { type: "MYVETE_FILIACION", payload: datosFiliacion };
+  const mensaje = {
+    type: "MYVETE_FILIACION",
+    payload: Object.assign({}, datosFiliacion, { idTutor: idTutor }),
+  };
   let intentosRestantes = 5;
   const intervaloEnvio = setInterval(() => {
     ventana.postMessage(mensaje, "*");
