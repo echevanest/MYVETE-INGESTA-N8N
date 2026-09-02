@@ -18,11 +18,8 @@
   "use strict";
 
   // ===== CONFIGURACIÓN =====
-  // URL de la ventana flotante (interface/index.html), servida por GitHub Pages.
-  // IMPORTANTE: reemplazar `TU-USUARIO` por el usuario real de GitHub una vez
-  // creado el repo y activado Pages (Settings -> Pages -> Deploy from branch).
-  // Si se sube el repo completo, Pages sirve desde la raíz y el panel queda en
-  // /MYVETE-INGESTA-N8N/interface/index.html (ese es el path de abajo).
+  // URL de la ventana flotante (interface/index.html), servida por GitHub Pages
+  // desde la raíz del repo: /MYVETE-INGESTA-N8N/interface/index.html.
   //
   // Para apuntar a otra URL sin reeditar el bookmarklet, definir el override una
   // sola vez desde la consola de MyVete:
@@ -30,7 +27,7 @@
   // y para volver al valor por defecto:
   //   localStorage.removeItem('myvete_panel_url')
   const PANEL_URL_DEFAULT =
-    "https://TU-USUARIO.github.io/MYVETE-INGESTA-N8N/interface/index.html";
+    "https://echevanest.github.io/MYVETE-INGESTA-N8N/interface/index.html";
   let PANEL_URL = PANEL_URL_DEFAULT;
   try {
     PANEL_URL = localStorage.getItem("myvete_panel_url") || PANEL_URL_DEFAULT;
