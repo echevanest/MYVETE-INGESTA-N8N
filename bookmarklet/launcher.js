@@ -173,7 +173,14 @@
         console.warn("MyVete Bookmarklet: email raspado no pasó la validación de forma:", email);
       }
 
-      return { nombre: nombre || null, telefono: telefonoOk, email: emailOk };
+      const resultado = { nombre: nombre || null, telefono: telefonoOk, email: emailOk };
+      console.log(
+        "MyVete Bookmarklet: tutor raspado ->",
+        "nombre:", resultado.nombre || "(no encontrado)",
+        "| teléfono:", resultado.telefono || "(no encontrado)",
+        "| email:", resultado.email || "(no encontrado)"
+      );
+      return resultado;
     } catch (error) {
       console.error("MyVete Bookmarklet: error al raspar tutor.", error);
       return vacio;
@@ -303,6 +310,7 @@
     type: "MYVETE_FILIACION",
     payload: Object.assign({}, datosFiliacion, { idTutor: idTutor }),
   };
+  console.log("MyVete Bookmarklet: mensaje a enviar al panel ->", JSON.stringify(mensaje));
 
   function enviarDatosConHandshake(ventanaPanel, mensajeFiliacion) {
     let yaEnviado = false;

@@ -304,6 +304,8 @@ function sanitizarPeso(valorCrudo) {
 window.addEventListener('message', (evento) => {
   if (!evento.data || evento.data.type !== 'MYVETE_FILIACION') return;
 
+  console.log('MyVete Panel: MYVETE_FILIACION recibido ->', JSON.stringify(evento.data.payload));
+
   const { tutor, mascota } = evento.data.payload || {};
 
   // Respaldo del query param: si el bookmarklet no pudo poner el idTutor en la
