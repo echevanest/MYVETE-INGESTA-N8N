@@ -41,16 +41,17 @@
   //   - Especie/Raza/Color: div interno con texto combinado por comas,
   //                         ej. "Canino, ovejero suizo, BLANCO" (color se descarta,
   //                         no forma parte del contrato de datos de mascota).
-  // Selectores reales confirmados sobre la sección "Datos del Cliente" (tutor):
-  //   - Encabezado: cualquier elemento del DOM (no una etiqueta de título
-  //     específica — en MyVete real puede ser un SPAN/DIV sin clase de título)
-  //     cuyo innerText normalizado sea exacto "datos del cliente"; si hay
-  //     varios candidatos se prefiere el más específico (menos descendientes).
-  //   - Contenedor: se sube desde ese encabezado hasta el primer ancestro cuyo
-  //     innerText incluya tanto "Teléfono celular" como "Email personal".
-  //   - Nombre/Teléfono/Email: DIV.col-sm-8.col-xs-12 posterior (en orden de
-  //     documento) al DIV hoja con el texto de etiqueta correspondiente
-  //     ("Nombre:", "Teléfono celular:", "Email personal:").
+  // Selectores reales confirmados sobre la sección "Datos del Cliente" (tutor),
+  // corrida de probe-tutor.js del 02/09/2026 sobre el DOM real de MyVete:
+  //   - Contenedor: DIV#modalcustomerDetail_customers (el <div id> del tab-pane
+  //     "Datos del Cliente"). Fallback: búsqueda por texto del encabezado
+  //     "datos del cliente" + ancestro con "teléfono celular" y "email personal"
+  //     (encontrarSeccionDatosCliente(), por si el id cambia).
+  //   - Cada fila es un row Bootstrap con dos columnas hermanas:
+  //       <div class="col-sm-4 col-xs-12">Nombre:</div>        (etiqueta)
+  //       <div class="col-sm-8 col-xs-12">JUAN PEREZ</div>      (valor)
+  //     -> se ubica la etiqueta por texto y se toma el .col-sm-8.col-xs-12 del
+  //     mismo parentElement (extraerValorPorEtiqueta()).
   // El ID de tutor (segmento numérico de /customers/{id}) ya se extrae —ver
   // extraerIdTutor() más abajo, validado E2E el 01/09/2026 sobre el DOM real de
   // MyVete— y viaja al panel por query param `?idTutor=` + respaldo en el
@@ -80,22 +81,21 @@
 
   function encontrarSeccionDatosCliente() {
     try {
-      // No se asume una etiqueta HTML de título estándar (h1..h5, legend, etc.):
-      // en el DOM real de MyVete "Datos del Cliente" puede vivir en un SPAN/DIV
-      // sin clase de título (detectado 25/08/2026, primera corrida E2E). Se
-      // buscan TODOS los elementos cuyo innerText normalizado calce exacto y,
-      // si hay varios candidatos (p. ej. un ancestro que también contiene el
-      // texto por acumulación), se prefiere el más específico — el de menos
-      // elementos descendientes — evitando el mismo patrón de contaminación
-      // ya visto en el bug de mascota ("Mentira").
+      // Ruta principal: el tab-pane "Datos del Cliente" tiene id estable
+      // (probe 02/09/2026). Si MyVete lo renombra, se cae al fallback por texto.
+      const porId = document.getElementById("modalcustomerDetail_customers");
+      if (porId) return porId;
+
+      // Fallback: no se asume una etiqueta de título estándar; se buscan todos
+      // los elementos cuyo texto normalizado sea exacto "datos del cliente" y,
+      // si hay varios, se prefiere el más específico (menos descendientes), y
+      // desde ahí se sube al primer ancestro que contenga las dos etiquetas.
       const candidatos = Array.from(document.querySelectorAll("body *")).filter(
         (n) => normalizarTexto(n.innerText) === "datos del cliente"
       );
       if (!candidatos.length) return null;
       candidatos.sort((a, b) => a.querySelectorAll("*").length - b.querySelectorAll("*").length);
-      const encabezado = candidatos[0];
-
-      let contenedor = encabezado.parentElement;
+      let contenedor = candidatos[0].parentElement;
       let saltos = 0;
       while (contenedor && saltos < 10) {
         const texto = normalizarTexto(contenedor.innerText);
@@ -113,42 +113,67 @@
 
   function extraerValorPorEtiqueta(root, etiqueta) {
     if (!root) return null;
-    const divs = Array.from(root.querySelectorAll("div"));
-    const nodoEtiqueta = divs.find(
-      (d) => !d.querySelector("div") && normalizarTexto(d.innerText) === normalizarTexto(etiqueta)
-    );
-    if (!nodoEtiqueta) return null;
+    const etiquetaNorm = normalizarTexto(etiqueta);
 
-    const valores = divs.filter(
-      (d) =>
-        !d.querySelector("div") &&
-        d.classList.contains("col-sm-8") &&
-        d.classList.contains("col-xs-12")
-    );
-    const nodoValor = valores.find(
-      (v) => nodoEtiqueta.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING
-    );
-    if (!nodoValor) return null;
+    // La etiqueta es un DIV.col-sm-4.col-xs-12 con el texto exacto; el valor es
+    // el DIV.col-sm-8.col-xs-12 hermano (mismo row). textContent (no innerText)
+    // porque el panel puede estar en un tab oculto sin layout calculado.
+    const nodoEtiqueta = Array.from(
+      root.querySelectorAll("div.col-sm-4.col-xs-12")
+    ).find((d) => normalizarTexto(d.textContent) === etiquetaNorm);
+    if (!nodoEtiqueta) {
+      console.warn("MyVete Bookmarklet: etiqueta de tutor no encontrada:", etiqueta);
+      return null;
+    }
 
-    const texto = (nodoValor.innerText || "").trim();
+    const fila = nodoEtiqueta.parentElement;
+    let nodoValor = fila && fila.querySelector("div.col-sm-8.col-xs-12");
+
+    // Respaldo: si el valor no está en el mismo parent, se toma el primer
+    // .col-sm-8.col-xs-12 que siga a la etiqueta en orden de documento.
+    if (!nodoValor) {
+      nodoValor = Array.from(root.querySelectorAll("div.col-sm-8.col-xs-12")).find(
+        (v) => nodoEtiqueta.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    }
+    if (!nodoValor) {
+      console.warn("MyVete Bookmarklet: valor de tutor no encontrado para:", etiqueta);
+      return null;
+    }
+
+    const texto = normalizarConEspacios(nodoValor.textContent);
     return texto || null;
+  }
+
+  // Como normalizarTexto pero sin bajar a minúsculas: para valores que se
+  // muestran tal cual al médico (nombre, email con mayúsculas, etc.).
+  function normalizarConEspacios(texto) {
+    return (texto || "").replace(/\s+/g, " ").trim();
   }
 
   function rasparTutor() {
     const vacio = { nombre: null, telefono: null, email: null };
     try {
       const seccion = encontrarSeccionDatosCliente();
-      if (!seccion) return vacio;
+      if (!seccion) {
+        console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no encontrada.");
+        return vacio;
+      }
 
       const nombre = extraerValorPorEtiqueta(seccion, "Nombre:");
       const telefono = extraerValorPorEtiqueta(seccion, "Teléfono celular:");
       const email = extraerValorPorEtiqueta(seccion, "Email personal:");
 
-      return {
-        nombre: nombre || null,
-        telefono: telefono && REGEX_TELEFONO.test(telefono) ? telefono : null,
-        email: email && REGEX_EMAIL.test(email) ? email : null,
-      };
+      const telefonoOk = telefono && REGEX_TELEFONO.test(telefono) ? telefono : null;
+      const emailOk = email && REGEX_EMAIL.test(email) ? email : null;
+      if (telefono && !telefonoOk) {
+        console.warn("MyVete Bookmarklet: teléfono raspado no pasó la validación de forma:", telefono);
+      }
+      if (email && !emailOk) {
+        console.warn("MyVete Bookmarklet: email raspado no pasó la validación de forma:", email);
+      }
+
+      return { nombre: nombre || null, telefono: telefonoOk, email: emailOk };
     } catch (error) {
       console.error("MyVete Bookmarklet: error al raspar tutor.", error);
       return vacio;
