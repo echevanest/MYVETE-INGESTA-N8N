@@ -233,6 +233,13 @@
   const datosFiliacion = rasparFiliacion();
   const idTutor = extraerIdTutor();
 
+  // Diagnóstico: deja ver en la consola de MyVete exactamente qué se raspó,
+  // antes de que sea un problema del panel. Si `tutor` sale con los tres campos
+  // en null, el fallo está en encontrarSeccionDatosCliente()/extraerValorPorEtiqueta()
+  // contra el DOM real de esta pantalla (ver probe en bookmarklet/README.md).
+  console.log("MyVete Bookmarklet: filiación raspada ->", JSON.stringify(datosFiliacion));
+  console.log("MyVete Bookmarklet: idTutor ->", idTutor);
+
   // El ID de tutor viaja por query param: interface/app.js corre en el origen del
   // panel (no en MyVete), así que la URL es el único canal disponible al cargar
   // el documento — el postMessage (más abajo) lo repite solo como respaldo.

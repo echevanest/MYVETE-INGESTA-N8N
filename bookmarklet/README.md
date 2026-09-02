@@ -24,6 +24,22 @@ localStorage.setItem('myvete_panel_url', 'https://otra.url/interface/index.html'
 localStorage.removeItem('myvete_panel_url')
 ```
 
+## Diagnóstico: el tutor no se auto-llena
+
+`launcher.js` ya loguea lo que raspó en la consola de MyVete:
+
+```
+MyVete Bookmarklet: filiación raspada -> {"tutor":{"nombre":null,...},"mascota":{...}}
+```
+
+Si `tutor` sale con los tres campos en `null`, el fallo está en los selectores
+contra el DOM real de esa pantalla. Para ver en qué paso falla, pegar el
+contenido de **`probe-tutor.js`** en la consola de MyVete (F12 → Console) con la
+ficha del paciente abierta y pasar el output. El probe no modifica nada: reporta
+si aparece el encabezado "Datos del Cliente", si el contenedor tiene las
+etiquetas esperadas, y si los divs `.col-sm-8.col-xs-12` (selector actual del
+valor) siguen existiendo.
+
 ## Regenerar tras editar `launcher.js`
 
 ```sh
