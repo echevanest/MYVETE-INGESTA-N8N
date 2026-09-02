@@ -9,10 +9,12 @@
  *
  * Contrato del mensaje (debe calzar con el listener de interface/app.js Sección 2):
  *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...}, idTutor: 'string | null' } }
- * `tutor` y `mascota` tienen selectores confirmados sobre el DOM real de MyVete
- * (mascota: 24/08/2026; tutor: 25/08/2026, ver abajo). Ambos raspan con la misma
- * estrategia defensiva de mejor esfuerzo: si la sección esperada no aparece en
- * pantalla, los campos viajan en `null` en vez de romper el flujo.
+ * Se pueden emitir DOS mensajes de este tipo: el 1ro con mascota + idTutor +
+ * tutor raspado de la página actual (mejor esfuerzo); si el tutor no estaba en
+ * esa pantalla, un 2do mensaje con `payload: { tutor, idTutor }` cuando el
+ * raspado por iframe de /customers/{id} termina. interface/app.js reasigna
+ * campos de forma idempotente, así que el 2do mensaje solo completa lo que faltó.
+ * Si nada de eso trae datos, los campos viajan en `null` sin romper el flujo.
  */
 (function () {
   "use strict";
@@ -79,18 +81,26 @@
     return (texto || "").replace(/\s+/g, " ").trim().toLowerCase();
   }
 
-  function encontrarSeccionDatosCliente() {
+  // Como normalizarTexto pero sin bajar a minúsculas: para valores que se
+  // muestran tal cual al médico (nombre, email con mayúsculas, etc.).
+  function normalizarConEspacios(texto) {
+    return (texto || "").replace(/\s+/g, " ").trim();
+  }
+
+  // Acepta un Document (el de la página actual o el de un iframe same-origin).
+  function encontrarSeccionDatosCliente(raiz) {
+    const doc = raiz || document;
     try {
       // Ruta principal: el tab-pane "Datos del Cliente" tiene id estable
       // (probe 02/09/2026). Si MyVete lo renombra, se cae al fallback por texto.
-      const porId = document.getElementById("modalcustomerDetail_customers");
+      const porId = doc.getElementById("modalcustomerDetail_customers");
       if (porId) return porId;
 
       // Fallback: no se asume una etiqueta de título estándar; se buscan todos
       // los elementos cuyo texto normalizado sea exacto "datos del cliente" y,
       // si hay varios, se prefiere el más específico (menos descendientes), y
       // desde ahí se sube al primer ancestro que contenga las dos etiquetas.
-      const candidatos = Array.from(document.querySelectorAll("body *")).filter(
+      const candidatos = Array.from(doc.querySelectorAll("body *")).filter(
         (n) => normalizarTexto(n.innerText) === "datos del cliente"
       );
       if (!candidatos.length) return null;
@@ -111,9 +121,12 @@
     }
   }
 
-  function extraerValorPorEtiqueta(root, etiqueta) {
+  function extraerValorPorEtiqueta(root, etiqueta, silencioso) {
     if (!root) return null;
     const etiquetaNorm = normalizarTexto(etiqueta);
+    const avisar = (msg, extra) => {
+      if (!silencioso) console.warn(msg, extra);
+    };
 
     // La etiqueta es un DIV.col-sm-4.col-xs-12 con el texto exacto; el valor es
     // el DIV.col-sm-8.col-xs-12 hermano (mismo row). textContent (no innerText)
@@ -122,7 +135,7 @@
       root.querySelectorAll("div.col-sm-4.col-xs-12")
     ).find((d) => normalizarTexto(d.textContent) === etiquetaNorm);
     if (!nodoEtiqueta) {
-      console.warn("MyVete Bookmarklet: etiqueta de tutor no encontrada:", etiqueta);
+      avisar("MyVete Bookmarklet: etiqueta de tutor no encontrada:", etiqueta);
       return null;
     }
 
@@ -137,7 +150,7 @@
       );
     }
     if (!nodoValor) {
-      console.warn("MyVete Bookmarklet: valor de tutor no encontrado para:", etiqueta);
+      avisar("MyVete Bookmarklet: valor de tutor no encontrado para:", etiqueta);
       return null;
     }
 
@@ -145,46 +158,130 @@
     return texto || null;
   }
 
-  // Como normalizarTexto pero sin bajar a minúsculas: para valores que se
-  // muestran tal cual al médico (nombre, email con mayúsculas, etc.).
-  function normalizarConEspacios(texto) {
-    return (texto || "").replace(/\s+/g, " ").trim();
-  }
-
-  function rasparTutor() {
+  // Raspa nombre/teléfono/email de una sección ya localizada (sirve tanto para
+  // la página actual como para el Document de un iframe). `silencioso` corta los
+  // console.warn durante el polling del iframe (se hace un intento final ruidoso).
+  function rasparTutorDeSeccion(seccion, origen, silencioso) {
     const vacio = { nombre: null, telefono: null, email: null };
+    if (!seccion) return vacio;
     try {
-      const seccion = encontrarSeccionDatosCliente();
-      if (!seccion) {
-        console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no encontrada.");
-        return vacio;
-      }
-
-      const nombre = extraerValorPorEtiqueta(seccion, "Nombre:");
-      const telefono = extraerValorPorEtiqueta(seccion, "Teléfono celular:");
-      const email = extraerValorPorEtiqueta(seccion, "Email personal:");
+      const nombre = extraerValorPorEtiqueta(seccion, "Nombre:", silencioso);
+      const telefono = extraerValorPorEtiqueta(seccion, "Teléfono celular:", silencioso);
+      const email = extraerValorPorEtiqueta(seccion, "Email personal:", silencioso);
 
       const telefonoOk = telefono && REGEX_TELEFONO.test(telefono) ? telefono : null;
       const emailOk = email && REGEX_EMAIL.test(email) ? email : null;
-      if (telefono && !telefonoOk) {
+      if (!silencioso && telefono && !telefonoOk) {
         console.warn("MyVete Bookmarklet: teléfono raspado no pasó la validación de forma:", telefono);
       }
-      if (email && !emailOk) {
+      if (!silencioso && email && !emailOk) {
         console.warn("MyVete Bookmarklet: email raspado no pasó la validación de forma:", email);
       }
 
       const resultado = { nombre: nombre || null, telefono: telefonoOk, email: emailOk };
-      console.log(
-        "MyVete Bookmarklet: tutor raspado ->",
-        "nombre:", resultado.nombre || "(no encontrado)",
-        "| teléfono:", resultado.telefono || "(no encontrado)",
-        "| email:", resultado.email || "(no encontrado)"
-      );
+      if (!silencioso) {
+        console.log(
+          "MyVete Bookmarklet: tutor raspado (" + (origen || "?") + ") ->",
+          "nombre:", resultado.nombre || "(no encontrado)",
+          "| teléfono:", resultado.telefono || "(no encontrado)",
+          "| email:", resultado.email || "(no encontrado)"
+        );
+      }
       return resultado;
     } catch (error) {
-      console.error("MyVete Bookmarklet: error al raspar tutor.", error);
+      console.error("MyVete Bookmarklet: error al raspar tutor de sección.", error);
       return vacio;
     }
+  }
+
+  // Raspado síncrono desde la página actual (mejor esfuerzo). Si acá no está la
+  // sección "Datos del Cliente", el flujo principal cae al iframe (ver abajo).
+  function rasparTutor() {
+    const seccion = encontrarSeccionDatosCliente(document);
+    if (!seccion) {
+      console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no está en la página actual.");
+    }
+    return rasparTutorDeSeccion(seccion, "página actual", false);
+  }
+
+  // Plan B (Opción B del análisis 02/09/2026): si la ficha del paciente NO trae
+  // los datos del tutor, se carga /customers/{id} en un iframe oculto same-origin
+  // (mismo origen app.myvete.com -> sin CORS, contentDocument accesible) y se
+  // raspa de ahí una vez que la SPA terminó de renderizar. Devuelve SIEMPRE un
+  // objeto {nombre,telefono,email} (nulls si falla o si vence el timeout): nunca
+  // rechaza, para no romper el flujo. Riesgo conocido: X-Frame-Options/CSP de
+  // MyVete podría bloquear el iframe -> se detecta como "doc inaccesible" o
+  // timeout y se resuelve con nulls (el médico completa a mano).
+  function rasparTutorDesdeIframe(idTutorArg) {
+    return new Promise((resolve) => {
+      const vacio = { nombre: null, telefono: null, email: null };
+      const LIMITE_MS = 10000;
+      let iframe = null;
+      let intervalo = null;
+      let timeoutGlobal = null;
+      let terminado = false;
+
+      function finalizar(resultado, motivo) {
+        if (terminado) return;
+        terminado = true;
+        if (intervalo) clearInterval(intervalo);
+        if (timeoutGlobal) clearTimeout(timeoutGlobal);
+        if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        console.log("MyVete Bookmarklet: iframe tutor cerrado (" + motivo + ").");
+        resolve(resultado);
+      }
+
+      try {
+        const url = window.location.origin + "/customers/" + encodeURIComponent(idTutorArg);
+        console.log("MyVete Bookmarklet: abriendo iframe oculto para raspar tutor ->", url);
+
+        iframe = document.createElement("iframe");
+        iframe.setAttribute("aria-hidden", "true");
+        iframe.setAttribute("tabindex", "-1");
+        iframe.style.cssText =
+          "position:fixed;left:-10000px;top:0;width:1200px;height:1400px;border:0;opacity:0;pointer-events:none;";
+        iframe.src = url;
+
+        const inicio = Date.now();
+
+        function intentar() {
+          if (terminado) return;
+          let doc = null;
+          try {
+            doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+          } catch (error) {
+            // No debería pasar en same-origin: si pasa es X-Frame-Options/sandbox.
+            return finalizar(vacio, "doc inaccesible (X-Frame-Options?)");
+          }
+          const seccion = doc && encontrarSeccionDatosCliente(doc);
+          if (seccion) {
+            const tutor = rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, true);
+            if (tutor.nombre || tutor.telefono || tutor.email) {
+              // Intento final ruidoso: deja el resumen y los warns en consola.
+              const definitivo = rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, false);
+              return finalizar(definitivo, "datos obtenidos");
+            }
+          }
+          if (Date.now() - inicio > LIMITE_MS) {
+            if (seccion) {
+              console.warn("MyVete Bookmarklet: sección encontrada en iframe pero sin valores; intento final:");
+              rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, false);
+            } else {
+              console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en el iframe.");
+            }
+            return finalizar(vacio, "timeout " + LIMITE_MS + "ms");
+          }
+        }
+
+        iframe.addEventListener("load", intentar);
+        document.body.appendChild(iframe);
+        intervalo = setInterval(intentar, 400);
+        timeoutGlobal = setTimeout(() => finalizar(vacio, "timeout global"), LIMITE_MS + 1500);
+      } catch (error) {
+        console.error("MyVete Bookmarklet: error creando el iframe de tutor.", error);
+        finalizar(vacio, "excepción");
+      }
+    });
   }
 
   function rasparFiliacion() {
@@ -310,32 +407,77 @@
     type: "MYVETE_FILIACION",
     payload: Object.assign({}, datosFiliacion, { idTutor: idTutor }),
   };
-  console.log("MyVete Bookmarklet: mensaje a enviar al panel ->", JSON.stringify(mensaje));
+  console.log("MyVete Bookmarklet: 1er mensaje al panel ->", JSON.stringify(mensaje));
 
-  function enviarDatosConHandshake(ventanaPanel, mensajeFiliacion) {
-    let yaEnviado = false;
-    let timeoutId = null;
+  // Canal hacia el panel con handshake: los mensajes se encolan hasta que el
+  // panel avisa MYVETE_PANEL_READY (o hasta un respaldo de 5s), y a partir de
+  // ahí se despachan de inmediato. Soporta varios envíos: el 1ro lleva mascota +
+  // idTutor + tutor de la página actual; si después el iframe consigue el tutor,
+  // se manda un 2do MYVETE_FILIACION (interface/app.js reasigna campos de forma
+  // idempotente, así que un segundo mensaje solo completa lo que faltaba).
+  function crearCanalPanel(ventanaPanel) {
+    let listo = false;
+    const cola = [];
 
-    function enviar(motivo) {
-      if (yaEnviado) return;
-      yaEnviado = true;
-      clearTimeout(timeoutId);
-      window.removeEventListener("message", alRecibirMensaje);
-      console.log("MyVete Bookmarklet: enviando filiación al panel (" + motivo + ").");
-      ventanaPanel.postMessage(mensajeFiliacion, "*");
+    function flush() {
+      while (cola.length) {
+        const m = cola.shift();
+        console.log("MyVete Bookmarklet: -> panel:", JSON.stringify(m));
+        ventanaPanel.postMessage(m, "*");
+      }
     }
 
     function alRecibirMensaje(evento) {
       if (evento.source !== ventanaPanel) return;
       if (!evento.data || evento.data.type !== "MYVETE_PANEL_READY") return;
-      enviar("panel READY");
+      if (listo) return;
+      listo = true;
+      console.log("MyVete Bookmarklet: panel READY.");
+      flush();
     }
 
     window.addEventListener("message", alRecibirMensaje);
-    timeoutId = setTimeout(() => enviar("timeout 5s, sin READY"), 5000);
+    setTimeout(() => {
+      if (listo) return;
+      listo = true;
+      console.warn("MyVete Bookmarklet: sin READY en 5s, se despacha igual.");
+      flush();
+    }, 5000);
+
+    return {
+      enviar(m) {
+        cola.push(m);
+        if (listo) flush();
+      },
+    };
   }
 
-  enviarDatosConHandshake(ventana, mensaje);
+  const panel = crearCanalPanel(ventana);
+  panel.enviar(mensaje);
+
+  // Plan B: si el tutor no vino en la página actual y tenemos idTutor, se raspa
+  // desde el iframe oculto de /customers/{id} y se manda como 2do mensaje.
+  const tutorSync = (datosFiliacion && datosFiliacion.tutor) || {};
+  const tutorVacio = !tutorSync.nombre && !tutorSync.telefono && !tutorSync.email;
+  if (tutorVacio && idTutor) {
+    console.log(
+      "MyVete Bookmarklet: tutor ausente en la página actual; intentando iframe /customers/" + idTutor
+    );
+    rasparTutorDesdeIframe(idTutor).then((tutorIframe) => {
+      if (!tutorIframe.nombre && !tutorIframe.telefono && !tutorIframe.email) {
+        console.warn(
+          "MyVete Bookmarklet: el iframe tampoco trajo datos de tutor. Se cargan a mano en el panel."
+        );
+        return;
+      }
+      const mensaje2 = {
+        type: "MYVETE_FILIACION",
+        payload: { tutor: tutorIframe, idTutor: idTutor },
+      };
+      console.log("MyVete Bookmarklet: 2do mensaje (tutor desde iframe) ->", JSON.stringify(mensaje2));
+      panel.enviar(mensaje2);
+    });
+  }
 
   // Paso 5 — Escucha de retorno (Sección 3.2, punto 5)
   // TODO: registrar listener de "message" para recibir el resumen clínico compacto

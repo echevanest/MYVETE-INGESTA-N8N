@@ -40,6 +40,24 @@ si aparece el encabezado "Datos del Cliente", si el contenedor tiene las
 etiquetas esperadas, y si los divs `.col-sm-8.col-xs-12` (selector actual del
 valor) siguen existiendo.
 
+### Plan B — iframe oculto de `/customers/{id}`
+
+Si la ficha del paciente **no** trae la sección "Datos del Cliente", el
+bookmarklet carga `/customers/{idTutor}` en un `<iframe>` oculto (mismo origen
+`app.myvete.com` → sin CORS, `contentDocument` accesible), espera a que la SPA
+renderice (polling, timeout 10 s) y raspa de ahí. El resultado va al panel en un
+**2do** mensaje `MYVETE_FILIACION`. En consola:
+
+```
+MyVete Bookmarklet: abriendo iframe oculto para raspar tutor -> https://app.myvete.com/customers/123
+MyVete Bookmarklet: tutor raspado (iframe /customers/123) -> nombre: ... | teléfono: ... | email: ...
+MyVete Bookmarklet: 2do mensaje (tutor desde iframe) -> {...}
+```
+
+Riesgo: si MyVete responde con `X-Frame-Options: DENY` / CSP `frame-ancestors`,
+el iframe no carga y se resuelve con `null` (el médico completa a mano). El log
+mostrará `doc inaccesible (X-Frame-Options?)` o `timeout`.
+
 ## Regenerar tras editar `launcher.js`
 
 ```sh
