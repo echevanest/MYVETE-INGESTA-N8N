@@ -1,66 +1,86 @@
 /**
- * Probe de diagnóstico para rasparTutor() — PEGAR EN LA CONSOLA DE MyVete
+ * Probe de diagnostico para rasparTutor() -- PEGAR EN LA CONSOLA DE MyVete
  * (F12 -> Console) con la ficha de un paciente abierta.
  *
- * No modifica nada: solo inspecciona el DOM y reporta en qué paso falla el
- * raspado del tutor (nombre / teléfono / email). Copiar TODO el output y
+ * No modifica nada: solo inspecciona el DOM y reporta en que paso falla el
+ * raspado del tutor (nombre / telefono / email). Copiar TODO el output y
  * pasarlo de vuelta para ajustar los selectores de launcher.js.
+ *
+ * Sin template literals, sin emojis y sin acentos literales a proposito: asi
+ * el copiado por consola no puede romper la sintaxis ni las cadenas de busqueda.
  */
 (function () {
   "use strict";
 
-  const norm = (t) => (t || "").replace(/\s+/g, " ").trim().toLowerCase();
-  const resumen = (el) =>
-    el
-      ? `<${el.tagName.toLowerCase()}${el.id ? " #" + el.id : ""}${
-          el.className && typeof el.className === "string"
-            ? " ." + el.className.trim().split(/\s+/).join(".")
-            : ""
-        }>`
-      : "(null)";
+  // "telefono celular" con la e acentuada armada por codigo -> el archivo queda
+  // 100% ASCII y ningun copiado puede corromper la cadena de busqueda.
+  var TEL = "tel" + String.fromCharCode(233) + "fono celular";
+  var MAIL = "email personal";
+  var TITULO = "datos del cliente";
 
-  console.group("%cPROBE rasparTutor()", "font-weight:bold;font-size:13px");
+  function norm(t) {
+    return (t || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  function resumen(el) {
+    if (!el) return "(null)";
+    var s = "<" + el.tagName.toLowerCase();
+    if (el.id) s += " #" + el.id;
+    if (el.className && typeof el.className === "string") {
+      s += " ." + el.className.trim().split(/\s+/).join(".");
+    }
+    return s + ">";
+  }
+
+  function texto(el, n) {
+    return JSON.stringify((el && el.innerText ? el.innerText : "").trim().slice(0, n || 80));
+  }
+
+  console.group("PROBE rasparTutor()");
 
   // --- Paso 1: encabezado "Datos del Cliente" -----------------------------
-  const todos = Array.from(document.querySelectorAll("body *"));
-  const exactos = todos.filter((n) => norm(n.innerText) === "datos del cliente");
-  const contiene = todos.filter(
-    (n) =>
-      norm(n.innerText).includes("datos del cliente") &&
-      n.querySelectorAll("*").length <= 3
-  );
+  var todos = Array.prototype.slice.call(document.querySelectorAll("body *"));
+  var exactos = todos.filter(function (n) {
+    return norm(n.innerText) === TITULO;
+  });
+  var contiene = todos.filter(function (n) {
+    return norm(n.innerText).indexOf(TITULO) !== -1 && n.querySelectorAll("*").length <= 3;
+  });
 
-  console.log("Paso 1 — encabezado 'datos del cliente'");
+  console.log("Paso 1 - encabezado 'datos del cliente'");
   console.log("  match EXACTO:", exactos.length, exactos.map(resumen));
   console.log(
     "  match CONTIENE (<=3 hijos):",
     contiene.length,
-    contiene.map((n) => resumen(n) + " :: " + JSON.stringify(norm(n.innerText).slice(0, 60)))
+    contiene.map(function (n) {
+      return resumen(n) + " :: " + JSON.stringify(norm(n.innerText).slice(0, 60));
+    })
   );
 
-  const encabezado = exactos[0] || contiene[0] || null;
+  var encabezado = exactos[0] || contiene[0] || null;
   if (!encabezado) {
     console.warn(
-      "  ⛔ No hay ningún elemento con el texto 'datos del cliente'. " +
-        "El título de la sección en MyVete cambió — hace falta otro ancla."
+      "  STOP: ningun elemento con el texto 'datos del cliente'. " +
+        "El titulo de la seccion en MyVete cambio -- hace falta otro ancla."
     );
     console.groupEnd();
     return;
   }
 
-  // --- Paso 2: contenedor de la sección ----------------------------------
-  console.log("Paso 2 — subir hasta el contenedor con teléfono + email");
-  let contenedor = encabezado.parentElement;
-  let saltos = 0;
-  let encontrado = null;
+  // --- Paso 2: contenedor de la seccion ----------------------------------
+  console.log("Paso 2 - subir hasta el contenedor con telefono + email");
+  var contenedor = encabezado.parentElement;
+  var saltos = 0;
+  var encontrado = null;
   while (contenedor && saltos < 12) {
-    const txt = norm(contenedor.innerText);
-    const tel = txt.includes("teléfono celular");
-    const mail = txt.includes("email personal");
+    var txt = norm(contenedor.innerText);
+    var tieneTel = txt.indexOf(TEL) !== -1;
+    var tieneMail = txt.indexOf(MAIL) !== -1;
     console.log(
-      `  salto ${saltos}: ${resumen(contenedor)} | 'teléfono celular'=${tel} 'email personal'=${mail}`
+      "  salto " + saltos + ": " + resumen(contenedor) +
+        " | telefono=" + tieneTel + " email=" + tieneMail
     );
-    if (tel && mail) {
+    if (tieneTel && tieneMail) {
       encontrado = contenedor;
       break;
     }
@@ -69,52 +89,62 @@
   }
   if (!encontrado) {
     console.warn(
-      "  ⛔ Ningún ancestro contiene a la vez 'teléfono celular' y 'email personal' " +
-        "(texto exacto, en minúsculas). Puede que MyVete use otras etiquetas " +
-        "(p.ej. 'E-mail', 'Correo', 'Celular'). Revisar el texto real de las etiquetas abajo."
+      "  STOP: ningun ancestro contiene a la vez 'telefono celular' y 'email personal' " +
+        "(texto exacto, en minusculas). Puede que MyVete use otras etiquetas " +
+        "(p.ej. 'E-mail', 'Correo', 'Celular'). Ver el texto real de las etiquetas abajo."
     );
   }
-  const seccion = encontrado || encabezado.parentElement;
+  var seccion = encontrado || encabezado.parentElement;
 
   // --- Paso 3: etiquetas y valores -------------------------------------
-  console.log("Paso 3 — etiquetas 'Nombre:', 'Teléfono celular:', 'Email personal:'");
-  const etiquetas = ["nombre:", "teléfono celular:", "email personal:"];
-  const hojas = Array.from(seccion.querySelectorAll("*")).filter(
-    (el) => !Array.from(el.children).some((c) => c.tagName === el.tagName)
-  );
+  console.log("Paso 3 - etiquetas 'Nombre:', 'Telefono celular:', 'Email personal:'");
+  var etiquetas = ["nombre:", TEL + ":", MAIL + ":"];
+  etiquetas.forEach(function (et) {
+    var candidatos = Array.prototype.slice
+      .call(seccion.querySelectorAll("*"))
+      .filter(function (el) {
+        return norm(el.innerText) === et;
+      });
+    console.log("  '" + et + "' - elementos con texto exacto:", candidatos.length, candidatos.map(resumen));
 
-  etiquetas.forEach((et) => {
-    const candidatos = Array.from(seccion.querySelectorAll("*")).filter(
-      (el) => norm(el.innerText) === et
-    );
-    console.log(`  '${et}' — elementos con texto exacto:`, candidatos.length, candidatos.map(resumen));
-    const parcial = Array.from(seccion.querySelectorAll("*")).filter(
-      (el) => norm(el.innerText).startsWith(et.replace(":", "")) && el.querySelectorAll("*").length <= 2
-    );
+    var base = et.replace(":", "");
+    var parcial = Array.prototype.slice
+      .call(seccion.querySelectorAll("*"))
+      .filter(function (el) {
+        return norm(el.innerText).indexOf(base) === 0 && el.querySelectorAll("*").length <= 2;
+      });
     if (parcial.length) {
       console.log(
-        `    (parciales que empiezan con '${et.replace(":", "")}'):`,
-        parcial.slice(0, 4).map((el) => resumen(el) + " :: " + JSON.stringify((el.innerText || "").trim().slice(0, 80)))
+        "    (parciales que empiezan con '" + base + "'):",
+        parcial.slice(0, 4).map(function (el) {
+          return resumen(el) + " :: " + texto(el);
+        })
       );
     }
   });
 
   // --- Paso 4: divs col-sm-8 col-xs-12 (selector actual del valor) ------
-  const valores = Array.from(seccion.querySelectorAll("div")).filter(
-    (d) => !d.querySelector("div") && d.classList.contains("col-sm-8") && d.classList.contains("col-xs-12")
-  );
-  console.log("Paso 4 — divs hoja .col-sm-8.col-xs-12 dentro de la sección:", valores.length);
-  valores.slice(0, 10).forEach((d) => console.log("   ", JSON.stringify((d.innerText || "").trim().slice(0, 80))));
+  var valores = Array.prototype.slice.call(seccion.querySelectorAll("div")).filter(function (d) {
+    return (
+      !d.querySelector("div") &&
+      d.classList.contains("col-sm-8") &&
+      d.classList.contains("col-xs-12")
+    );
+  });
+  console.log("Paso 4 - divs hoja .col-sm-8.col-xs-12 dentro de la seccion:", valores.length);
+  valores.slice(0, 10).forEach(function (d) {
+    console.log("   ", texto(d));
+  });
   if (!valores.length) {
     console.warn(
-      "  ⛔ No hay divs .col-sm-8.col-xs-12 — el grid de MyVete cambió de clases. " +
+      "  STOP: no hay divs .col-sm-8.col-xs-12 -- el grid de MyVete cambio de clases. " +
         "extraerValorPorEtiqueta() nunca va a encontrar el valor con el selector actual."
     );
   }
 
-  // --- Paso 5: HTML crudo de la sección (primeros 2000 chars) -----------
-  console.log("Paso 5 — outerHTML de la sección (recortado):");
-  console.log((seccion.outerHTML || "").replace(/\s+/g, " ").slice(0, 2000));
+  // --- Paso 5: HTML crudo de la seccion (primeros 2500 chars) -----------
+  console.log("Paso 5 - outerHTML de la seccion (recortado):");
+  console.log((seccion.outerHTML || "").replace(/\s+/g, " ").slice(0, 2500));
 
   console.groupEnd();
 })();
