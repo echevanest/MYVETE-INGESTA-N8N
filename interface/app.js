@@ -4,6 +4,35 @@
 // INFORME_CODE "reconstrucción app.js" para el alcance exacto de esta versión.
 
 // ---------------------------------------------------------------------------
+// 0. Handshake con el bookmarklet (launcher.js) — señal "panel listo"
+// ---------------------------------------------------------------------------
+// Antes el bookmarklet disparaba el postMessage a ciegas (5 reintentos a 400ms):
+// servido desde localhost el panel montaba su listener antes de esos 2s, pero
+// desde GitHub Pages (DNS + TLS + 3 archivos por CDN) la carga tarda más y todos
+// los mensajes se perdían. Ahora el panel avisa cuando su listener de la Sección
+// 2 ya está activo, y el bookmarklet recién ahí manda los datos (con timeout de
+// respaldo de su lado por si este aviso no llega). Ver pendiente #6 de STATUS.md.
+//
+// El listener de 'message' que recibe MYVETE_FILIACION se registra en eval de
+// este módulo (Sección 2, más abajo), es decir ANTES de que 'load' dispare este
+// aviso: cuando el bookmarklet responde al READY, el panel ya puede recibir.
+function notificarPanelListo() {
+  if (!window.opener) return;
+  try {
+    window.opener.postMessage({ type: 'MYVETE_PANEL_READY' }, '*');
+    console.log('MyVete Panel: READY notificado al opener (bookmarklet).');
+  } catch (error) {
+    console.warn('MyVete Panel: no se pudo notificar READY al opener.', error);
+  }
+}
+
+if (document.readyState === 'complete') {
+  notificarPanelListo();
+} else {
+  window.addEventListener('load', notificarPanelListo);
+}
+
+// ---------------------------------------------------------------------------
 // 1. Perfiles clínicos — por especie, con persistencia en localStorage
 // ---------------------------------------------------------------------------
 // Reemplaza el placeholder vacío de V4.8 (Paso A). Decisión confirmada por

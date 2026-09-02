@@ -255,22 +255,47 @@
     return;
   }
 
-  // Todavía no existe handshake de "ventana lista" (Sección 0.1 del Contrato de
-  // Datos V2.7 / pendiente #6 de STATUS.md) — interface/app.js hoy solo escucha
-  // pasivamente 'message', sin emitir señal de carga. Mientras tanto, se reintenta
-  // el envío del mismo mensaje varias veces a intervalo corto: interface/app.js
-  // solo asigna valores a campos (idempotente), así que recibir el mensaje más de
-  // una vez no tiene efecto colateral.
+  // Handshake con el panel (interface/app.js Sección 0): en vez de disparar el
+  // postMessage a ciegas, se espera a que el panel avise MYVETE_PANEL_READY —
+  // recién ahí su listener de MYVETE_FILIACION está activo. Sirviendo desde
+  // GitHub Pages la carga del panel tarda más que los 2s de la lógica vieja
+  // (5 x 400ms), así que ese envío ciego se perdía siempre. Este listener se
+  // registra de forma síncrona, antes de que la ventana nueva llegue a 'load',
+  // así que no hay carrera: el READY siempre lo encuentra escuchando.
+  //
+  // Respaldo: si el READY no llega en 5s (panel viejo en caché sin el aviso,
+  // extensión que bloquea el postMessage, etc.) se envía igual. interface/app.js
+  // solo asigna valores a campos (idempotente), así que un envío de más no hace
+  // daño y este fallback no puede empeorar el comportamiento anterior.
   const mensaje = {
     type: "MYVETE_FILIACION",
     payload: Object.assign({}, datosFiliacion, { idTutor: idTutor }),
   };
-  let intentosRestantes = 5;
-  const intervaloEnvio = setInterval(() => {
-    ventana.postMessage(mensaje, "*");
-    intentosRestantes -= 1;
-    if (intentosRestantes <= 0) clearInterval(intervaloEnvio);
-  }, 400);
+
+  function enviarDatosConHandshake(ventanaPanel, mensajeFiliacion) {
+    let yaEnviado = false;
+    let timeoutId = null;
+
+    function enviar(motivo) {
+      if (yaEnviado) return;
+      yaEnviado = true;
+      clearTimeout(timeoutId);
+      window.removeEventListener("message", alRecibirMensaje);
+      console.log("MyVete Bookmarklet: enviando filiación al panel (" + motivo + ").");
+      ventanaPanel.postMessage(mensajeFiliacion, "*");
+    }
+
+    function alRecibirMensaje(evento) {
+      if (evento.source !== ventanaPanel) return;
+      if (!evento.data || evento.data.type !== "MYVETE_PANEL_READY") return;
+      enviar("panel READY");
+    }
+
+    window.addEventListener("message", alRecibirMensaje);
+    timeoutId = setTimeout(() => enviar("timeout 5s, sin READY"), 5000);
+  }
+
+  enviarDatosConHandshake(ventana, mensaje);
 
   // Paso 5 — Escucha de retorno (Sección 3.2, punto 5)
   // TODO: registrar listener de "message" para recibir el resumen clínico compacto
