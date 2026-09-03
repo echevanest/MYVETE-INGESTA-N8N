@@ -85,6 +85,10 @@ Con `.secrets/n8n_api_key.txt` y `.secrets/supabase service role key.txt` (compa
 *   **Corrección adicional sobre la Sección F:** el conteo "0 filas" reportado ahí también era una lectura obsoleta post-restore. Al consultar las tablas después de esta prueba, apareció una fila preexistente del 26/08 (tutor "Test Diagnostico 3" / mascota "Firulais Test 3", no creada en esta sesión) — se dejó intacta, no es de esta sesión limpiarla.
 *   **No se hizo:** prueba con el bookmarklet real contra MyVete (sin acceso a una sesión logueada en `app.myvete.com` desde esta sesión) — sigue pendiente que alguien la corra en navegador.
 
+### H. `src/app.js` movido a `experiments/widget-inyectado/` (2026-09-04)
+
+Apareció sin comitear en el repo (visto por primera vez en la Sección F). Era un prototipo de estrategia de distribución alternativa — widget standalone inyectado directo en la página de MyVete (bucket público de Supabase Storage + `<script>` tag), en vez del bookmarklet+popup actual — creado el 27/08 y nunca actualizado desde entonces. Quedó desactualizado frente a la interfaz oficial: sin `id_myvete` en el payload, sin `consulta.diagnostico`/`consulta.indicaciones`, con scraping genérico nunca validado contra el DOM real de MyVete. No se descartó — se movió a `experiments/widget-inyectado/app.js` con un `README.md` que documenta propósito, estado y por qué no se adoptó, por si se retoma como decisión de arquitectura más adelante. `src/` queda eliminado del repo.
+
 ---
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
