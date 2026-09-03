@@ -1,0 +1,142 @@
+{
+  "_nota": "Export real via API de n8n (GET /api/v1/workflows/5gGWXOjY2BBOAfuw) tomado el 2026-09-03 despues de aplicar los 3 cambios de esta sesion: (1) credencial httpHeaderAuth de los 3 nodos Supabase cambiada de la apikey publicable a una nueva credencial con la service_role key (bypassea RLS; RLS queda habilitado y SIN politicas para anon, que es el estado seguro deseado); (2) Upsert Tutor con on_conflict condicional (id_myvete si el payload lo trae, si no email) y id_myvete agregado al jsonBody; (3) Insert Atencion Cardiologia con anamnesis_raw/diagnostico_raw/indicaciones_raw agregados al jsonBody. Probado E2E con un POST sintetico al webhook de produccion el mismo dia -- ver STATUS.md Seccion G. No hay apikey en texto plano en este archivo: los 3 nodos HTTP Request usan unicamente la credencial (oculta, gestionada por n8n), no un header 'apikey' visible en parameters.",
+  "id": "5gGWXOjY2BBOAfuw",
+  "name": "MYVETE - Ingesta Filiación & Orquestador Core",
+  "active": true,
+  "versionCounter": 10,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingesta-filiacion-v4",
+        "responseMode": "responseNode",
+        "options": { "allowedOrigins": "*" }
+      },
+      "id": "8e6f1a2b-1111-4a2b-9c3d-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "8e6f1a2b-1111-4a2b-9c3d-000000000099"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"success\", \"message\": \"Anamnesis procesada correctamente\", \"timestamp\": $now.toISO(), \"borrador_medico\": $json.output?.[0]?.content?.[0]?.text ?? null } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "8e6f1a2b-2222-4a2b-9c3d-000000000002",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "modelId": { "__rl": true, "mode": "list", "value": "gpt-4.1-mini", "cachedResultName": "gpt-4.1-mini" },
+        "responses": {
+          "values": [
+            { "role": "system", "content": "Sos un asistente clinico veterinario. Vas a recibir el texto de una anamnesis dictada por el veterinario durante una consulta (puede tener errores de dictado por voz y jerga abreviada: 'frr'/'fr' = frecuencia respiratoria, 'fc' = frecuencia cardiaca, 'pas/pam/pad' = presion arterial sistolica/media/diastolica). Tu tarea es extraer y estructurar SOLO la informacion que este explicita o claramente implicita en el texto, sin inventar datos. Si un dato no aparece, devolve null (o lista vacia para arrays). Los valores de frecuencia y presion deben ser numericos. El resumen_anamnesis debe ser 1-2 frases claras en espanol." },
+            { "content": "=Especie: {{ $json.body.filiacion?.mascota?.especie || 'no especificada' }}\nDiagnostico ya registrado: {{ $json.body.consulta?.diagnostico || 'sin registrar' }}\n\nAnamnesis dictada por el veterinario:\n{{ $json.body.consulta?.anamnesis }}" }
+          ]
+        },
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "borrador_medico_v4",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"fc\": {\"type\": [\"number\", \"null\"]},\n    \"fr\": {\"type\": [\"number\", \"null\"]},\n    \"pas\": {\"type\": [\"number\", \"null\"]},\n    \"pam\": {\"type\": [\"number\", \"null\"]},\n    \"pad\": {\"type\": [\"number\", \"null\"]},\n    \"mucosas\": {\"type\": [\"string\", \"null\"]},\n    \"sintomas_detectados\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}},\n    \"cumplimiento_tratamiento\": {\"type\": [\"string\", \"null\"]},\n    \"diagnostico_sugerido\": {\"type\": [\"string\", \"null\"]},\n    \"indicaciones_sugeridas\": {\"type\": [\"string\", \"null\"]},\n    \"resumen_anamnesis\": {\"type\": \"string\"}\n  },\n  \"required\": [\"fc\", \"fr\", \"pas\", \"pam\", \"pad\", \"mucosas\", \"sintomas_detectados\", \"cumplimiento_tratamiento\", \"diagnostico_sugerido\", \"indicaciones_sugeridas\", \"resumen_anamnesis\"],\n  \"additionalProperties\": false\n}",
+              "strict": true
+            }
+          }
+        }
+      },
+      "id": "d57ddb11-aaff-48d1-85d3-a1bad215c9b2",
+      "name": "IA - Estructurar Anamnesis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": { "openAiApi": { "id": "LChLJhcSz4xuxdIF", "name": "OpenAi account" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/tutores?on_conflict=' + ($('Webhook').item.json.body.filiacion.tutor.id_myvete ? 'id_myvete' : 'email') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id_myvete: $('Webhook').item.json.body.filiacion.tutor.id_myvete, nombre: $('Webhook').item.json.body.filiacion.tutor.nombre, telefono: $('Webhook').item.json.body.filiacion.tutor.telefono, email: $('Webhook').item.json.body.filiacion.tutor.email }) }}"
+      },
+      "id": "a09c2f07-a92c-4534-9268-e247ebcd5510",
+      "name": "Upsert Tutor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": { "httpHeaderAuth": { "id": "EPCExaKpytpqeH99", "name": "Supabase myvete-cardiologia (service_role, apikey header)" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/mascotas?on_conflict=tutor_id,nombre",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tutor_id: $('Upsert Tutor').item.json.id, nombre: $('Webhook').item.json.body.filiacion.mascota.nombre, especie: $('Webhook').item.json.body.filiacion.mascota.especie, raza: $('Webhook').item.json.body.filiacion.mascota.raza }) }}"
+      },
+      "id": "eb7ff6e8-94a7-46a1-b27d-6285be3396bf",
+      "name": "Upsert Mascota",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": { "httpHeaderAuth": { "id": "EPCExaKpytpqeH99", "name": "Supabase myvete-cardiologia (service_role, apikey header)" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/atenciones_cardiologia",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify((() => { const informe = $('IA - Estructurar Anamnesis').item.json.output?.[0]?.content?.[0]?.text || {}; return { mascota_id: $('Upsert Mascota').item.json.id, datos_filiacion: $('Webhook').item.json.body.filiacion, metricas: { fc: informe.fc, fr: informe.fr, pas: informe.pas, pam: informe.pam, pad: informe.pad, mucosas: informe.mucosas }, informe_borrador: informe, anamnesis_raw: $('Webhook').item.json.body.consulta?.anamnesis ?? null, diagnostico_raw: $('Webhook').item.json.body.consulta?.diagnostico ?? null, indicaciones_raw: $('Webhook').item.json.body.consulta?.indicaciones ?? null }; })()) }}"
+      },
+      "id": "21075e90-f34b-4f33-b7a3-628cfab7ca29",
+      "name": "Insert Atención Cardiología",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": { "httpHeaderAuth": { "id": "EPCExaKpytpqeH99", "name": "Supabase myvete-cardiologia (service_role, apikey header)" } }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[ { "node": "IA - Estructurar Anamnesis", "type": "main", "index": 0 } ]] },
+    "IA - Estructurar Anamnesis": {
+      "main": [[
+        { "node": "Respond to Webhook", "type": "main", "index": 0 },
+        { "node": "Upsert Tutor", "type": "main", "index": 0 }
+      ]]
+    },
+    "Upsert Tutor": { "main": [[ { "node": "Upsert Mascota", "type": "main", "index": 0 } ]] },
+    "Upsert Mascota": { "main": [[ { "node": "Insert Atención Cardiología", "type": "main", "index": 0 } ]] }
+  }
+}
