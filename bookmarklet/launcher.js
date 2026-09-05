@@ -37,6 +37,24 @@
     // localStorage puede no estar disponible (modo restringido): se usa el default.
   }
 
+  // Modo debug del iframe de tutor (05/09/2026). Con esto activo:
+  //   - si el raspado del iframe vence por timeout, el iframe NO se elimina: se
+  //     reposiciona visible (abajo a la derecha, con borde rojo) y queda en
+  //     window.__myveteTutorIframe para inspección manual desde la consola
+  //     (window.__myveteTutorIframe.contentDocument, .remove() para cerrarlo);
+  //   - el polling loguea cada ~2s: readyState del doc, location.href real,
+  //     si apareció la sección "Datos del Cliente" y si cada campo (nombre /
+  //     teléfono / email) ya está poblado.
+  // Activado por defecto durante la etapa de diagnóstico. Para apagarlo (volver
+  // al comportamiento de producción: iframe siempre removido, sin logs de poll):
+  //   localStorage.setItem('myvete_debug_iframe', '0')
+  let DEBUG_IFRAME = true;
+  try {
+    if (localStorage.getItem("myvete_debug_iframe") === "0") DEBUG_IFRAME = false;
+  } catch (error) {
+    // sin localStorage: se queda con el default (debug activo).
+  }
+
   // Paso 1 — Activación y raspado de entrada (Sección 3.2, punto 1)
   // Selectores reales confirmados sobre el DOM de la ficha clínica (div.patient-info):
   //   - Mascota:            '.patient-info h1' -> ej. "Baco"
@@ -215,10 +233,10 @@
   function rasparTutorDesdeIframe(idTutorArg) {
     return new Promise((resolve) => {
       const vacio = { nombre: null, telefono: null, email: null };
-      // Ampliado de 10s a 20s (04/09/2026): con el polling ya exigiendo valores
-      // no vacíos (ver `intentar()`), el timeout anterior no alcanzaba para una
-      // carga en frío del SPA dentro del iframe (sin warm-up de esa ruta).
-      const LIMITE_MS = 20000;
+      // Ampliado a 30s (05/09/2026): en la prueba real MyVete no alcanzó a poblar
+      // "Datos del Cliente" dentro del iframe en 20s (carga en frío del SPA por
+      // esa ruta, sin warm-up). 20s tampoco alcanzaba -> se sube a 30s.
+      const LIMITE_MS = 30000;
       let iframe = null;
       let intervalo = null;
       let timeoutGlobal = null;
@@ -226,14 +244,30 @@
       let observerInstalado = false;
       let terminado = false;
 
-      function finalizar(resultado, motivo) {
+      // `conservar` (solo en DEBUG_IFRAME + timeout): en vez de remover el iframe,
+      // lo deja en el DOM, lo trae a la vista y lo expone en window.__myveteTutorIframe
+      // para poder inspeccionar a mano por qué MyVete no terminó de renderizar.
+      function finalizar(resultado, motivo, conservar) {
         if (terminado) return;
         terminado = true;
         if (intervalo) clearInterval(intervalo);
         if (timeoutGlobal) clearTimeout(timeoutGlobal);
         if (observer) observer.disconnect();
-        if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-        console.log("MyVete Bookmarklet: iframe tutor cerrado (" + motivo + ").");
+        if (conservar && iframe) {
+          window.__myveteTutorIframe = iframe;
+          iframe.style.cssText =
+            "position:fixed;right:8px;bottom:8px;width:520px;height:680px;border:3px solid #d33;opacity:1;background:#fff;z-index:2147483647;pointer-events:auto;box-shadow:0 8px 40px rgba(0,0,0,.5);";
+          iframe.removeAttribute("aria-hidden");
+          iframe.removeAttribute("tabindex");
+          console.warn(
+            "MyVete Bookmarklet: iframe CONSERVADO para inspección (" + motivo + "). " +
+              "Ref: window.__myveteTutorIframe | doc: window.__myveteTutorIframe.contentDocument | " +
+              "cerrarlo: window.__myveteTutorIframe.remove()"
+          );
+        } else if (iframe && iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+          console.log("MyVete Bookmarklet: iframe tutor cerrado (" + motivo + ").");
+        }
         resolve(resultado);
       }
 
@@ -260,6 +294,35 @@
           }
         }
 
+        // Traza de diagnóstico del polling (solo DEBUG_IFRAME), acotada a 1 línea
+        // cada ~2s para no inundar la consola en 30s de espera. Reporta el estado
+        // real del iframe en cada vuelta: readyState del documento, su location
+        // (detecta un redirect a login), si ya está la sección "Datos del Cliente"
+        // y si cada campo del tutor está poblado.
+        let ultimoDiag = 0;
+        function logDiagnostico(doc, seccion) {
+          if (!DEBUG_IFRAME) return;
+          const ahora = Date.now();
+          if (ahora - ultimoDiag < 2000) return;
+          ultimoDiag = ahora;
+          let loc = "(sin doc)";
+          try {
+            if (doc && doc.location) loc = doc.location.href;
+          } catch (error) {
+            loc = "(location inaccesible)";
+          }
+          const t = seccion ? rasparTutorDeSeccion(seccion, "diag", true) : null;
+          console.log(
+            "MyVete Bookmarklet [diag " + Math.round((ahora - inicio) / 1000) + "s]:",
+            "readyState:", (doc && doc.readyState) || "(sin doc)",
+            "| location:", loc,
+            "| sección Datos del Cliente:", seccion ? "PRESENTE" : "ausente",
+            "| nombre:", t && t.nombre ? "sí" : "no",
+            "| teléfono:", t && t.telefono ? "sí" : "no",
+            "| email:", t && t.email ? "sí" : "no"
+          );
+        }
+
         // MutationObserver (04/09/2026): en vez de depender solo del intervalo de
         // 400ms, se observa la sección "Datos del Cliente" apenas aparece en el
         // DOM para reaccionar al instante cuando Angular/React inyecta los
@@ -280,6 +343,7 @@
             return finalizar(vacio, "doc inaccesible (X-Frame-Options?)");
           }
           const seccion = doc && encontrarSeccionDatosCliente(doc);
+          logDiagnostico(doc, seccion);
           if (seccion) {
             instalarObserverSiHaceFalta(seccion);
             const tutor = rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, true);
@@ -309,14 +373,19 @@
             } else {
               console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en el iframe.");
             }
-            return finalizar(vacio, "timeout " + LIMITE_MS + "ms");
+            // En DEBUG_IFRAME el iframe se conserva y se trae a la vista (ver
+            // finalizar()); en producción se remueve como siempre.
+            return finalizar(vacio, "timeout " + LIMITE_MS + "ms", DEBUG_IFRAME);
           }
         }
 
         iframe.addEventListener("load", intentar);
         document.body.appendChild(iframe);
         intervalo = setInterval(intentar, 400);
-        timeoutGlobal = setTimeout(() => finalizar(vacio, "timeout global"), LIMITE_MS + 1500);
+        timeoutGlobal = setTimeout(
+          () => finalizar(vacio, "timeout global", DEBUG_IFRAME),
+          LIMITE_MS + 1500
+        );
       } catch (error) {
         console.error("MyVete Bookmarklet: error creando el iframe de tutor.", error);
         finalizar(vacio, "excepción");
