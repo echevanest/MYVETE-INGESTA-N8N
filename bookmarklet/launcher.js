@@ -215,10 +215,15 @@
   function rasparTutorDesdeIframe(idTutorArg) {
     return new Promise((resolve) => {
       const vacio = { nombre: null, telefono: null, email: null };
-      const LIMITE_MS = 10000;
+      // Ampliado de 10s a 20s (04/09/2026): con el polling ya exigiendo valores
+      // no vacíos (ver `intentar()`), el timeout anterior no alcanzaba para una
+      // carga en frío del SPA dentro del iframe (sin warm-up de esa ruta).
+      const LIMITE_MS = 20000;
       let iframe = null;
       let intervalo = null;
       let timeoutGlobal = null;
+      let observer = null;
+      let observerInstalado = false;
       let terminado = false;
 
       function finalizar(resultado, motivo) {
@@ -226,6 +231,7 @@
         terminado = true;
         if (intervalo) clearInterval(intervalo);
         if (timeoutGlobal) clearTimeout(timeoutGlobal);
+        if (observer) observer.disconnect();
         if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
         console.log("MyVete Bookmarklet: iframe tutor cerrado (" + motivo + ").");
         resolve(resultado);
@@ -244,17 +250,38 @@
 
         const inicio = Date.now();
 
+        // undefined = doc inaccesible (X-Frame-Options/sandbox); null = todavía
+        // no hay documento. Se distinguen porque solo el primer caso es fatal.
+        function obtenerDoc() {
+          try {
+            return iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document) || null;
+          } catch (error) {
+            return undefined;
+          }
+        }
+
+        // MutationObserver (04/09/2026): en vez de depender solo del intervalo de
+        // 400ms, se observa la sección "Datos del Cliente" apenas aparece en el
+        // DOM para reaccionar al instante cuando Angular/React inyecta los
+        // valores que trae el XHR de /customers/{id}. El intervalo se mantiene
+        // como respaldo (por si el observer no llega a instalarse a tiempo).
+        function instalarObserverSiHaceFalta(seccion) {
+          if (observerInstalado || !seccion) return;
+          observerInstalado = true;
+          observer = new MutationObserver(() => intentar());
+          observer.observe(seccion, { childList: true, subtree: true, characterData: true });
+        }
+
         function intentar() {
           if (terminado) return;
-          let doc = null;
-          try {
-            doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
-          } catch (error) {
+          const doc = obtenerDoc();
+          if (doc === undefined) {
             // No debería pasar en same-origin: si pasa es X-Frame-Options/sandbox.
             return finalizar(vacio, "doc inaccesible (X-Frame-Options?)");
           }
           const seccion = doc && encontrarSeccionDatosCliente(doc);
           if (seccion) {
+            instalarObserverSiHaceFalta(seccion);
             const tutor = rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, true);
             if (tutor.nombre || tutor.telefono || tutor.email) {
               // Intento final ruidoso: deja el resumen y los warns en consola.
@@ -266,6 +293,19 @@
             if (seccion) {
               console.warn("MyVete Bookmarklet: sección encontrada en iframe pero sin valores; intento final:");
               rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, false);
+              // Diagnóstico (04/09/2026): si esto vuelve a fallar, estas dos líneas
+              // dicen POR QUÉ — location real del iframe (detecta un redirect a
+              // login que igual matchea el fallback por texto) y el HTML crudo de
+              // la sección (detecta placeholders tipo "Cargando..." en vez de vacío).
+              try {
+                console.warn("MyVete Bookmarklet: diagnóstico iframe -> location:", doc.location.href);
+                console.warn(
+                  "MyVete Bookmarklet: diagnóstico iframe -> seccion.outerHTML (recortado):",
+                  (seccion.outerHTML || "").slice(0, 1500)
+                );
+              } catch (error) {
+                // Ignorado: el diagnóstico es best-effort, no debe romper el flujo.
+              }
             } else {
               console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en el iframe.");
             }
