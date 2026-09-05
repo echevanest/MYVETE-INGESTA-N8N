@@ -12,9 +12,10 @@
  * Se pueden emitir DOS mensajes de este tipo: el 1ro con mascota + idTutor +
  * tutor raspado de la página actual (mejor esfuerzo); si el tutor no estaba en
  * esa pantalla, un 2do mensaje con `payload: { tutor, idTutor }` cuando el
- * raspado por iframe de /customers/{id} termina. interface/app.js reasigna
- * campos de forma idempotente, así que el 2do mensaje solo completa lo que faltó.
- * Si nada de eso trae datos, los campos viajan en `null` sin romper el flujo.
+ * raspado desde una PESTAÑA NUEVA de /customers/{id} termina (el iframe oculto
+ * dejó de servir: MyVete devuelve 403 a ese recurso en contexto iframe/fetch).
+ * interface/app.js reasigna campos de forma idempotente, así que el 2do mensaje
+ * solo completa lo que faltó. Si nada trae datos, los campos viajan en `null`.
  */
 (function () {
   "use strict";
@@ -37,20 +38,21 @@
     // localStorage puede no estar disponible (modo restringido): se usa el default.
   }
 
-  // Modo debug del iframe de tutor (05/09/2026). Con esto activo:
-  //   - si el raspado del iframe vence por timeout, el iframe NO se elimina: se
-  //     reposiciona visible (abajo a la derecha, con borde rojo) y queda en
-  //     window.__myveteTutorIframe para inspección manual desde la consola
-  //     (window.__myveteTutorIframe.contentDocument, .remove() para cerrarlo);
-  //   - el polling loguea cada ~2s: readyState del doc, location.href real,
-  //     si apareció la sección "Datos del Cliente" y si cada campo (nombre /
-  //     teléfono / email) ya está poblado.
+  // Modo debug del raspado de tutor (05/09/2026). Con esto activo:
+  //   - si el raspado desde la pestaña nueva vence por timeout, la pestaña NO se
+  //     cierra: queda abierta y en window.__myveteTutorWin para inspección manual
+  //     desde la consola (window.__myveteTutorWin.document, .close() para cerrarla).
+  //     Sirve para ver qué muestra MyVete realmente ahí (un 403, un login SSO, la
+  //     ficha sin poblar, etc.);
+  //   - el polling loguea cada ~2s: si la pestaña sigue abierta, readyState del
+  //     doc, location.href real, si apareció la sección "Datos del Cliente" y si
+  //     cada campo (nombre / teléfono / email) ya está poblado.
   // Activado por defecto durante la etapa de diagnóstico. Para apagarlo (volver
-  // al comportamiento de producción: iframe siempre removido, sin logs de poll):
-  //   localStorage.setItem('myvete_debug_iframe', '0')
-  let DEBUG_IFRAME = true;
+  // al comportamiento de producción: pestaña siempre cerrada, sin logs de poll):
+  //   localStorage.setItem('myvete_debug_tutor', '0')
+  let DEBUG_TUTOR = true;
   try {
-    if (localStorage.getItem("myvete_debug_iframe") === "0") DEBUG_IFRAME = false;
+    if (localStorage.getItem("myvete_debug_tutor") === "0") DEBUG_TUTOR = false;
   } catch (error) {
     // sin localStorage: se queda con el default (debug activo).
   }
@@ -213,7 +215,7 @@
   }
 
   // Raspado síncrono desde la página actual (mejor esfuerzo). Si acá no está la
-  // sección "Datos del Cliente", el flujo principal cae al iframe (ver abajo).
+  // sección "Datos del Cliente", el flujo principal abre la pestaña nueva (abajo).
   function rasparTutor() {
     const seccion = encontrarSeccionDatosCliente(document);
     if (!seccion) {
@@ -222,174 +224,201 @@
     return rasparTutorDeSeccion(seccion, "página actual", false);
   }
 
-  // Plan B (Opción B del análisis 02/09/2026): si la ficha del paciente NO trae
-  // los datos del tutor, se carga /customers/{id} en un iframe oculto same-origin
-  // (mismo origen app.myvete.com -> sin CORS, contentDocument accesible) y se
-  // raspa de ahí una vez que la SPA terminó de renderizar. Devuelve SIEMPRE un
-  // objeto {nombre,telefono,email} (nulls si falla o si vence el timeout): nunca
-  // rechaza, para no romper el flujo. Riesgo conocido: X-Frame-Options/CSP de
-  // MyVete podría bloquear el iframe -> se detecta como "doc inaccesible" o
-  // timeout y se resuelve con nulls (el médico completa a mano).
-  function rasparTutorDesdeIframe(idTutorArg) {
+  // Plan B (v3 — 05/09/2026): si la ficha del paciente NO trae los datos del
+  // tutor, se abre /customers/{id} en una PESTAÑA NUEVA (window.open) y se raspa
+  // desde ahí. Sustituye al iframe oculto, que dejó de servir: MyVete empezó a
+  // responder 403 a /customers/{id} en contexto iframe/fetch (WAF que filtra por
+  // Sec-Fetch-Dest / X-Requested-With). Una pestaña nueva es una navegación
+  // top-level normal —cookies completas, `Sec-Fetch-Dest: document`,
+  // `Sec-Fetch-Mode: navigate`, sin `X-Requested-With`—, indistinguible de que el
+  // usuario abra el enlace a mano, así que no dispara ese bloqueo. Además el SPA
+  // en una pestaña top-level no está enmarcado (`window.top === window.self`), lo
+  // que descarta cualquier redirect por frame-detection.
+  //
+  // `tutorWin` DEBE venir de un window.open() disparado sincrónicamente dentro
+  // del clic del bookmarklet (más abajo): un window.open diferido lo mata el
+  // bloqueador de pop-ups. Acá solo se hace el polling del documento de esa
+  // pestaña (same-origin app.myvete.com -> `tutorWin.document` accesible) y, al
+  // terminar, se la cierra. Devuelve SIEMPRE {nombre,telefono,email} (nulls si
+  // falla / la bloquean / vence el timeout): nunca rechaza, no rompe el flujo.
+  function rasparTutorDesdePestana(idTutorArg, tutorWin) {
     return new Promise((resolve) => {
       const vacio = { nombre: null, telefono: null, email: null };
-      // Ampliado a 30s (05/09/2026): en la prueba real MyVete no alcanzó a poblar
-      // "Datos del Cliente" dentro del iframe en 20s (carga en frío del SPA por
-      // esa ruta, sin warm-up). 20s tampoco alcanzaba -> se sube a 30s.
+      // 30s: en la prueba real MyVete tarda en poblar "Datos del Cliente" en una
+      // carga en frío del SPA por esa ruta (sin warm-up).
       const LIMITE_MS = 30000;
-      let iframe = null;
       let intervalo = null;
       let timeoutGlobal = null;
       let observer = null;
       let observerInstalado = false;
       let terminado = false;
+      let ultimoDiag = 0;
+      const inicio = Date.now();
 
-      // `conservar` (solo en DEBUG_IFRAME + timeout): en vez de remover el iframe,
-      // lo deja en el DOM, lo trae a la vista y lo expone en window.__myveteTutorIframe
-      // para poder inspeccionar a mano por qué MyVete no terminó de renderizar.
+      if (!tutorWin) {
+        console.warn(
+          "MyVete Bookmarklet: la pestaña /customers/" + idTutorArg + " fue BLOQUEADA por el " +
+            "navegador (pop-ups). Cargá el tutor a mano; para que se auto-complete, permití " +
+            "pop-ups para " + window.location.origin + " y volvé a hacer clic."
+        );
+        return resolve(vacio);
+      }
+      window.__myveteTutorWin = tutorWin;
+
+      // undefined = document inaccesible (la pestaña navegó a OTRO origen: login
+      // SSO en otro dominio, típicamente). null = todavía no hay documento.
+      function obtenerDoc() {
+        try {
+          return tutorWin.document || null;
+        } catch (error) {
+          return undefined;
+        }
+      }
+
+      // `conservar` (solo en DEBUG_TUTOR + timeout): deja la pestaña abierta y en
+      // window.__myveteTutorWin para poder ver a mano qué muestra MyVete (403,
+      // login, ficha sin poblar...).
       function finalizar(resultado, motivo, conservar) {
         if (terminado) return;
         terminado = true;
         if (intervalo) clearInterval(intervalo);
         if (timeoutGlobal) clearTimeout(timeoutGlobal);
-        if (observer) observer.disconnect();
-        if (conservar && iframe) {
-          window.__myveteTutorIframe = iframe;
-          iframe.style.cssText =
-            "position:fixed;right:8px;bottom:8px;width:520px;height:680px;border:3px solid #d33;opacity:1;background:#fff;z-index:2147483647;pointer-events:auto;box-shadow:0 8px 40px rgba(0,0,0,.5);";
-          iframe.removeAttribute("aria-hidden");
-          iframe.removeAttribute("tabindex");
+        if (observer) {
+          try {
+            observer.disconnect();
+          } catch (error) {
+            // ignorado
+          }
+        }
+        if (conservar) {
           console.warn(
-            "MyVete Bookmarklet: iframe CONSERVADO para inspección (" + motivo + "). " +
-              "Ref: window.__myveteTutorIframe | doc: window.__myveteTutorIframe.contentDocument | " +
-              "cerrarlo: window.__myveteTutorIframe.remove()"
+            "MyVete Bookmarklet: pestaña de tutor CONSERVADA para inspección (" + motivo + "). " +
+              "Ref: window.__myveteTutorWin | doc: window.__myveteTutorWin.document | " +
+              "cerrarla: window.__myveteTutorWin.close()"
           );
-        } else if (iframe && iframe.parentNode) {
-          iframe.parentNode.removeChild(iframe);
-          console.log("MyVete Bookmarklet: iframe tutor cerrado (" + motivo + ").");
+        } else {
+          try {
+            if (tutorWin && !tutorWin.closed) tutorWin.close();
+          } catch (error) {
+            // algunos navegadores no dejan cerrar por script: no es fatal.
+          }
+          console.log("MyVete Bookmarklet: pestaña de tutor cerrada (" + motivo + ").");
         }
         resolve(resultado);
       }
 
-      try {
-        const url = window.location.origin + "/customers/" + encodeURIComponent(idTutorArg);
-        console.log("MyVete Bookmarklet: abriendo iframe oculto para raspar tutor ->", url);
-
-        iframe = document.createElement("iframe");
-        iframe.setAttribute("aria-hidden", "true");
-        iframe.setAttribute("tabindex", "-1");
-        iframe.style.cssText =
-          "position:fixed;left:-10000px;top:0;width:1200px;height:1400px;border:0;opacity:0;pointer-events:none;";
-        iframe.src = url;
-
-        const inicio = Date.now();
-
-        // undefined = doc inaccesible (X-Frame-Options/sandbox); null = todavía
-        // no hay documento. Se distinguen porque solo el primer caso es fatal.
-        function obtenerDoc() {
-          try {
-            return iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document) || null;
-          } catch (error) {
-            return undefined;
-          }
+      // Traza de diagnóstico del polling (solo DEBUG_TUTOR), 1 línea cada ~2s.
+      function logDiagnostico(doc, seccion) {
+        if (!DEBUG_TUTOR) return;
+        const ahora = Date.now();
+        if (ahora - ultimoDiag < 2000) return;
+        ultimoDiag = ahora;
+        let loc = "(sin doc)";
+        try {
+          if (doc && doc.location) loc = doc.location.href;
+        } catch (error) {
+          loc = "(location inaccesible)";
         }
-
-        // Traza de diagnóstico del polling (solo DEBUG_IFRAME), acotada a 1 línea
-        // cada ~2s para no inundar la consola en 30s de espera. Reporta el estado
-        // real del iframe en cada vuelta: readyState del documento, su location
-        // (detecta un redirect a login), si ya está la sección "Datos del Cliente"
-        // y si cada campo del tutor está poblado.
-        let ultimoDiag = 0;
-        function logDiagnostico(doc, seccion) {
-          if (!DEBUG_IFRAME) return;
-          const ahora = Date.now();
-          if (ahora - ultimoDiag < 2000) return;
-          ultimoDiag = ahora;
-          let loc = "(sin doc)";
-          try {
-            if (doc && doc.location) loc = doc.location.href;
-          } catch (error) {
-            loc = "(location inaccesible)";
-          }
-          const t = seccion ? rasparTutorDeSeccion(seccion, "diag", true) : null;
-          console.log(
-            "MyVete Bookmarklet [diag " + Math.round((ahora - inicio) / 1000) + "s]:",
-            "readyState:", (doc && doc.readyState) || "(sin doc)",
-            "| location:", loc,
-            "| sección Datos del Cliente:", seccion ? "PRESENTE" : "ausente",
-            "| nombre:", t && t.nombre ? "sí" : "no",
-            "| teléfono:", t && t.telefono ? "sí" : "no",
-            "| email:", t && t.email ? "sí" : "no"
-          );
-        }
-
-        // MutationObserver (04/09/2026): en vez de depender solo del intervalo de
-        // 400ms, se observa la sección "Datos del Cliente" apenas aparece en el
-        // DOM para reaccionar al instante cuando Angular/React inyecta los
-        // valores que trae el XHR de /customers/{id}. El intervalo se mantiene
-        // como respaldo (por si el observer no llega a instalarse a tiempo).
-        function instalarObserverSiHaceFalta(seccion) {
-          if (observerInstalado || !seccion) return;
-          observerInstalado = true;
-          observer = new MutationObserver(() => intentar());
-          observer.observe(seccion, { childList: true, subtree: true, characterData: true });
-        }
-
-        function intentar() {
-          if (terminado) return;
-          const doc = obtenerDoc();
-          if (doc === undefined) {
-            // No debería pasar en same-origin: si pasa es X-Frame-Options/sandbox.
-            return finalizar(vacio, "doc inaccesible (X-Frame-Options?)");
-          }
-          const seccion = doc && encontrarSeccionDatosCliente(doc);
-          logDiagnostico(doc, seccion);
-          if (seccion) {
-            instalarObserverSiHaceFalta(seccion);
-            const tutor = rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, true);
-            if (tutor.nombre || tutor.telefono || tutor.email) {
-              // Intento final ruidoso: deja el resumen y los warns en consola.
-              const definitivo = rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, false);
-              return finalizar(definitivo, "datos obtenidos");
-            }
-          }
-          if (Date.now() - inicio > LIMITE_MS) {
-            if (seccion) {
-              console.warn("MyVete Bookmarklet: sección encontrada en iframe pero sin valores; intento final:");
-              rasparTutorDeSeccion(seccion, "iframe /customers/" + idTutorArg, false);
-              // Diagnóstico (04/09/2026): si esto vuelve a fallar, estas dos líneas
-              // dicen POR QUÉ — location real del iframe (detecta un redirect a
-              // login que igual matchea el fallback por texto) y el HTML crudo de
-              // la sección (detecta placeholders tipo "Cargando..." en vez de vacío).
-              try {
-                console.warn("MyVete Bookmarklet: diagnóstico iframe -> location:", doc.location.href);
-                console.warn(
-                  "MyVete Bookmarklet: diagnóstico iframe -> seccion.outerHTML (recortado):",
-                  (seccion.outerHTML || "").slice(0, 1500)
-                );
-              } catch (error) {
-                // Ignorado: el diagnóstico es best-effort, no debe romper el flujo.
-              }
-            } else {
-              console.warn("MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en el iframe.");
-            }
-            // En DEBUG_IFRAME el iframe se conserva y se trae a la vista (ver
-            // finalizar()); en producción se remueve como siempre.
-            return finalizar(vacio, "timeout " + LIMITE_MS + "ms", DEBUG_IFRAME);
-          }
-        }
-
-        iframe.addEventListener("load", intentar);
-        document.body.appendChild(iframe);
-        intervalo = setInterval(intentar, 400);
-        timeoutGlobal = setTimeout(
-          () => finalizar(vacio, "timeout global", DEBUG_IFRAME),
-          LIMITE_MS + 1500
+        const t = seccion ? rasparTutorDeSeccion(seccion, "diag", true) : null;
+        console.log(
+          "MyVete Bookmarklet [diag " + Math.round((ahora - inicio) / 1000) + "s]:",
+          "closed:", tutorWin.closed,
+          "| readyState:", (doc && doc.readyState) || "(sin doc)",
+          "| location:", loc,
+          "| sección Datos del Cliente:", seccion ? "PRESENTE" : "ausente",
+          "| nombre:", t && t.nombre ? "sí" : "no",
+          "| teléfono:", t && t.telefono ? "sí" : "no",
+          "| email:", t && t.email ? "sí" : "no"
         );
-      } catch (error) {
-        console.error("MyVete Bookmarklet: error creando el iframe de tutor.", error);
-        finalizar(vacio, "excepción");
       }
+
+      // MutationObserver sobre la sección apenas aparece: reacciona al instante
+      // cuando el SPA inyecta los valores del XHR de /customers/{id}. El intervalo
+      // de 400ms queda como respaldo. Se usa el constructor de la propia pestaña
+      // (mismo realm que el nodo observado); si falla, el polling cubre igual.
+      function instalarObserverSiHaceFalta(seccion) {
+        if (observerInstalado || !seccion) return;
+        observerInstalado = true;
+        try {
+          const MO = tutorWin.MutationObserver || window.MutationObserver;
+          observer = new MO(function () {
+            intentar();
+          });
+          observer.observe(seccion, { childList: true, subtree: true, characterData: true });
+        } catch (error) {
+          observer = null;
+        }
+      }
+
+      function intentar() {
+        if (terminado) return;
+        if (tutorWin.closed) {
+          return finalizar(vacio, "pestaña cerrada por el usuario");
+        }
+        const doc = obtenerDoc();
+        if (doc === undefined) {
+          // Navegó a otro origen (login SSO). No se puede leer. Se espera por si
+          // vuelve; si no, corta por timeout más abajo.
+          if (Date.now() - inicio > LIMITE_MS) {
+            console.warn(
+              "MyVete Bookmarklet: la pestaña de tutor está en otro origen (¿login SSO?); no se puede raspar."
+            );
+            return finalizar(vacio, "cross-origin (login?) + timeout", DEBUG_TUTOR);
+          }
+          return;
+        }
+        const seccion = doc && encontrarSeccionDatosCliente(doc);
+        logDiagnostico(doc, seccion);
+        if (seccion) {
+          instalarObserverSiHaceFalta(seccion);
+          const tutor = rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, true);
+          if (tutor.nombre || tutor.telefono || tutor.email) {
+            // Intento final ruidoso: deja el resumen y los warns en consola.
+            const definitivo = rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, false);
+            return finalizar(definitivo, "datos obtenidos");
+          }
+        }
+        if (Date.now() - inicio > LIMITE_MS) {
+          if (seccion) {
+            console.warn("MyVete Bookmarklet: sección encontrada en la pestaña pero sin valores; intento final:");
+            rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, false);
+            try {
+              console.warn("MyVete Bookmarklet: diagnóstico pestaña -> location:", doc.location.href);
+              console.warn(
+                "MyVete Bookmarklet: diagnóstico pestaña -> seccion.outerHTML (recortado):",
+                (seccion.outerHTML || "").slice(0, 1500)
+              );
+            } catch (error) {
+              // best-effort
+            }
+          } else {
+            let loc = "?";
+            try {
+              loc = doc.location.href;
+            } catch (error) {
+              // ignorado
+            }
+            console.warn(
+              "MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en la pestaña (location:", loc, ")."
+            );
+          }
+          // En DEBUG_TUTOR la pestaña se conserva (ver finalizar()); en producción
+          // se cierra siempre.
+          return finalizar(vacio, "timeout " + LIMITE_MS + "ms", DEBUG_TUTOR);
+        }
+      }
+
+      try {
+        tutorWin.addEventListener("load", intentar);
+      } catch (error) {
+        // algunos navegadores no dejan enganchar 'load' de otra ventana hasta que
+        // termina de navegar: el polling lo cubre igual.
+      }
+      intervalo = setInterval(intentar, 400);
+      timeoutGlobal = setTimeout(function () {
+        finalizar(vacio, "timeout global", DEBUG_TUTOR);
+      }, LIMITE_MS + 1500);
+      intentar();
     });
   }
 
@@ -478,6 +507,29 @@
   console.log("MyVete Bookmarklet: filiación raspada ->", JSON.stringify(datosFiliacion));
   console.log("MyVete Bookmarklet: idTutor ->", idTutor);
 
+  // Plan B, apertura sincrónica (Sección 4.1 — bloqueadores de pop-ups): si el
+  // tutor no vino en la página actual y hay idTutor, la pestaña /customers/{id}
+  // se abre AHORA, dentro del hilo del clic. Diferirla a un .then() haría que el
+  // bloqueador de pop-ups la mate. Se abre ANTES que el panel para que el panel
+  // quede como pestaña activa al final. El polling/raspado (asíncrono) se engancha
+  // más abajo, cuando ya está el canal del panel.
+  const tutorSync = (datosFiliacion && datosFiliacion.tutor) || {};
+  const tutorVacio = !tutorSync.nombre && !tutorSync.telefono && !tutorSync.email;
+  const necesitaPestanaTutor = tutorVacio && !!idTutor;
+  let tutorWin = null;
+  if (necesitaPestanaTutor) {
+    const urlTutor = window.location.origin + "/customers/" + encodeURIComponent(idTutor);
+    try {
+      tutorWin = window.open(urlTutor, "MYVETE_TUTOR_SCRAPE");
+      console.log(
+        "MyVete Bookmarklet: pestaña de tutor abierta ->", urlTutor,
+        tutorWin ? "" : "(BLOQUEADA por el navegador)"
+      );
+    } catch (error) {
+      console.error("MyVete Bookmarklet: no se pudo abrir la pestaña de tutor.", error);
+    }
+  }
+
   // El ID de tutor viaja por query param: interface/app.js corre en el origen del
   // panel (no en MyVete), así que la URL es el único canal disponible al cargar
   // el documento — el postMessage (más abajo) lo repite solo como respaldo.
@@ -497,6 +549,12 @@
 
   if (!ventana) {
     console.error("MyVete Bookmarklet: window.open() bloqueado por el navegador.");
+    // No dejar huérfana la pestaña de tutor si el panel no pudo abrir.
+    try {
+      if (tutorWin && !tutorWin.closed) tutorWin.close();
+    } catch (error) {
+      // ignorado
+    }
     return;
   }
 
@@ -564,26 +622,25 @@
   const panel = crearCanalPanel(ventana);
   panel.enviar(mensaje);
 
-  // Plan B: si el tutor no vino en la página actual y tenemos idTutor, se raspa
-  // desde el iframe oculto de /customers/{id} y se manda como 2do mensaje.
-  const tutorSync = (datosFiliacion && datosFiliacion.tutor) || {};
-  const tutorVacio = !tutorSync.nombre && !tutorSync.telefono && !tutorSync.email;
-  if (tutorVacio && idTutor) {
+  // Plan B (continuación): la pestaña /customers/{id} ya se abrió sincrónicamente
+  // arriba (tutorWin). Acá se hace el polling asíncrono de su documento y, cuando
+  // trae datos, se manda como 2do mensaje al panel.
+  if (necesitaPestanaTutor) {
     console.log(
-      "MyVete Bookmarklet: tutor ausente en la página actual; intentando iframe /customers/" + idTutor
+      "MyVete Bookmarklet: tutor ausente en la página actual; raspando desde la pestaña /customers/" + idTutor
     );
-    rasparTutorDesdeIframe(idTutor).then((tutorIframe) => {
-      if (!tutorIframe.nombre && !tutorIframe.telefono && !tutorIframe.email) {
+    rasparTutorDesdePestana(idTutor, tutorWin).then((tutorPestana) => {
+      if (!tutorPestana.nombre && !tutorPestana.telefono && !tutorPestana.email) {
         console.warn(
-          "MyVete Bookmarklet: el iframe tampoco trajo datos de tutor. Se cargan a mano en el panel."
+          "MyVete Bookmarklet: la pestaña tampoco trajo datos de tutor. Se cargan a mano en el panel."
         );
         return;
       }
       const mensaje2 = {
         type: "MYVETE_FILIACION",
-        payload: { tutor: tutorIframe, idTutor: idTutor },
+        payload: { tutor: tutorPestana, idTutor: idTutor },
       };
-      console.log("MyVete Bookmarklet: 2do mensaje (tutor desde iframe) ->", JSON.stringify(mensaje2));
+      console.log("MyVete Bookmarklet: 2do mensaje (tutor desde pestaña) ->", JSON.stringify(mensaje2));
       panel.enviar(mensaje2);
     });
   }
