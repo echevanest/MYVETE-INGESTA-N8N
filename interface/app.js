@@ -315,6 +315,39 @@ function sanitizarPeso(valorCrudo) {
   return limpio === '' ? null : limpio;
 }
 
+// Aviso "no se pudo traer el tutor automáticamente" (#aviso-tutor-auto en el
+// bloque Filiación). El bookmarklet lo pide vía payload.tutorAutoFallo cuando ni
+// la ficha del paciente ni el fetch a /customers/{id} dieron los datos del
+// tutor. Se arma con un enlace directo para abrir la ficha del tutor en MyVete.
+function mostrarAvisoTutor(url, idTutor) {
+  const aviso = document.getElementById('aviso-tutor-auto');
+  if (!aviso) return;
+  aviso.textContent = 'No se pudieron obtener los datos del tutor automáticamente. ';
+  const destino = url || (idTutor ? `https://app.myvete.com/customers/${idTutor}` : null);
+  if (destino) {
+    const enlace = document.createElement('a');
+    enlace.href = destino;
+    enlace.target = '_blank';
+    enlace.rel = 'noopener noreferrer';
+    enlace.textContent = 'Abrir ficha del tutor en MyVete ↗';
+    aviso.appendChild(enlace);
+    aviso.appendChild(document.createTextNode(' y completá nombre, teléfono y e-mail a mano.'));
+  } else {
+    aviso.appendChild(
+      document.createTextNode('Completá nombre, teléfono y e-mail del tutor a mano.'),
+    );
+  }
+  aviso.hidden = false;
+}
+
+function ocultarAvisoTutor() {
+  const aviso = document.getElementById('aviso-tutor-auto');
+  if (aviso) {
+    aviso.hidden = true;
+    aviso.textContent = '';
+  }
+}
+
 // Aplica un payload de filiación al formulario. Idempotente y por campo: solo
 // pisa lo que llega con valor no nulo, así se puede llamar varias veces (1er
 // mensaje con mascota + tutor de la página; 2do mensaje con el tutor raspado
@@ -335,6 +368,20 @@ function aplicarFiliacion(payload, origen) {
     if (tutor.nombre != null) document.getElementById('tutor-nombre').value = tutor.nombre;
     if (tutor.telefono != null) document.getElementById('tutor-telefono').value = tutor.telefono;
     if (tutor.email != null) document.getElementById('tutor-email').value = tutor.email;
+    // Si llegó algún dato real del tutor (2do mensaje del bookmarklet, vía
+    // fetch), cualquier aviso de "no se pudo traer" que hubiera queda obsoleto.
+    if (tutor.nombre != null || tutor.telefono != null || tutor.email != null) {
+      ocultarAvisoTutor();
+    }
+  }
+
+  // El bookmarklet no pudo recuperar el tutor por ninguna vía automática (la
+  // ficha del paciente no lo traía y el fetch a /customers/{id} dio 403 / rebotó
+  // al home / la API interna no respondió). Se muestra el aviso con enlace
+  // directo para que el médico lo abra en MyVete y complete los campos a mano.
+  if (payload.tutorAutoFallo) {
+    const idParaAviso = payload.idTutor != null ? String(payload.idTutor) : idTutorMyVete;
+    mostrarAvisoTutor(payload.tutorUrl || null, idParaAviso);
   }
 
   if (mascota) {

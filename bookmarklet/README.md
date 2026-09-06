@@ -18,13 +18,14 @@ pestaña" lo despega a una ventana propia.
 
 ### Por qué overlay y no una ventana emergente
 
-El bookmarklet ya abría una pestaña con `window.open()` para raspar el tutor
-(Plan B). Sumarle un **segundo** `window.open()` para el panel hacía que el
-navegador bloqueara el segundo en silencio (regla de "una ventana por gesto") y
-el panel no aparecía. Ahora el único `window.open()` del clic es el de la pestaña
-del tutor; el panel va embebido. Si MyVete bloquea el iframe por
-CSP / `X-Frame-Options` (no confirma `MYVETE_PANEL_READY` en 9 s), el bookmarklet
-cae solo a `window.open()` en ventana aparte.
+El bookmarklet supo abrir una pestaña con `window.open()` para raspar el tutor.
+Sumarle un **segundo** `window.open()` para el panel hacía que el navegador
+bloqueara el segundo en silencio (regla de "una ventana por gesto") y el panel no
+aparecía. Desde el 07/09/2026 el tutor ausente se recupera con `fetch()` (sin
+pestaña — ver abajo), así que el bookmarklet ya **no** abre ninguna ventana
+dentro del clic: el panel va embebido como iframe. Si MyVete bloquea el iframe
+por CSP / `X-Frame-Options` (no confirma `MYVETE_PANEL_READY` en 9 s), recién ahí
+cae a `window.open()` en ventana aparte.
 
 ### Cómo llegan los datos al panel
 
@@ -40,8 +41,8 @@ filiación completa en la **URL**:
   con `history.replaceState` para no re-aplicar datos viejos en un refresh.
 
 El `postMessage` se sigue usando en modo iframe y para el **2do** mensaje (tutor
-raspado en la pestaña aparte), pero ya no es la única vía: la ventana nueva es
-autosuficiente con lo que trae la URL.
+recuperado por `fetch`, o aviso de carga manual), pero ya no es la única vía: la
+ventana nueva es autosuficiente con lo que trae la URL.
 
 ## Cambiar la URL del panel sin regenerar
 
@@ -76,34 +77,50 @@ valor) siguen existiendo.
 cuele en un campo de contacto (visto 06/09/2026: la ficha traía la sección "Datos
 del Cliente" con nombre `Sin asignar` y un `06/09/2026 - Hace 0 segundos` en el
 lugar del teléfono). Efecto: esos valores no viajan al panel como reales y
-`tutorVacio` da `true`, así que **el Plan B se dispara igual aunque la sección
-exista pero venga sin cargar**. En consola:
+`tutorVacio` da `true`, así que **la recuperación por fetch se dispara igual
+aunque la sección exista pero venga sin cargar**. En consola:
 
 ```
 MyVete Bookmarklet: nombre de tutor descartado (placeholder/fecha): Sin asignar
-MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se activa el Plan B (pestaña /customers/1310951).
+MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se recupera por fetch desde /customers/1310951.
 ```
 
-### Plan B — pestaña nueva de `/customers/{id}`
+### Recuperación del tutor por `fetch` (07/09/2026)
 
 Si la ficha del paciente **no** trae la sección "Datos del Cliente" (o la trae con
-los campos del tutor en placeholder), el
-bookmarklet abre `/customers/{idTutor}` en una **pestaña nueva** (`window.open`,
-disparado dentro del clic para que no lo mate el bloqueador de pop-ups), espera a
-que la SPA renderice (polling + `MutationObserver`, timeout 30 s) y raspa de ahí.
-El iframe oculto que se usaba antes dejó de servir: MyVete responde 403 a
-`/customers/{id}` en contexto iframe/fetch. El resultado va al panel en un **2do**
-mensaje `MYVETE_FILIACION`. En consola:
+los campos del tutor en placeholder), el bookmarklet **ya no abre una pestaña
+nueva** de `/customers/{id}`. Esa vía caía al **home** de MyVete: al ser una SPA,
+un cold-load de esa ruta en pestaña nueva pierde el contexto de router/sesión y
+la ficha del cliente nunca renderiza (`tutor: null` en el panel).
+
+En su lugar, el dato se pide desde la **misma pestaña** (sesión viva), con
+`fetch()`, en este orden:
+
+1. `fetch('/customers/{id}')` como documento (`credentials: 'include'`) y raspado
+   del HTML devuelto con los **mismos selectores**, vía `DOMParser`.
+2. Si eso da `403` (WAF) o el fetch rebota al home, se prueban endpoints JSON
+   candidatos de la API interna (`/customers/{id}.json`, `/api/customers/{id}`,
+   `/api/v1/customers/{id}`, `/api/customer/{id}`, `/api/clientes/{id}`) y se
+   mapean nombre / teléfono / email por nombre de clave.
+3. Si **nada** devuelve datos, el bookmarklet manda al panel
+   `payload: { idTutor, tutorAutoFallo: true, tutorUrl }` y el panel muestra el
+   aviso **"No se pudieron obtener los datos del tutor automáticamente"** con un
+   enlace directo a `/customers/{id}` para cargarlo a mano.
+
+En consola (caso con datos):
 
 ```
-MyVete Bookmarklet: pestaña de tutor abierta -> https://app.myvete.com/customers/123
-MyVete Bookmarklet: tutor raspado (pestaña /customers/123) -> nombre: ... | teléfono: ... | email: ...
-MyVete Bookmarklet: 2do mensaje (tutor desde pestaña) -> {...}
+MyVete Bookmarklet: tutor raspado (fetch HTML /customers/123) -> nombre: ... | teléfono: ... | email: ...
+MyVete Bookmarklet: 2do mensaje (tutor por fetch) -> {...}
 ```
 
-Diagnóstico: `localStorage.setItem('myvete_debug_tutor','1')` deja la pestaña
-abierta si vence el timeout (en `window.__myveteTutorWin`) y loguea el polling
-cada ~2 s. Volver a producción: `localStorage.setItem('myvete_debug_tutor','0')`.
+En consola (caso sin datos → aviso manual):
+
+```
+MyVete Bookmarklet: fetch HTML de /customers/123 no sirvió (status 403, url final ...). Probando API JSON.
+MyVete Bookmarklet: ninguna vía automática (HTML ni API JSON) devolvió el tutor 123. El panel mostrará el aviso para cargarlo a mano.
+MyVete Bookmarklet: 2do mensaje (aviso manual, sin datos de tutor) -> {"type":"MYVETE_FILIACION","payload":{"idTutor":"123","tutorAutoFallo":true,"tutorUrl":"https://app.myvete.com/customers/123"}}
+```
 
 ## Regenerar tras editar `launcher.js`
 

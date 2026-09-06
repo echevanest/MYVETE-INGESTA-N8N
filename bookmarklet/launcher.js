@@ -8,22 +8,28 @@
  * negocio — eso vive del lado de /interface/app.js.
  *
  * Despliegue del panel (06/09/2026): el panel se monta como IFRAME OVERLAY dentro
- * de la propia página de MyVete, NO como segunda ventana emergente. Motivo: el
- * navegador permite una sola ventana por gesto de usuario, y el flujo abría dos
- * window.open() en el mismo clic (la pestaña de raspado del tutor + el panel), con
- * lo que el bloqueador de pop-ups mataba la segunda (el panel) en silencio y el
- * bookmarklet "no hacía nada". Ahora el único window.open() del gesto es el de la
- * pestaña del tutor (Plan B), que al ser el primero/único nunca se bloquea. Si
- * MyVete bloquea el iframe por CSP/X-Frame-Options (no confirma READY en 9s), se
- * cae solo a window.open() en ventana aparte.
+ * de la propia página de MyVete, NO como ventana emergente. Si MyVete bloquea el
+ * iframe por CSP/X-Frame-Options (no confirma READY en 9s), se cae solo a
+ * window.open() en ventana aparte.
+ *
+ * Estrategia del tutor (07/09/2026): si la ficha del paciente NO trae los datos
+ * del tutor, YA NO se abre una pestaña nueva de /customers/{id}. Esa vía caía al
+ * home de MyVete: al ser una SPA, un cold-load de /customers/{id} en pestaña
+ * nueva pierde el contexto de router/sesión y la ficha nunca renderiza. Ahora el
+ * dato se pide desde la MISMA pestaña (sesión viva) con fetch():
+ *   1) fetch de /customers/{id} como documento y raspado del HTML con los MISMOS
+ *      selectores vía DOMParser;
+ *   2) si eso da 403 (WAF) o rebota al home, se prueban endpoints JSON candidatos
+ *      de la API interna;
+ *   3) si nada devuelve datos, el panel muestra un aviso claro con enlace directo
+ *      a /customers/{id} para que el médico lo cargue a mano.
  *
  * Contrato del mensaje (debe calzar con el listener de interface/app.js Sección 2):
  *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...}, idTutor: 'string | null' } }
  * Se pueden emitir DOS mensajes de este tipo: el 1ro con mascota + idTutor +
  * tutor raspado de la página actual (mejor esfuerzo); si el tutor no estaba en
- * esa pantalla, un 2do mensaje con `payload: { tutor, idTutor }` cuando el
- * raspado desde una PESTAÑA NUEVA de /customers/{id} termina (el iframe oculto
- * dejó de servir: MyVete devuelve 403 a ese recurso en contexto iframe/fetch).
+ * esa pantalla, un 2do mensaje con `payload: { tutor, idTutor }` cuando el fetch
+ * lo consigue, o con `payload: { idTutor, tutorAutoFallo: true, tutorUrl }` si no.
  * interface/app.js reasigna campos de forma idempotente, así que el 2do mensaje
  * solo completa lo que faltó. Si nada trae datos, los campos viajan en `null`.
  */
@@ -46,23 +52,6 @@
     PANEL_URL = localStorage.getItem("myvete_panel_url") || PANEL_URL_DEFAULT;
   } catch (error) {
     // localStorage puede no estar disponible (modo restringido): se usa el default.
-  }
-
-  // Modo debug del raspado de tutor. Con esto activo:
-  //   - si el raspado desde la pestaña nueva vence por timeout, la pestaña NO se
-  //     cierra: queda abierta y en window.__myveteTutorWin para inspección manual
-  //     desde la consola (window.__myveteTutorWin.document, .close() para cerrarla);
-  //   - el polling loguea cada ~2s: si la pestaña sigue abierta, readyState del
-  //     doc, location.href real, si apareció la sección "Datos del Cliente" y si
-  //     cada campo (nombre / teléfono / email) ya está poblado.
-  // Apagado por defecto (producción). Para encenderlo durante un diagnóstico:
-  //   localStorage.setItem('myvete_debug_tutor', '1')
-  // (se sigue respetando el viejo '0' como "apagado" por compatibilidad).
-  let DEBUG_TUTOR = false;
-  try {
-    if (localStorage.getItem("myvete_debug_tutor") === "1") DEBUG_TUTOR = true;
-  } catch (error) {
-    // sin localStorage: se queda con el default (debug apagado).
   }
 
   // Paso 1 — Activación y raspado de entrada (Sección 3.2, punto 1)
@@ -100,7 +89,7 @@
   // ("06/09/2026 - Hace 0 segundos") donde debería ir el teléfono. Esos valores
   // NO son datos: hay que tratarlos como "campo vacío" para que
   //   a) no viajen al panel como si fueran reales, y
-  //   b) `tutorVacio` dé true y se dispare el Plan B (pestaña /customers/{id}).
+  //   b) `tutorVacio` dé true y se dispare la recuperación por fetch del tutor.
   // Lista de textos-basura (comparación exacta, ya normalizados a minúsculas):
   const PLACEHOLDERS_BASURA = [
     "sin asignar", "no asignado", "no asignada", "sin datos", "sin dato",
@@ -131,10 +120,22 @@
     return (texto || "").replace(/\s+/g, " ").trim();
   }
 
+  // Texto visible de un nodo. innerText necesita layout: en un Document creado por
+  // DOMParser (la respuesta de fetch, que nunca se renderiza) devuelve "" o
+  // undefined, mientras que textContent siempre trae el texto. Se prueba innerText
+  // primero (en la página viva respeta lo que está oculto por CSS) y se cae a
+  // textContent, que es la única vía en el doc parseado del fetch del tutor.
+  function textoDe(nodo) {
+    if (!nodo) return "";
+    const via = nodo.innerText;
+    if (via != null && via !== "") return via;
+    return nodo.textContent || "";
+  }
+
   // true si `texto` es un placeholder de MyVete ("Sin asignar", "-", ...) o un
   // timestamp/fecha ("06/09/2026 - Hace 0 segundos") en vez de un dato real de
   // contacto. Se usa para NO aceptar esos valores como nombre/teléfono/email y
-  // para decidir que el tutor "no está en la página actual" (dispara el Plan B).
+  // para decidir que el tutor "no está en la página actual" (dispara el fetch).
   function esValorBasura(texto) {
     const t = normalizarTexto(texto);
     if (!t) return true;
@@ -147,7 +148,8 @@
     return false;
   }
 
-  // Acepta un Document (el de la página actual o el de una pestaña same-origin).
+  // Acepta un Document: el de la página actual, o el que devuelve DOMParser al
+  // parsear el HTML de /customers/{id} traído por fetch (ver obtenerTutorPorFetch).
   function encontrarSeccionDatosCliente(raiz) {
     const doc = raiz || document;
     try {
@@ -167,19 +169,19 @@
           "h1,h2,h3,h4,h5,h6,legend,.panel-title,.card-title,.box-title,.tab-pane," +
             "[class*='title'],[class*='header'],[class*='titulo']"
         )
-      ).filter((n) => normalizarTexto(n.innerText).indexOf("datos del cliente") !== -1);
+      ).filter((n) => normalizarTexto(textoDe(n)).indexOf("datos del cliente") !== -1);
 
       const anclas = encabezados.length
         ? encabezados
         : Array.from(doc.querySelectorAll("body *")).filter(
-            (n) => normalizarTexto(n.innerText) === "datos del cliente"
+            (n) => normalizarTexto(textoDe(n)) === "datos del cliente"
           );
 
       for (const ancla of anclas) {
         let contenedor = ancla.parentElement;
         let saltos = 0;
         while (contenedor && saltos < 12) {
-          const texto = normalizarTexto(contenedor.innerText);
+          const texto = normalizarTexto(textoDe(contenedor));
           const tieneTel =
             texto.indexOf("teléfono") !== -1 ||
             texto.indexOf("telefono") !== -1 ||
@@ -199,14 +201,14 @@
       const candidatos = Array.from(
         doc.querySelectorAll("div,section,form,table,article")
       ).filter((n) => {
-        const t = normalizarTexto(n.innerText);
+        const t = normalizarTexto(textoDe(n));
         if (!t || t.length > 6000) return false;
         const tel =
           t.indexOf("teléfono") !== -1 || t.indexOf("telefono") !== -1 || t.indexOf("celular") !== -1;
         const mail = t.indexOf("email") !== -1 || t.indexOf("e-mail") !== -1 || t.indexOf("correo") !== -1;
         return tel && mail && t.indexOf("nombre") !== -1;
       });
-      candidatos.sort((a, b) => (a.innerText || "").length - (b.innerText || "").length);
+      candidatos.sort((a, b) => textoDe(a).length - textoDe(b).length);
       return candidatos[0] || null;
     } catch (error) {
       return null;
@@ -304,10 +306,10 @@
   }
 
   // Raspa nombre/teléfono/email de una sección ya localizada (sirve tanto para
-  // la página actual como para el Document de una pestaña same-origin).
-  // `silencioso` corta los console.warn durante el polling (se hace un intento
-  // final ruidoso). Cada etiqueta prueba varias redacciones (MyVete podría usar
-  // "Celular:" o "E-mail:" en vez de "Teléfono celular:" / "Email personal:").
+  // la página actual como para el Document que DOMParser arma con el HTML de
+  // /customers/{id} traído por fetch). `silencioso` corta los console.warn.
+  // Cada etiqueta prueba varias redacciones (MyVete podría usar "Celular:" o
+  // "E-mail:" en vez de "Teléfono celular:" / "Email personal:").
   function rasparTutorDeSeccion(seccion, origen, silencioso) {
     const vacio = { nombre: null, telefono: null, email: null };
     if (!seccion) return vacio;
@@ -365,7 +367,8 @@
   }
 
   // Raspado síncrono desde la página actual (mejor esfuerzo). Si acá no está la
-  // sección "Datos del Cliente", el flujo principal abre la pestaña nueva (abajo).
+  // sección "Datos del Cliente" (o viene con placeholders), el flujo principal
+  // dispara obtenerTutorPorFetch() más abajo.
   function rasparTutor() {
     const seccion = encontrarSeccionDatosCliente(document);
     if (!seccion) {
@@ -374,180 +377,152 @@
     return rasparTutorDeSeccion(seccion, "página actual", false);
   }
 
-  // Plan B: si la ficha del paciente NO trae los datos del tutor, se abre
-  // /customers/{id} en una PESTAÑA NUEVA (window.open) y se raspa desde ahí.
-  // Sustituye al iframe oculto, que dejó de servir: MyVete responde 403 a
-  // /customers/{id} en contexto iframe/fetch (WAF que filtra por Sec-Fetch-Dest /
-  // X-Requested-With). Una pestaña nueva es una navegación top-level normal, así
-  // que no dispara ese bloqueo.
-  //
-  // `tutorWin` DEBE venir de un window.open() disparado sincrónicamente dentro
-  // del clic del bookmarklet (más abajo): un window.open diferido lo mata el
-  // bloqueador de pop-ups. Acá solo se hace el polling del documento de esa
-  // pestaña (same-origin -> `tutorWin.document` accesible) y, al terminar, se la
-  // cierra. Devuelve SIEMPRE {nombre,telefono,email}: nunca rechaza.
-  function rasparTutorDesdePestana(idTutorArg, tutorWin) {
-    return new Promise((resolve) => {
-      const vacio = { nombre: null, telefono: null, email: null };
-      const LIMITE_MS = 30000;
-      let intervalo = null;
-      let timeoutGlobal = null;
-      let observer = null;
-      let observerInstalado = false;
-      let terminado = false;
-      let ultimoDiag = 0;
-      const inicio = Date.now();
+  // Estrategia del tutor cuando la ficha del paciente no lo trae (reemplaza a la
+  // pestaña nueva de /customers/{id}, que en MyVete —una SPA— caía al home: un
+  // cold-load de esa ruta en pestaña nueva pierde el contexto de router/sesión y
+  // la ficha del cliente nunca renderiza). Se pide el dato desde la MISMA pestaña,
+  // donde la sesión está viva, con fetch():
+  //   1) fetch de /customers/{id} como documento (cookies incluidas) y raspado del
+  //      HTML devuelto con los MISMOS selectores, vía DOMParser;
+  //   2) si eso da 403 (WAF) o el fetch rebota al home, se prueban endpoints JSON
+  //      candidatos de la API interna y se mapean los campos por nombre de clave;
+  //   3) si nada devuelve datos, se resuelve con {nombre,telefono,email} en null y
+  //      el flujo de abajo manda al panel el aviso manual con enlace directo.
+  // Devuelve SIEMPRE {nombre,telefono,email}: nunca rechaza.
 
-      if (!tutorWin) {
-        console.warn(
-          "MyVete Bookmarklet: la pestaña /customers/" + idTutorArg + " fue BLOQUEADA por el " +
-            "navegador (pop-ups). Cargá el tutor a mano; para que se auto-complete, permití " +
-            "pop-ups para " + window.location.origin + " y volvé a hacer clic."
-        );
-        return resolve(vacio);
-      }
-      window.__myveteTutorWin = tutorWin;
+  // Recorre un objeto (respuesta JSON de la API) buscando nombre / teléfono /
+  // email por nombre de clave, sin asumir la forma exacta del endpoint. Bounded
+  // (profundidad <= 4) y best-effort: los valores basura y los que no pasan el
+  // regex de forma se descartan.
+  function tutorDesdeObjetoJson(raiz) {
+    const salida = { nombre: null, telefono: null, email: null };
+    if (!raiz || typeof raiz !== "object") return salida;
 
-      function obtenerDoc() {
-        try {
-          return tutorWin.document || null;
-        } catch (error) {
-          return undefined;
-        }
-      }
+    const CLAVE_NOMBRE = /^(nombre|name|nombre_completo|nombrecompleto|full_name|fullname|razon_social|razonsocial|cliente|nombre_cliente)$/i;
+    const CLAVE_APELLIDO = /^(apellido|apellidos|last_name|lastname)$/i;
+    const CLAVE_TEL = /(telefono|tel[_-]?(cel|movil|mob)|celular|movil|mobile|phone|whatsapp)/i;
+    const CLAVE_MAIL = /(mail|correo)/i;
 
-      function finalizar(resultado, motivo, conservar) {
-        if (terminado) return;
-        terminado = true;
-        if (intervalo) clearInterval(intervalo);
-        if (timeoutGlobal) clearTimeout(timeoutGlobal);
-        if (observer) {
-          try {
-            observer.disconnect();
-          } catch (error) {
-            // ignorado
+    let nombre = null;
+    let apellido = null;
+    const visto = new Set();
+
+    // Recorrido POR NIVELES (BFS): las claves del cliente están más arriba en el
+    // árbol que las de arrays anidados (mascotas, turnos), así que un "name" poco
+    // profundo le gana a un "name" de mascota más adentro.
+    let nivel = [raiz];
+    let prof = 0;
+    while (nivel.length && prof <= 4) {
+      const siguiente = [];
+      for (const obj of nivel) {
+        if (!obj || typeof obj !== "object" || visto.has(obj)) continue;
+        visto.add(obj);
+        for (const clave of Object.keys(obj)) {
+          const valor = obj[clave];
+          if (valor && typeof valor === "object") {
+            siguiente.push(valor);
+            continue;
           }
+          if (valor == null || valor === "") continue;
+          const sval = String(valor).trim();
+          if (!sval || esValorBasura(sval)) continue;
+          if (!nombre && CLAVE_NOMBRE.test(clave)) nombre = sval;
+          else if (!apellido && CLAVE_APELLIDO.test(clave)) apellido = sval;
+          else if (!salida.telefono && CLAVE_TEL.test(clave) && REGEX_TELEFONO.test(sval)) salida.telefono = sval;
+          else if (!salida.email && CLAVE_MAIL.test(clave) && REGEX_EMAIL.test(sval)) salida.email = sval;
         }
-        if (conservar) {
+      }
+      nivel = siguiente;
+      prof += 1;
+    }
+
+    const nombreCompuesto = [nombre, apellido].filter(Boolean).join(" ").trim();
+    if (nombreCompuesto && !esValorBasura(nombreCompuesto)) salida.nombre = nombreCompuesto;
+    return salida;
+  }
+
+  function obtenerTutorPorFetch(idTutorArg) {
+    const vacio = { nombre: null, telefono: null, email: null };
+    if (!idTutorArg || typeof fetch !== "function") return Promise.resolve(vacio);
+
+    const origen = window.location.origin;
+    const idEnc = encodeURIComponent(idTutorArg);
+    const rutaHtml = origen + "/customers/" + idEnc;
+    const rutasJson = [
+      origen + "/customers/" + idEnc + ".json",
+      origen + "/api/customers/" + idEnc,
+      origen + "/api/v1/customers/" + idEnc,
+      origen + "/api/customer/" + idEnc,
+      origen + "/api/clientes/" + idEnc,
+    ];
+
+    return (async function () {
+      // 1) HTML de la ficha del cliente + raspado con los selectores de siempre.
+      // Sin X-Requested-With: el WAF de MyVete filtra por ese header (y por
+      // Sec-Fetch-Dest, que no se puede setear); se pide lo más "navegación
+      // normal" posible. Si igual da 403, se cae a los endpoints JSON de abajo.
+      try {
+        const res = await fetch(rutaHtml, {
+          credentials: "include",
+          redirect: "follow",
+          headers: { Accept: "text/html,application/xhtml+xml" },
+        });
+        const urlFinal = res.url || rutaHtml;
+        if (res.ok && /\/customers\/\d+/.test(urlFinal)) {
+          const html = await res.text();
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const seccion = encontrarSeccionDatosCliente(doc);
+          if (seccion) {
+            const tutor = rasparTutorDeSeccion(seccion, "fetch HTML /customers/" + idTutorArg, false);
+            if (tutor.nombre || tutor.telefono || tutor.email) return tutor;
+          }
           console.warn(
-            "MyVete Bookmarklet: pestaña de tutor CONSERVADA para inspección (" + motivo + "). " +
-              "Ref: window.__myveteTutorWin | doc: window.__myveteTutorWin.document | " +
-              "cerrarla: window.__myveteTutorWin.close()"
+            "MyVete Bookmarklet: el HTML de /customers/" + idTutorArg +
+              " no trajo la sección 'Datos del Cliente'. Probando API JSON."
           );
         } else {
-          try {
-            if (tutorWin && !tutorWin.closed) tutorWin.close();
-          } catch (error) {
-            // algunos navegadores no dejan cerrar por script: no es fatal.
-          }
-          console.log("MyVete Bookmarklet: pestaña de tutor cerrada (" + motivo + ").");
+          console.warn(
+            "MyVete Bookmarklet: fetch HTML de /customers/" + idTutorArg + " no sirvió (status " +
+              res.status + ", url final " + urlFinal + "). Probando API JSON."
+          );
         }
-        resolve(resultado);
-      }
-
-      function logDiagnostico(doc, seccion) {
-        if (!DEBUG_TUTOR) return;
-        const ahora = Date.now();
-        if (ahora - ultimoDiag < 2000) return;
-        ultimoDiag = ahora;
-        let loc = "(sin doc)";
-        try {
-          if (doc && doc.location) loc = doc.location.href;
-        } catch (error) {
-          loc = "(location inaccesible)";
-        }
-        const t = seccion ? rasparTutorDeSeccion(seccion, "diag", true) : null;
-        console.log(
-          "MyVete Bookmarklet [diag " + Math.round((ahora - inicio) / 1000) + "s]:",
-          "closed:", tutorWin.closed,
-          "| readyState:", (doc && doc.readyState) || "(sin doc)",
-          "| location:", loc,
-          "| sección Datos del Cliente:", seccion ? "PRESENTE" : "ausente",
-          "| nombre:", t && t.nombre ? "sí" : "no",
-          "| teléfono:", t && t.telefono ? "sí" : "no",
-          "| email:", t && t.email ? "sí" : "no"
-        );
-      }
-
-      function instalarObserverSiHaceFalta(seccion) {
-        if (observerInstalado || !seccion) return;
-        observerInstalado = true;
-        try {
-          const MO = tutorWin.MutationObserver || window.MutationObserver;
-          observer = new MO(function () {
-            intentar();
-          });
-          observer.observe(seccion, { childList: true, subtree: true, characterData: true });
-        } catch (error) {
-          observer = null;
-        }
-      }
-
-      function intentar() {
-        if (terminado) return;
-        if (tutorWin.closed) {
-          return finalizar(vacio, "pestaña cerrada por el usuario");
-        }
-        const doc = obtenerDoc();
-        if (doc === undefined) {
-          if (Date.now() - inicio > LIMITE_MS) {
-            console.warn(
-              "MyVete Bookmarklet: la pestaña de tutor está en otro origen (¿login SSO?); no se puede raspar."
-            );
-            return finalizar(vacio, "cross-origin (login?) + timeout", DEBUG_TUTOR);
-          }
-          return;
-        }
-        const seccion = doc && encontrarSeccionDatosCliente(doc);
-        logDiagnostico(doc, seccion);
-        if (seccion) {
-          instalarObserverSiHaceFalta(seccion);
-          const tutor = rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, true);
-          if (tutor.nombre || tutor.telefono || tutor.email) {
-            const definitivo = rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, false);
-            return finalizar(definitivo, "datos obtenidos");
-          }
-        }
-        if (Date.now() - inicio > LIMITE_MS) {
-          if (seccion) {
-            console.warn("MyVete Bookmarklet: sección encontrada en la pestaña pero sin valores; intento final:");
-            rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, false);
-            try {
-              console.warn("MyVete Bookmarklet: diagnóstico pestaña -> location:", doc.location.href);
-              console.warn(
-                "MyVete Bookmarklet: diagnóstico pestaña -> seccion.outerHTML (recortado):",
-                (seccion.outerHTML || "").slice(0, 1500)
-              );
-            } catch (error) {
-              // best-effort
-            }
-          } else {
-            let loc = "?";
-            try {
-              loc = doc.location.href;
-            } catch (error) {
-              // ignorado
-            }
-            console.warn(
-              "MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en la pestaña (location:", loc, ")."
-            );
-          }
-          return finalizar(vacio, "timeout " + LIMITE_MS + "ms", DEBUG_TUTOR);
-        }
-      }
-
-      try {
-        tutorWin.addEventListener("load", intentar);
       } catch (error) {
-        // algunos navegadores no dejan enganchar 'load' de otra ventana hasta que
-        // termina de navegar: el polling lo cubre igual.
+        console.warn("MyVete Bookmarklet: fetch HTML de /customers/" + idTutorArg + " falló.", error);
       }
-      intervalo = setInterval(intentar, 400);
-      timeoutGlobal = setTimeout(function () {
-        finalizar(vacio, "timeout global", DEBUG_TUTOR);
-      }, LIMITE_MS + 1500);
-      intentar();
-    });
+
+      // 2) Endpoints JSON candidatos de la API interna.
+      for (const url of rutasJson) {
+        try {
+          const res = await fetch(url, {
+            credentials: "include",
+            redirect: "follow",
+            headers: { "X-Requested-With": "XMLHttpRequest", Accept: "application/json" },
+          });
+          if (!res.ok) continue;
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("json") === -1) continue;
+          const data = await res.json();
+          const tutor = tutorDesdeObjetoJson(data);
+          if (tutor.nombre || tutor.telefono || tutor.email) {
+            console.log(
+              "MyVete Bookmarklet: tutor obtenido de API JSON (" + url + ") ->",
+              "nombre:", tutor.nombre || "(no encontrado)",
+              "| teléfono:", tutor.telefono || "(no encontrado)",
+              "| email:", tutor.email || "(no encontrado)"
+            );
+            return tutor;
+          }
+        } catch (error) {
+          // endpoint inexistente / CORS / no-JSON: se prueba el siguiente.
+        }
+      }
+
+      console.warn(
+        "MyVete Bookmarklet: ninguna vía automática (HTML ni API JSON) devolvió el tutor " +
+          idTutorArg + ". El panel mostrará el aviso para cargarlo a mano."
+      );
+      return vacio;
+    })();
   }
 
   function rasparFiliacion() {
@@ -637,53 +612,35 @@
   }
 
   // Paso 2 — Despliegue del panel (Sección 3.2, punto 2)
-  // IMPORTANTE (Sección 4.1 — bloqueadores de pop-ups): el ÚNICO window.open() que
-  // corre dentro del gesto del clic es el de la pestaña del tutor (Plan B). El
-  // panel se monta como iframe overlay (sin ventana emergente), así que no hay
-  // "segundo window.open" que el navegador pueda bloquear. El raspado de arriba es
-  // 100% síncrono, así que la pestaña del tutor se abre limpia dentro del gesto.
+  // El panel se monta como iframe overlay (sin ventana emergente). Ya NO se abre
+  // una pestaña /customers/{id} dentro del gesto del clic: la recuperación del
+  // tutor ausente es un fetch() asíncrono desde esta misma pestaña (más abajo).
   const datosFiliacion = rasparFiliacion();
   const idTutor = extraerIdTutor();
 
   console.log("MyVete Bookmarklet: filiación raspada ->", JSON.stringify(datosFiliacion));
   console.log("MyVete Bookmarklet: idTutor ->", idTutor);
 
-  // Plan B, apertura sincrónica: si el tutor no vino en la página actual y hay
-  // idTutor, la pestaña /customers/{id} se abre AHORA, dentro del hilo del clic.
-  // Diferirla a un .then() haría que el bloqueador de pop-ups la mate.
-  //
-  // "No vino" = los tres campos son null O son basura (placeholder / fecha).
-  // rasparTutorDeSeccion ya null-ea la basura, pero se revalida acá con
+  // ¿Falta el tutor? = los tres campos son null O son basura (placeholder /
+  // fecha). rasparTutorDeSeccion ya null-ea la basura, pero se revalida acá con
   // esValorBasura por si un valor se colara: el objetivo es que la ficha con el
-  // tutor "Sin asignar" dispare el Plan B en vez de dar el tutor por resuelto.
+  // tutor "Sin asignar" dispare la recuperación por fetch en vez de darlo por
+  // resuelto.
   const tutorSync = (datosFiliacion && datosFiliacion.tutor) || {};
   const tutorTieneNombre = !!tutorSync.nombre && !esValorBasura(tutorSync.nombre);
   const tutorTieneTelefono = !!tutorSync.telefono && !esValorBasura(tutorSync.telefono);
   const tutorTieneEmail = !!tutorSync.email && !esValorBasura(tutorSync.email);
   const tutorVacio = !tutorTieneNombre && !tutorTieneTelefono && !tutorTieneEmail;
-  const necesitaPestanaTutor = tutorVacio && !!idTutor;
+  const tutorFaltante = tutorVacio && !!idTutor;
   if (tutorVacio && idTutor) {
     console.log(
-      "MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se activa el Plan B (pestaña /customers/" +
-        idTutor + ")."
+      "MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se recupera por fetch desde /customers/" +
+        idTutor + "."
     );
   } else if (tutorVacio && !idTutor) {
     console.warn(
-      "MyVete Bookmarklet: tutor ausente y sin idTutor recuperable; no se puede activar el Plan B. Cargá el tutor a mano en el panel."
+      "MyVete Bookmarklet: tutor ausente y sin idTutor recuperable; no se puede auto-completar. Cargá el tutor a mano en el panel."
     );
-  }
-  let tutorWin = null;
-  if (necesitaPestanaTutor) {
-    const urlTutor = window.location.origin + "/customers/" + encodeURIComponent(idTutor);
-    try {
-      tutorWin = window.open(urlTutor, "MYVETE_TUTOR_SCRAPE");
-      console.log(
-        "MyVete Bookmarklet: pestaña de tutor abierta ->", urlTutor,
-        tutorWin ? "" : "(BLOQUEADA por el navegador)"
-      );
-    } catch (error) {
-      console.error("MyVete Bookmarklet: no se pudo abrir la pestaña de tutor.", error);
-    }
   }
 
   // Transporte de datos hacia el panel. El panel (interface/app.js) corre en OTRO
@@ -935,26 +892,31 @@
   const panel = abrirCanalPanel(urlPanelConDatos);
   panel.enviar(mensaje);
 
-  // Plan B (continuación): la pestaña /customers/{id} ya se abrió sincrónicamente
-  // arriba (tutorWin). Acá se hace el polling asíncrono de su documento y, cuando
-  // trae datos, se manda como 2do mensaje al panel.
-  if (necesitaPestanaTutor) {
-    console.log(
-      "MyVete Bookmarklet: tutor ausente en la página actual; raspando desde la pestaña /customers/" + idTutor
-    );
-    rasparTutorDesdePestana(idTutor, tutorWin).then((tutorPestana) => {
-      if (!tutorPestana.nombre && !tutorPestana.telefono && !tutorPestana.email) {
+  // Recuperación del tutor ausente: fetch() asíncrono desde ESTA pestaña (sesión
+  // viva). Cuando resuelve, se manda un 2do mensaje al panel: con los datos si el
+  // fetch los consiguió, o con `tutorAutoFallo` + `tutorUrl` para que el panel
+  // muestre el aviso de carga manual con enlace directo a /customers/{id}.
+  if (tutorFaltante) {
+    const urlTutorManual = window.location.origin + "/customers/" + encodeURIComponent(idTutor);
+    obtenerTutorPorFetch(idTutor).then((tutorFetch) => {
+      if (tutorFetch.nombre || tutorFetch.telefono || tutorFetch.email) {
+        const mensaje2 = {
+          type: "MYVETE_FILIACION",
+          payload: { tutor: tutorFetch, idTutor: idTutor },
+        };
+        console.log("MyVete Bookmarklet: 2do mensaje (tutor por fetch) ->", JSON.stringify(mensaje2));
+        panel.enviar(mensaje2);
+      } else {
+        const mensajeManual = {
+          type: "MYVETE_FILIACION",
+          payload: { idTutor: idTutor, tutorAutoFallo: true, tutorUrl: urlTutorManual },
+        };
         console.warn(
-          "MyVete Bookmarklet: la pestaña tampoco trajo datos de tutor. Se cargan a mano en el panel."
+          "MyVete Bookmarklet: 2do mensaje (aviso manual, sin datos de tutor) ->",
+          JSON.stringify(mensajeManual)
         );
-        return;
+        panel.enviar(mensajeManual);
       }
-      const mensaje2 = {
-        type: "MYVETE_FILIACION",
-        payload: { tutor: tutorPestana, idTutor: idTutor },
-      };
-      console.log("MyVete Bookmarklet: 2do mensaje (tutor desde pestaña) ->", JSON.stringify(mensaje2));
-      panel.enviar(mensaje2);
     });
   }
 

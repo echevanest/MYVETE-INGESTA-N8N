@@ -211,6 +211,23 @@ section {
   color: #b3261e;
 }
 
+/* Aviso "no se pudo traer el tutor automáticamente" (Filiación). */
+.aviso-tutor {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #7a4a00;
+  background: #fff4e0;
+  border: 1px solid #f0c675;
+  border-radius: 4px;
+}
+
+.aviso-tutor a {
+  color: #7a4a00;
+  font-weight: 600;
+}
+
 /* --- Filiación / Consulta de hoy — campos de formulario ----------------- */
 
 .grid-filiacion,

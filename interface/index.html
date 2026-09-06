@@ -62,6 +62,10 @@
           <input type="email" id="tutor-email" class="input-control" placeholder="Ej: juan@mail.com" disabled />
         </label>
       </div>
+      <!-- Aviso de recuperación automática del tutor (lo pobla app.js al recibir
+           payload.tutorAutoFallo del bookmarklet: MyVete no devolvió los datos
+           del tutor por ninguna vía automática). Oculto salvo que haga falta. -->
+      <p id="aviso-tutor-auto" class="aviso-tutor" role="status" hidden></p>
       <button type="button" id="btn-editar-filiacion" class="btn btn-secundario">
         ✏️ Editar
       </button>
