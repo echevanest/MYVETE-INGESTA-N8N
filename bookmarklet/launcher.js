@@ -3,9 +3,19 @@
  * Ver INFORME-ARQUITECTURA-MYVETE-V2.7.md, Sección 3 (SECCIÓN 5), punto 3.2, pasos 1-2.
  *
  * Responsabilidad de este archivo: correr en el contexto de la pestaña de MyVete,
- * extraer lo mínimo indispensable de la pantalla activa y abrir la ventana flotante
- * definida en /interface/index.html. No contiene lógica de formulario ni de negocio —
- * eso vive del lado de /interface/app.js.
+ * extraer lo mínimo indispensable de la pantalla activa y desplegar el panel
+ * definido en /interface/index.html. No contiene lógica de formulario ni de
+ * negocio — eso vive del lado de /interface/app.js.
+ *
+ * Despliegue del panel (06/09/2026): el panel se monta como IFRAME OVERLAY dentro
+ * de la propia página de MyVete, NO como segunda ventana emergente. Motivo: el
+ * navegador permite una sola ventana por gesto de usuario, y el flujo abría dos
+ * window.open() en el mismo clic (la pestaña de raspado del tutor + el panel), con
+ * lo que el bloqueador de pop-ups mataba la segunda (el panel) en silencio y el
+ * bookmarklet "no hacía nada". Ahora el único window.open() del gesto es el de la
+ * pestaña del tutor (Plan B), que al ser el primero/único nunca se bloquea. Si
+ * MyVete bloquea el iframe por CSP/X-Frame-Options (no confirma READY en 9s), se
+ * cae solo a window.open() en ventana aparte.
  *
  * Contrato del mensaje (debe calzar con el listener de interface/app.js Sección 2):
  *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...}, idTutor: 'string | null' } }
@@ -21,8 +31,8 @@
   "use strict";
 
   // ===== CONFIGURACIÓN =====
-  // URL de la ventana flotante (interface/index.html), servida por GitHub Pages
-  // desde la raíz del repo: /MYVETE-INGESTA-N8N/interface/index.html.
+  // URL del panel (interface/index.html), servido por GitHub Pages desde la raíz
+  // del repo: /MYVETE-INGESTA-N8N/interface/index.html.
   //
   // Para apuntar a otra URL sin reeditar el bookmarklet, definir el override una
   // sola vez desde la consola de MyVete:
@@ -38,64 +48,54 @@
     // localStorage puede no estar disponible (modo restringido): se usa el default.
   }
 
-  // Modo debug del raspado de tutor (05/09/2026). Con esto activo:
+  // Modo debug del raspado de tutor. Con esto activo:
   //   - si el raspado desde la pestaña nueva vence por timeout, la pestaña NO se
   //     cierra: queda abierta y en window.__myveteTutorWin para inspección manual
-  //     desde la consola (window.__myveteTutorWin.document, .close() para cerrarla).
-  //     Sirve para ver qué muestra MyVete realmente ahí (un 403, un login SSO, la
-  //     ficha sin poblar, etc.);
+  //     desde la consola (window.__myveteTutorWin.document, .close() para cerrarla);
   //   - el polling loguea cada ~2s: si la pestaña sigue abierta, readyState del
   //     doc, location.href real, si apareció la sección "Datos del Cliente" y si
   //     cada campo (nombre / teléfono / email) ya está poblado.
-  // Activado por defecto durante la etapa de diagnóstico. Para apagarlo (volver
-  // al comportamiento de producción: pestaña siempre cerrada, sin logs de poll):
-  //   localStorage.setItem('myvete_debug_tutor', '0')
-  let DEBUG_TUTOR = true;
+  // Apagado por defecto (producción). Para encenderlo durante un diagnóstico:
+  //   localStorage.setItem('myvete_debug_tutor', '1')
+  // (se sigue respetando el viejo '0' como "apagado" por compatibilidad).
+  let DEBUG_TUTOR = false;
   try {
-    if (localStorage.getItem("myvete_debug_tutor") === "0") DEBUG_TUTOR = false;
+    if (localStorage.getItem("myvete_debug_tutor") === "1") DEBUG_TUTOR = true;
   } catch (error) {
-    // sin localStorage: se queda con el default (debug activo).
+    // sin localStorage: se queda con el default (debug apagado).
   }
 
   // Paso 1 — Activación y raspado de entrada (Sección 3.2, punto 1)
-  // Selectores reales confirmados sobre el DOM de la ficha clínica (div.patient-info):
-  //   - Mascota:            '.patient-info h1' -> ej. "Baco"
-  //   - Especie/Raza/Color: div interno con texto combinado por comas,
-  //                         ej. "Canino, ovejero suizo, BLANCO" (color se descarta,
-  //                         no forma parte del contrato de datos de mascota).
-  // Selectores reales confirmados sobre la sección "Datos del Cliente" (tutor),
-  // corrida de probe-tutor.js del 02/09/2026 sobre el DOM real de MyVete:
-  //   - Contenedor: DIV#modalcustomerDetail_customers (el <div id> del tab-pane
-  //     "Datos del Cliente"). Fallback: búsqueda por texto del encabezado
-  //     "datos del cliente" + ancestro con "teléfono celular" y "email personal"
-  //     (encontrarSeccionDatosCliente(), por si el id cambia).
-  //   - Cada fila es un row Bootstrap con dos columnas hermanas:
-  //       <div class="col-sm-4 col-xs-12">Nombre:</div>        (etiqueta)
-  //       <div class="col-sm-8 col-xs-12">JUAN PEREZ</div>      (valor)
-  //     -> se ubica la etiqueta por texto y se toma el .col-sm-8.col-xs-12 del
-  //     mismo parentElement (extraerValorPorEtiqueta()).
-  // El ID de tutor (segmento numérico de /customers/{id}) ya se extrae —ver
-  // extraerIdTutor() más abajo, validado E2E el 01/09/2026 sobre el DOM real de
-  // MyVete— y viaja al panel por query param `?idTutor=` + respaldo en el
-  // postMessage. TODO pendiente: el ID de paciente (/patient/{id}/charts o
-  // /customers/{c}/patients/{id}), necesario para la consulta de historial.
+  // Selectores confirmados sobre el DOM de la ficha clínica (div.patient-info) y
+  // sobre la sección "Datos del Cliente" (probe-tutor.js, 02/09/2026). Todos los
+  // selectores de acá abajo llevan fallbacks: si MyVete cambia el grid Bootstrap,
+  // los ids o las clases, el raspado degrada pero no se cae a null en seco.
   //
   // Blindaje anti-contaminación (detectado 25/08/2026, paciente "Mentira"): un div
   // contenedor previo al bloque de perfil puede envolver también los datos de
   // contacto del tutor, y como querySelectorAll('div') recorre en orden de
   // documento, ese ancestro (cuyo innerText concatena TODO su contenido) puede
   // llegar antes que el div hoja real y ganar el .find() por tener una coma
-  // "de casualidad". Se descartan los divs con hijos <div> (solo interesan
-  // nodos hoja) y además se exige que el primer segmento coincida con una
-  // especie conocida, para no depender únicamente de la forma del DOM.
-  const ESPECIES_VALIDAS = ["canino", "felino", "equino", "ave", "aviar", "exotico"];
+  // "de casualidad". Se descartan los nodos con hijos de bloque (solo interesan
+  // hojas) y además se exige que el primer segmento coincida con una especie
+  // conocida, para no depender únicamente de la forma del DOM.
+  const ESPECIES_VALIDAS = [
+    "canino", "canina", "felino", "felina", "perro", "perra", "gato", "gata",
+    "equino", "equina", "caballo", "yegua", "ave", "aviar", "exotico", "exótico",
+    "conejo", "huron", "hurón", "roedor", "hamster", "cobayo", "reptil", "tortuga",
+    "caprino", "bovino", "ovino", "porcino", "silvestre",
+  ];
 
-  // Blindaje análogo para tutor (misma fecha): la búsqueda de etiquetas está
-  // acotada al contenedor de "Datos del Cliente" (nunca a document completo)
-  // para no confundir el "Nombre:" del tutor con el de la mascota, y el valor
-  // asociado se valida por forma (regex de teléfono/email) antes de aceptarlo.
+  // Blindaje análogo para tutor: la búsqueda de etiquetas está acotada al
+  // contenedor de "Datos del Cliente" (nunca a document completo) para no
+  // confundir el "Nombre:" del tutor con el de la mascota, y el valor asociado se
+  // valida por forma (regex de teléfono/email) antes de aceptarlo.
   const REGEX_TELEFONO = /^[+\d][\d\s\-()]{5,}$/;
   const REGEX_EMAIL = /\S+@\S+\.\S+/;
+
+  function escaparRegex(texto) {
+    return String(texto).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
 
   function normalizarTexto(texto) {
     return (texto || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -107,35 +107,67 @@
     return (texto || "").replace(/\s+/g, " ").trim();
   }
 
-  // Acepta un Document (el de la página actual o el de un iframe same-origin).
+  // Acepta un Document (el de la página actual o el de una pestaña same-origin).
   function encontrarSeccionDatosCliente(raiz) {
     const doc = raiz || document;
     try {
       // Ruta principal: el tab-pane "Datos del Cliente" tiene id estable
-      // (probe 02/09/2026). Si MyVete lo renombra, se cae al fallback por texto.
-      const porId = doc.getElementById("modalcustomerDetail_customers");
+      // (probe 02/09/2026). Fallbacks por si MyVete lo renombra.
+      const porId =
+        doc.getElementById("modalcustomerDetail_customers") ||
+        doc.querySelector(
+          "[id*='customerDetail'],[id*='customerdetail'],[id^='modalcustomer']," +
+            "[id*='datosCliente'],[id*='datoscliente'],[id*='clienteDetail']"
+        );
       if (porId) return porId;
 
-      // Fallback: no se asume una etiqueta de título estándar; se buscan todos
-      // los elementos cuyo texto normalizado sea exacto "datos del cliente" y,
-      // si hay varios, se prefiere el más específico (menos descendientes), y
-      // desde ahí se sube al primer ancestro que contenga las dos etiquetas.
-      const candidatos = Array.from(doc.querySelectorAll("body *")).filter(
-        (n) => normalizarTexto(n.innerText) === "datos del cliente"
-      );
-      if (!candidatos.length) return null;
-      candidatos.sort((a, b) => a.querySelectorAll("*").length - b.querySelectorAll("*").length);
-      let contenedor = candidatos[0].parentElement;
-      let saltos = 0;
-      while (contenedor && saltos < 10) {
-        const texto = normalizarTexto(contenedor.innerText);
-        if (texto.includes("teléfono celular") && texto.includes("email personal")) {
-          return contenedor;
+      // Fallback por texto: encabezados típicos que contengan "datos del cliente".
+      const encabezados = Array.from(
+        doc.querySelectorAll(
+          "h1,h2,h3,h4,h5,h6,legend,.panel-title,.card-title,.box-title,.tab-pane," +
+            "[class*='title'],[class*='header'],[class*='titulo']"
+        )
+      ).filter((n) => normalizarTexto(n.innerText).indexOf("datos del cliente") !== -1);
+
+      const anclas = encabezados.length
+        ? encabezados
+        : Array.from(doc.querySelectorAll("body *")).filter(
+            (n) => normalizarTexto(n.innerText) === "datos del cliente"
+          );
+
+      for (const ancla of anclas) {
+        let contenedor = ancla.parentElement;
+        let saltos = 0;
+        while (contenedor && saltos < 12) {
+          const texto = normalizarTexto(contenedor.innerText);
+          const tieneTel =
+            texto.indexOf("teléfono") !== -1 ||
+            texto.indexOf("telefono") !== -1 ||
+            texto.indexOf("celular") !== -1;
+          const tieneMail =
+            texto.indexOf("email") !== -1 ||
+            texto.indexOf("e-mail") !== -1 ||
+            texto.indexOf("correo") !== -1;
+          if (tieneTel && tieneMail) return contenedor;
+          contenedor = contenedor.parentElement;
+          saltos += 1;
         }
-        contenedor = contenedor.parentElement;
-        saltos += 1;
       }
-      return null;
+
+      // Último recurso: el elemento más chico que contenga a la vez nombre,
+      // teléfono/celular y email/correo (sin asumir ninguna clase ni id).
+      const candidatos = Array.from(
+        doc.querySelectorAll("div,section,form,table,article")
+      ).filter((n) => {
+        const t = normalizarTexto(n.innerText);
+        if (!t || t.length > 6000) return false;
+        const tel =
+          t.indexOf("teléfono") !== -1 || t.indexOf("telefono") !== -1 || t.indexOf("celular") !== -1;
+        const mail = t.indexOf("email") !== -1 || t.indexOf("e-mail") !== -1 || t.indexOf("correo") !== -1;
+        return tel && mail && t.indexOf("nombre") !== -1;
+      });
+      candidatos.sort((a, b) => (a.innerText || "").length - (b.innerText || "").length);
+      return candidatos[0] || null;
     } catch (error) {
       return null;
     }
@@ -144,50 +176,119 @@
   function extraerValorPorEtiqueta(root, etiqueta, silencioso) {
     if (!root) return null;
     const etiquetaNorm = normalizarTexto(etiqueta);
+    const etiquetaSinDosPuntos = etiquetaNorm.replace(/:$/, "").trim();
     const avisar = (msg, extra) => {
       if (!silencioso) console.warn(msg, extra);
     };
 
-    // La etiqueta es un DIV.col-sm-4.col-xs-12 con el texto exacto; el valor es
-    // el DIV.col-sm-8.col-xs-12 hermano (mismo row). textContent (no innerText)
-    // porque el panel puede estar en un tab oculto sin layout calculado.
-    const nodoEtiqueta = Array.from(
-      root.querySelectorAll("div.col-sm-4.col-xs-12")
-    ).find((d) => normalizarTexto(d.textContent) === etiquetaNorm);
-    if (!nodoEtiqueta) {
+    // Selectores de etiqueta y valor con fallbacks: el grid original es Bootstrap
+    // 3 (col-sm-4 / col-sm-8), pero se aceptan variantes de Bootstrap 4/5, listas
+    // de definición (dt/dd) y tablas (th/td).
+    const SEL_ETIQUETA =
+      "div.col-sm-4.col-xs-12,[class*='col-sm-4'],[class*='col-md-4'],[class*='col-4']," +
+      "dt,th,label,strong,b,.control-label,.field-label,[class*='label']";
+    const SEL_VALOR =
+      "div.col-sm-8.col-xs-12,[class*='col-sm-8'],[class*='col-md-8'],[class*='col-8']," +
+      "dd,td,[class*='value'],[class*='valor']";
+
+    const coincideEtiqueta = (nodo) => {
+      const t = normalizarTexto(nodo.textContent);
+      if (!t) return false;
+      return (
+        t === etiquetaNorm ||
+        t === etiquetaSinDosPuntos ||
+        t === etiquetaSinDosPuntos + ":" ||
+        (t.length <= etiquetaSinDosPuntos.length + 3 && t.indexOf(etiquetaSinDosPuntos) === 0)
+      );
+    };
+
+    let nodosEtiqueta = Array.from(root.querySelectorAll(SEL_ETIQUETA)).filter(coincideEtiqueta);
+    if (!nodosEtiqueta.length) {
+      // Barrido amplio: cualquier elemento hoja cuyo texto sea exactamente la etiqueta.
+      nodosEtiqueta = Array.from(root.querySelectorAll("*")).filter(
+        (n) => !n.children.length && coincideEtiqueta(n)
+      );
+    }
+    if (!nodosEtiqueta.length) {
       avisar("MyVete Bookmarklet: etiqueta de tutor no encontrada:", etiqueta);
       return null;
     }
+    // La más específica primero (texto más corto = más cerca de la hoja real).
+    nodosEtiqueta.sort((a, b) => a.textContent.length - b.textContent.length);
 
-    const fila = nodoEtiqueta.parentElement;
-    let nodoValor = fila && fila.querySelector("div.col-sm-8.col-xs-12");
+    for (const nodoEtiqueta of nodosEtiqueta) {
+      const fila = nodoEtiqueta.parentElement;
+      let nodoValor = null;
 
-    // Respaldo: si el valor no está en el mismo parent, se toma el primer
-    // .col-sm-8.col-xs-12 que siga a la etiqueta en orden de documento.
-    if (!nodoValor) {
-      nodoValor = Array.from(root.querySelectorAll("div.col-sm-8.col-xs-12")).find(
-        (v) => nodoEtiqueta.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING
-      );
+      // 1) Columna/celda hermana dentro del mismo row.
+      if (fila) {
+        nodoValor = Array.from(fila.querySelectorAll(SEL_VALOR)).find(
+          (v) =>
+            v !== nodoEtiqueta &&
+            !nodoEtiqueta.contains(v) &&
+            !v.contains(nodoEtiqueta) &&
+            normalizarConEspacios(v.textContent)
+        );
+      }
+      // 2) El siguiente hermano con texto que no sea otra etiqueta.
+      if (!nodoValor) {
+        let sig = nodoEtiqueta.nextElementSibling;
+        while (sig && !normalizarConEspacios(sig.textContent)) sig = sig.nextElementSibling;
+        if (sig && !coincideEtiqueta(sig)) nodoValor = sig;
+      }
+      // 3) El primer nodo-valor que siga a la etiqueta en orden de documento.
+      if (!nodoValor) {
+        nodoValor = Array.from(root.querySelectorAll(SEL_VALOR)).find(
+          (v) =>
+            normalizarConEspacios(v.textContent) &&
+            nodoEtiqueta.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING
+        );
+      }
+
+      let texto = nodoValor ? normalizarConEspacios(nodoValor.textContent) : null;
+
+      // 4) Respaldo final: el texto de la fila con el prefijo de la etiqueta quitado.
+      if (!texto && fila) {
+        const filaTexto = normalizarConEspacios(fila.textContent);
+        const limpio = filaTexto
+          .replace(new RegExp("^\\s*" + escaparRegex(etiqueta) + "\\s*", "i"), "")
+          .trim();
+        if (limpio && normalizarTexto(limpio) !== etiquetaNorm) texto = limpio;
+      }
+
+      if (texto && normalizarTexto(texto) !== etiquetaNorm) return texto;
     }
-    if (!nodoValor) {
-      avisar("MyVete Bookmarklet: valor de tutor no encontrado para:", etiqueta);
-      return null;
-    }
 
-    const texto = normalizarConEspacios(nodoValor.textContent);
-    return texto || null;
+    avisar("MyVete Bookmarklet: valor de tutor no encontrado para:", etiqueta);
+    return null;
   }
 
   // Raspa nombre/teléfono/email de una sección ya localizada (sirve tanto para
-  // la página actual como para el Document de un iframe). `silencioso` corta los
-  // console.warn durante el polling del iframe (se hace un intento final ruidoso).
+  // la página actual como para el Document de una pestaña same-origin).
+  // `silencioso` corta los console.warn durante el polling (se hace un intento
+  // final ruidoso). Cada etiqueta prueba varias redacciones (MyVete podría usar
+  // "Celular:" o "E-mail:" en vez de "Teléfono celular:" / "Email personal:").
   function rasparTutorDeSeccion(seccion, origen, silencioso) {
     const vacio = { nombre: null, telefono: null, email: null };
     if (!seccion) return vacio;
     try {
-      const nombre = extraerValorPorEtiqueta(seccion, "Nombre:", silencioso);
-      const telefono = extraerValorPorEtiqueta(seccion, "Teléfono celular:", silencioso);
-      const email = extraerValorPorEtiqueta(seccion, "Email personal:", silencioso);
+      const primero = (etiquetas) => {
+        for (const et of etiquetas) {
+          const v = extraerValorPorEtiqueta(seccion, et, true);
+          if (v) return v;
+        }
+        return null;
+      };
+
+      const nombre = primero(["Nombre:", "Nombre y apellido:", "Nombre completo:", "Cliente:"]);
+      const telefono = primero([
+        "Teléfono celular:", "Telefono celular:", "Celular:", "Teléfono:", "Telefono:",
+        "Teléfono móvil:", "Tel:",
+      ]);
+      const email = primero([
+        "Email personal:", "Email:", "E-mail personal:", "E-mail:", "Correo:",
+        "Correo electrónico:", "Correo electronico:",
+      ]);
 
       const telefonoOk = telefono && REGEX_TELEFONO.test(telefono) ? telefono : null;
       const emailOk = email && REGEX_EMAIL.test(email) ? email : null;
@@ -224,28 +325,21 @@
     return rasparTutorDeSeccion(seccion, "página actual", false);
   }
 
-  // Plan B (v3 — 05/09/2026): si la ficha del paciente NO trae los datos del
-  // tutor, se abre /customers/{id} en una PESTAÑA NUEVA (window.open) y se raspa
-  // desde ahí. Sustituye al iframe oculto, que dejó de servir: MyVete empezó a
-  // responder 403 a /customers/{id} en contexto iframe/fetch (WAF que filtra por
-  // Sec-Fetch-Dest / X-Requested-With). Una pestaña nueva es una navegación
-  // top-level normal —cookies completas, `Sec-Fetch-Dest: document`,
-  // `Sec-Fetch-Mode: navigate`, sin `X-Requested-With`—, indistinguible de que el
-  // usuario abra el enlace a mano, así que no dispara ese bloqueo. Además el SPA
-  // en una pestaña top-level no está enmarcado (`window.top === window.self`), lo
-  // que descarta cualquier redirect por frame-detection.
+  // Plan B: si la ficha del paciente NO trae los datos del tutor, se abre
+  // /customers/{id} en una PESTAÑA NUEVA (window.open) y se raspa desde ahí.
+  // Sustituye al iframe oculto, que dejó de servir: MyVete responde 403 a
+  // /customers/{id} en contexto iframe/fetch (WAF que filtra por Sec-Fetch-Dest /
+  // X-Requested-With). Una pestaña nueva es una navegación top-level normal, así
+  // que no dispara ese bloqueo.
   //
   // `tutorWin` DEBE venir de un window.open() disparado sincrónicamente dentro
   // del clic del bookmarklet (más abajo): un window.open diferido lo mata el
   // bloqueador de pop-ups. Acá solo se hace el polling del documento de esa
-  // pestaña (same-origin app.myvete.com -> `tutorWin.document` accesible) y, al
-  // terminar, se la cierra. Devuelve SIEMPRE {nombre,telefono,email} (nulls si
-  // falla / la bloquean / vence el timeout): nunca rechaza, no rompe el flujo.
+  // pestaña (same-origin -> `tutorWin.document` accesible) y, al terminar, se la
+  // cierra. Devuelve SIEMPRE {nombre,telefono,email}: nunca rechaza.
   function rasparTutorDesdePestana(idTutorArg, tutorWin) {
     return new Promise((resolve) => {
       const vacio = { nombre: null, telefono: null, email: null };
-      // 30s: en la prueba real MyVete tarda en poblar "Datos del Cliente" en una
-      // carga en frío del SPA por esa ruta (sin warm-up).
       const LIMITE_MS = 30000;
       let intervalo = null;
       let timeoutGlobal = null;
@@ -265,8 +359,6 @@
       }
       window.__myveteTutorWin = tutorWin;
 
-      // undefined = document inaccesible (la pestaña navegó a OTRO origen: login
-      // SSO en otro dominio, típicamente). null = todavía no hay documento.
       function obtenerDoc() {
         try {
           return tutorWin.document || null;
@@ -275,9 +367,6 @@
         }
       }
 
-      // `conservar` (solo en DEBUG_TUTOR + timeout): deja la pestaña abierta y en
-      // window.__myveteTutorWin para poder ver a mano qué muestra MyVete (403,
-      // login, ficha sin poblar...).
       function finalizar(resultado, motivo, conservar) {
         if (terminado) return;
         terminado = true;
@@ -307,7 +396,6 @@
         resolve(resultado);
       }
 
-      // Traza de diagnóstico del polling (solo DEBUG_TUTOR), 1 línea cada ~2s.
       function logDiagnostico(doc, seccion) {
         if (!DEBUG_TUTOR) return;
         const ahora = Date.now();
@@ -332,10 +420,6 @@
         );
       }
 
-      // MutationObserver sobre la sección apenas aparece: reacciona al instante
-      // cuando el SPA inyecta los valores del XHR de /customers/{id}. El intervalo
-      // de 400ms queda como respaldo. Se usa el constructor de la propia pestaña
-      // (mismo realm que el nodo observado); si falla, el polling cubre igual.
       function instalarObserverSiHaceFalta(seccion) {
         if (observerInstalado || !seccion) return;
         observerInstalado = true;
@@ -357,8 +441,6 @@
         }
         const doc = obtenerDoc();
         if (doc === undefined) {
-          // Navegó a otro origen (login SSO). No se puede leer. Se espera por si
-          // vuelve; si no, corta por timeout más abajo.
           if (Date.now() - inicio > LIMITE_MS) {
             console.warn(
               "MyVete Bookmarklet: la pestaña de tutor está en otro origen (¿login SSO?); no se puede raspar."
@@ -373,7 +455,6 @@
           instalarObserverSiHaceFalta(seccion);
           const tutor = rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, true);
           if (tutor.nombre || tutor.telefono || tutor.email) {
-            // Intento final ruidoso: deja el resumen y los warns en consola.
             const definitivo = rasparTutorDeSeccion(seccion, "pestaña /customers/" + idTutorArg, false);
             return finalizar(definitivo, "datos obtenidos");
           }
@@ -402,8 +483,6 @@
               "MyVete Bookmarklet: sección 'Datos del Cliente' no apareció en la pestaña (location:", loc, ")."
             );
           }
-          // En DEBUG_TUTOR la pestaña se conserva (ver finalizar()); en producción
-          // se cierra siempre.
           return finalizar(vacio, "timeout " + LIMITE_MS + "ms", DEBUG_TUTOR);
         }
       }
@@ -429,17 +508,33 @@
     };
 
     try {
-      const root = document.querySelector(".patient-info");
-      if (!root) return vacio;
+      const root =
+        document.querySelector(".patient-info") ||
+        document.querySelector(
+          "[class*='patient-info'],[class*='patient_info'],[class*='patientInfo']," +
+            "[class*='patient-header'],[class*='paciente-info'],#patient-info,.patient,.paciente"
+        );
+      if (!root) {
+        console.warn("MyVete Bookmarklet: contenedor de la mascota (.patient-info) no encontrado.");
+        return { tutor: rasparTutor(), mascota: vacio.mascota };
+      }
 
-      const nombreMascota = root.querySelector("h1")?.innerText.trim() || null;
+      const nodoNombre = root.querySelector(
+        "h1,h2,.patient-name,[class*='patient-name'],[class*='paciente-nombre'],[class*='pet-name']"
+      );
+      const nombreMascota =
+        nodoNombre && nodoNombre.innerText ? nodoNombre.innerText.trim() || null : null;
 
-      const divCombinado = Array.from(root.querySelectorAll("div")).find((d) => {
-        if (d.querySelector("div")) return false;
+      // "Especie, raza[, color]" en un nodo hoja. Se aceptan varios tags (no solo
+      // div) y se exige que el primer segmento sea una especie conocida.
+      const divCombinado = Array.from(
+        root.querySelectorAll("div,span,p,li,small,h2,h3,h4")
+      ).find((d) => {
+        if (d.querySelector("div,span,p,li")) return false; // solo hojas
         const texto = d.innerText && d.innerText.trim();
         if (!texto || texto.indexOf(",") === -1) return false;
-        const primeraParte = texto.split(",")[0].trim().toLowerCase();
-        return ESPECIES_VALIDAS.includes(primeraParte);
+        const primeraParte = normalizarTexto(texto.split(",")[0]);
+        return ESPECIES_VALIDAS.indexOf(primeraParte) !== -1;
       });
       const partes = divCombinado
         ? divCombinado.innerText.split(",").map((s) => s.trim())
@@ -492,27 +587,21 @@
     return null;
   }
 
-  // Paso 2 — Despliegue del panel externo (Sección 3.2, punto 2)
-  // IMPORTANTE (Sección 4.1 — bloqueadores de pop-ups): window.open() debe dispararse
-  // en el mismo hilo de ejecución del clic sobre el bookmarklet, sin pasos asíncronos
-  // intermedios (fetch, await, setTimeout) entre el clic y la apertura. El raspado de
-  // arriba es 100% síncrono, así que no rompe esta regla.
+  // Paso 2 — Despliegue del panel (Sección 3.2, punto 2)
+  // IMPORTANTE (Sección 4.1 — bloqueadores de pop-ups): el ÚNICO window.open() que
+  // corre dentro del gesto del clic es el de la pestaña del tutor (Plan B). El
+  // panel se monta como iframe overlay (sin ventana emergente), así que no hay
+  // "segundo window.open" que el navegador pueda bloquear. El raspado de arriba es
+  // 100% síncrono, así que la pestaña del tutor se abre limpia dentro del gesto.
   const datosFiliacion = rasparFiliacion();
   const idTutor = extraerIdTutor();
 
-  // Diagnóstico: deja ver en la consola de MyVete exactamente qué se raspó,
-  // antes de que sea un problema del panel. Si `tutor` sale con los tres campos
-  // en null, el fallo está en encontrarSeccionDatosCliente()/extraerValorPorEtiqueta()
-  // contra el DOM real de esta pantalla (ver probe en bookmarklet/README.md).
   console.log("MyVete Bookmarklet: filiación raspada ->", JSON.stringify(datosFiliacion));
   console.log("MyVete Bookmarklet: idTutor ->", idTutor);
 
-  // Plan B, apertura sincrónica (Sección 4.1 — bloqueadores de pop-ups): si el
-  // tutor no vino en la página actual y hay idTutor, la pestaña /customers/{id}
-  // se abre AHORA, dentro del hilo del clic. Diferirla a un .then() haría que el
-  // bloqueador de pop-ups la mate. Se abre ANTES que el panel para que el panel
-  // quede como pestaña activa al final. El polling/raspado (asíncrono) se engancha
-  // más abajo, cuando ya está el canal del panel.
+  // Plan B, apertura sincrónica: si el tutor no vino en la página actual y hay
+  // idTutor, la pestaña /customers/{id} se abre AHORA, dentro del hilo del clic.
+  // Diferirla a un .then() haría que el bloqueador de pop-ups la mate.
   const tutorSync = (datosFiliacion && datosFiliacion.tutor) || {};
   const tutorVacio = !tutorSync.nombre && !tutorSync.telefono && !tutorSync.email;
   const necesitaPestanaTutor = tutorVacio && !!idTutor;
@@ -531,8 +620,8 @@
   }
 
   // El ID de tutor viaja por query param: interface/app.js corre en el origen del
-  // panel (no en MyVete), así que la URL es el único canal disponible al cargar
-  // el documento — el postMessage (más abajo) lo repite solo como respaldo.
+  // panel (no en MyVete), así que la URL es el único canal disponible al cargar el
+  // documento — el postMessage (más abajo) lo repite solo como respaldo.
   const params = new URLSearchParams();
   if (idTutor) params.set("idTutor", idTutor);
   const queryString = params.toString();
@@ -540,75 +629,209 @@
     PANEL_URL +
     (queryString ? (PANEL_URL.indexOf("?") === -1 ? "?" : "&") + queryString : "");
 
-  console.log("MyVete Bookmarklet: abriendo panel en", urlPanel);
+  console.log("MyVete Bookmarklet: montando panel embebido ->", urlPanel);
   console.log(
     "MyVete Bookmarklet: para cambiar la URL del panel ->",
     "localStorage.setItem('myvete_panel_url', '<url>')"
   );
-  const ventana = window.open(urlPanel, "MYVETE_PANEL");
 
-  if (!ventana) {
-    console.error("MyVete Bookmarklet: window.open() bloqueado por el navegador.");
-    // No dejar huérfana la pestaña de tutor si el panel no pudo abrir.
-    try {
-      if (tutorWin && !tutorWin.closed) tutorWin.close();
-    } catch (error) {
-      // ignorado
+  // Overlay del panel: <div> fijo a pantalla completa con un <iframe> del panel.
+  // Todos los estilos se fijan por CSSOM (.style.cssText) — no por atributo
+  // style= ni <style> inyectado — para no chocar con una CSP style-src estricta
+  // de MyVete. Se usan !important en lo crítico para ganarle a los estilos del
+  // sitio anfitrión.
+  function crearOverlayPanel(url, alPedirVentana) {
+    const previo = document.getElementById("myvete-panel-host");
+    if (previo && previo.parentNode) previo.parentNode.removeChild(previo);
+
+    const host = document.createElement("div");
+    host.id = "myvete-panel-host";
+    host.style.cssText =
+      "position:fixed!important;inset:0!important;z-index:2147483647!important;" +
+      "margin:0!important;padding:0!important;background:rgba(0,0,0,.35)!important;" +
+      "display:flex!important;justify-content:flex-end!important;";
+
+    const caja = document.createElement("div");
+    caja.style.cssText =
+      "width:520px!important;max-width:100%!important;height:100%!important;" +
+      "background:#fff!important;display:flex!important;flex-direction:column!important;" +
+      "box-shadow:-4px 0 24px rgba(0,0,0,.35)!important;";
+
+    const barra = document.createElement("div");
+    barra.style.cssText =
+      "flex:0 0 auto!important;display:flex!important;align-items:center!important;" +
+      "gap:10px!important;padding:6px 10px!important;background:#0b8457!important;" +
+      "color:#fff!important;font:600 13px/1.4 system-ui,'Segoe UI',Arial,sans-serif!important;";
+
+    const titulo = document.createElement("span");
+    titulo.textContent = "MyVete → Panel de carga";
+
+    const espaciador = document.createElement("span");
+    espaciador.style.cssText = "flex:1 1 auto!important;";
+
+    const botonVentana = document.createElement("button");
+    botonVentana.type = "button";
+    botonVentana.textContent = "Abrir en pestaña";
+    botonVentana.style.cssText =
+      "border:0!important;background:transparent!important;color:#fff!important;" +
+      "text-decoration:underline!important;cursor:pointer!important;font:inherit!important;";
+
+    const botonCerrar = document.createElement("button");
+    botonCerrar.type = "button";
+    botonCerrar.textContent = "✕";
+    botonCerrar.setAttribute("aria-label", "Cerrar panel");
+    botonCerrar.style.cssText =
+      "border:0!important;background:transparent!important;color:#fff!important;" +
+      "font-size:16px!important;line-height:1!important;cursor:pointer!important;padding:2px 6px!important;";
+
+    const iframe = document.createElement("iframe");
+    iframe.src = url;
+    iframe.title = "MyVete Panel de carga";
+    iframe.setAttribute("allow", "microphone; clipboard-write; clipboard-read");
+    iframe.style.cssText =
+      "flex:1 1 auto!important;width:100%!important;height:100%!important;" +
+      "border:0!important;background:#fff!important;display:block!important;";
+
+    function destruir() {
+      window.removeEventListener("keydown", alPresionarTecla);
+      if (host && host.parentNode) host.parentNode.removeChild(host);
     }
-    return;
+    function alPresionarTecla(evento) {
+      if (evento.key === "Escape") destruir();
+    }
+
+    botonCerrar.addEventListener("click", destruir);
+    botonVentana.addEventListener("click", function () {
+      if (typeof alPedirVentana === "function") alPedirVentana();
+    });
+    host.addEventListener("click", function (evento) {
+      if (evento.target === host) destruir();
+    });
+    window.addEventListener("keydown", alPresionarTecla);
+
+    barra.appendChild(titulo);
+    barra.appendChild(espaciador);
+    barra.appendChild(botonVentana);
+    barra.appendChild(botonCerrar);
+    caja.appendChild(barra);
+    caja.appendChild(iframe);
+    host.appendChild(caja);
+    (document.body || document.documentElement).appendChild(host);
+    window.__myvetePanelHost = host;
+
+    return { iframe: iframe, destruir: destruir };
   }
 
-  // Handshake con el panel (interface/app.js Sección 0): en vez de disparar el
-  // postMessage a ciegas, se espera a que el panel avise MYVETE_PANEL_READY —
-  // recién ahí su listener de MYVETE_FILIACION está activo. Sirviendo desde
-  // GitHub Pages la carga del panel tarda más que los 2s de la lógica vieja
-  // (5 x 400ms), así que ese envío ciego se perdía siempre. Este listener se
-  // registra de forma síncrona, antes de que la ventana nueva llegue a 'load',
-  // así que no hay carrera: el READY siempre lo encuentra escuchando.
-  //
-  // Respaldo: si el READY no llega en 5s (panel viejo en caché sin el aviso,
-  // extensión que bloquea el postMessage, etc.) se envía igual. interface/app.js
-  // solo asigna valores a campos (idempotente), así que un envío de más no hace
-  // daño y este fallback no puede empeorar el comportamiento anterior.
-  const mensaje = {
-    type: "MYVETE_FILIACION",
-    payload: Object.assign({}, datosFiliacion, { idTutor: idTutor }),
-  };
-  console.log("MyVete Bookmarklet: 1er mensaje al panel ->", JSON.stringify(mensaje));
-
-  // Canal hacia el panel con handshake: los mensajes se encolan hasta que el
-  // panel avisa MYVETE_PANEL_READY (o hasta un respaldo de 5s), y a partir de
-  // ahí se despachan de inmediato. Soporta varios envíos: el 1ro lleva mascota +
-  // idTutor + tutor de la página actual; si después el iframe consigue el tutor,
-  // se manda un 2do MYVETE_FILIACION (interface/app.js reasigna campos de forma
-  // idempotente, así que un segundo mensaje solo completa lo que faltaba).
-  function crearCanalPanel(ventanaPanel) {
-    let listo = false;
+  // Canal hacia el panel con handshake y fallback iframe -> ventana.
+  //  - Modo iframe (default): se espera el aviso MYVETE_PANEL_READY del panel
+  //    (interface/app.js). Si el panel no lo confirma en 9s, se asume que MyVete
+  //    bloqueó el iframe (CSP / X-Frame-Options) y se cae a window.open().
+  //  - Respaldo intermedio: aun con un app.js viejo en caché (que solo avisa
+  //    READY al opener), el listener de MYVETE_FILIACION del panel ya está activo,
+  //    así que a los 5s se hace un despacho ciego al iframe para no demorar los
+  //    datos. interface/app.js reasigna campos de forma idempotente: un envío de
+  //    más no hace daño.
+  //  - Soporta varios envíos: el 1ro lleva mascota + idTutor + tutor de la página
+  //    actual; si después la pestaña consigue el tutor, se manda un 2do mensaje.
+  function abrirCanalPanel(url) {
     const cola = [];
+    let listo = false;
+    let modo = "iframe";
+    let destino = null;
+    let overlay = null;
+    let tFallback = null;
+    let tCiego = null;
 
     function flush() {
       while (cola.length) {
         const m = cola.shift();
-        console.log("MyVete Bookmarklet: -> panel:", JSON.stringify(m));
-        ventanaPanel.postMessage(m, "*");
+        try {
+          console.log("MyVete Bookmarklet: -> panel (" + modo + "):", JSON.stringify(m));
+          destino.postMessage(m, "*");
+        } catch (error) {
+          console.warn("MyVete Bookmarklet: no se pudo postMessage al panel.", error);
+        }
       }
     }
 
-    function alRecibirMensaje(evento) {
-      if (evento.source !== ventanaPanel) return;
-      if (!evento.data || evento.data.type !== "MYVETE_PANEL_READY") return;
+    function marcarListo(motivo) {
       if (listo) return;
       listo = true;
-      console.log("MyVete Bookmarklet: panel READY.");
+      if (tFallback) {
+        clearTimeout(tFallback);
+        tFallback = null;
+      }
+      if (tCiego) {
+        clearTimeout(tCiego);
+        tCiego = null;
+      }
+      console.log("MyVete Bookmarklet: panel LISTO (" + motivo + ").");
       flush();
     }
 
+    function alRecibirMensaje(evento) {
+      if (!evento || !evento.data || evento.data.type !== "MYVETE_PANEL_READY") return;
+      if (destino && evento.source && evento.source !== destino) return;
+      marcarListo("READY (" + modo + ")");
+    }
     window.addEventListener("message", alRecibirMensaje);
-    setTimeout(() => {
-      if (listo) return;
-      listo = true;
-      console.warn("MyVete Bookmarklet: sin READY en 5s, se despacha igual.");
-      flush();
+
+    function usarVentana(motivo) {
+      if (modo === "ventana") return;
+      console.warn(
+        "MyVete Bookmarklet: el panel embebido no respondió (" + motivo + "); " +
+          "abriendo el panel en una ventana aparte."
+      );
+      modo = "ventana";
+      if (overlay) {
+        try {
+          overlay.destruir();
+        } catch (error) {
+          // ignorado
+        }
+        overlay = null;
+      }
+      let v = null;
+      try {
+        v = window.open(url, "MYVETE_PANEL");
+      } catch (error) {
+        v = null;
+      }
+      if (!v) {
+        console.error(
+          "MyVete Bookmarklet: no se pudo abrir el panel en ventana (pop-up bloqueado). " +
+            "Permití pop-ups para " + window.location.origin + " y volvé a hacer clic, " +
+            "o abrí el panel a mano: " + url
+        );
+        return;
+      }
+      destino = v;
+      tCiego = setTimeout(function () {
+        if (!listo) {
+          console.warn("MyVete Bookmarklet: ventana del panel sin READY en 5s; se despacha igual.");
+          marcarListo("timeout ventana");
+        }
+      }, 5000);
+    }
+
+    // Arranque en modo iframe.
+    overlay = crearOverlayPanel(url, function () {
+      usarVentana("pedido por el usuario");
+    });
+    destino = overlay.iframe.contentWindow;
+
+    tFallback = setTimeout(function () {
+      if (!listo) usarVentana("sin READY en 9s (¿iframe bloqueado por CSP?)");
+    }, 9000);
+
+    tCiego = setTimeout(function () {
+      if (listo || modo !== "iframe" || !destino) return;
+      console.warn("MyVete Bookmarklet: iframe sin READY en 5s; despacho ciego (¿app.js en caché?).");
+      try {
+        for (let i = 0; i < cola.length; i += 1) destino.postMessage(cola[i], "*");
+      } catch (error) {
+        // el fallback de 9s cubre el caso de iframe realmente bloqueado.
+      }
     }, 5000);
 
     return {
@@ -619,7 +842,13 @@
     };
   }
 
-  const panel = crearCanalPanel(ventana);
+  const mensaje = {
+    type: "MYVETE_FILIACION",
+    payload: Object.assign({}, datosFiliacion, { idTutor: idTutor }),
+  };
+  console.log("MyVete Bookmarklet: 1er mensaje al panel ->", JSON.stringify(mensaje));
+
+  const panel = abrirCanalPanel(urlPanel);
   panel.enviar(mensaje);
 
   // Plan B (continuación): la pestaña /customers/{id} ya se abrió sincrónicamente
@@ -647,7 +876,7 @@
 
   // Paso 5 — Escucha de retorno (Sección 3.2, punto 5)
   // TODO: registrar listener de "message" para recibir el resumen clínico compacto
-  //       devuelto por la ventana flotante
+  //       devuelto por el panel (MYVETE_SUBMIT_OK ya se emite del lado del panel)
   // TODO: al recibir el mensaje, localizar el campo de evolución en el DOM de MyVete,
   //       asignar el valor y disparar evento nativo con bubbling (ver Sección 4.3)
 })();

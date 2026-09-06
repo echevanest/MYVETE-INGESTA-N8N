@@ -16,13 +16,27 @@
 // El listener de 'message' que recibe MYVETE_FILIACION se registra en eval de
 // este módulo (Sección 2, más abajo), es decir ANTES de que 'load' dispare este
 // aviso: cuando el bookmarklet responde al READY, el panel ya puede recibir.
+//
+// El panel puede desplegarse de dos formas desde el bookmarklet (launcher.js):
+//   - iframe overlay dentro de la página de MyVete -> el bookmarklet es
+//     `window.parent` (no hay `window.opener`);
+//   - ventana aparte (window.open, fallback) -> el bookmarklet es `window.opener`.
+// Se avisa al que corresponda; `window.parent === window` cuando el panel está en
+// una pestaña top-level suelta (sin bookmarklet), y ahí no hay a quién avisar.
+function destinoBookmarklet() {
+  if (window.opener) return window.opener;
+  if (window.parent && window.parent !== window) return window.parent;
+  return null;
+}
+
 function notificarPanelListo() {
-  if (!window.opener) return;
+  const destino = destinoBookmarklet();
+  if (!destino) return;
   try {
-    window.opener.postMessage({ type: 'MYVETE_PANEL_READY' }, '*');
-    console.log('MyVete Panel: READY notificado al opener (bookmarklet).');
+    destino.postMessage({ type: 'MYVETE_PANEL_READY' }, '*');
+    console.log('MyVete Panel: READY notificado al bookmarklet (opener/parent).');
   } catch (error) {
-    console.warn('MyVete Panel: no se pudo notificar READY al opener.', error);
+    console.warn('MyVete Panel: no se pudo notificar READY al bookmarklet.', error);
   }
 }
 
@@ -580,8 +594,9 @@ if (btnSubmitFormulario) {
       mostrarBorradorMedico(datos.borrador_medico);
 
       btnSubmitFormulario.textContent = 'Reporte generado';
-      if (window.opener) {
-        window.opener.postMessage({ type: 'MYVETE_SUBMIT_OK' }, '*');
+      const destinoRetorno = destinoBookmarklet();
+      if (destinoRetorno) {
+        destinoRetorno.postMessage({ type: 'MYVETE_SUBMIT_OK' }, '*');
       }
     } catch (error) {
       console.error('Error al enviar a n8n:', error);

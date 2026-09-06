@@ -10,9 +10,21 @@
 2. En el campo **URL** pegar el contenido completo de `bookmarklet.txt`.
 3. Nombre sugerido: **MyVete → Panel**.
 
-Con la ficha de un paciente abierta en MyVete, hacer clic en el marcador: se abre
-el panel (`https://echevanest.github.io/MYVETE-INGESTA-N8N/interface/index.html`)
-con los datos de filiación precargados.
+Con la ficha de un paciente abierta en MyVete, hacer clic en el marcador: el
+panel (`https://echevanest.github.io/MYVETE-INGESTA-N8N/interface/index.html`) se
+monta como **iframe overlay** sobre la misma página de MyVete, con los datos de
+filiación precargados. Cerrar con `✕`, `Esc` o clic en el fondo; "Abrir en
+pestaña" lo despega a una ventana propia.
+
+### Por qué overlay y no una ventana emergente
+
+El bookmarklet ya abría una pestaña con `window.open()` para raspar el tutor
+(Plan B). Sumarle un **segundo** `window.open()` para el panel hacía que el
+navegador bloqueara el segundo en silencio (regla de "una ventana por gesto") y
+el panel no aparecía. Ahora el único `window.open()` del clic es el de la pestaña
+del tutor; el panel va embebido. Si MyVete bloquea el iframe por
+CSP / `X-Frame-Options` (no confirma `MYVETE_PANEL_READY` en 9 s), el bookmarklet
+cae solo a `window.open()` en ventana aparte.
 
 ## Cambiar la URL del panel sin regenerar
 
@@ -40,23 +52,25 @@ si aparece el encabezado "Datos del Cliente", si el contenedor tiene las
 etiquetas esperadas, y si los divs `.col-sm-8.col-xs-12` (selector actual del
 valor) siguen existiendo.
 
-### Plan B — iframe oculto de `/customers/{id}`
+### Plan B — pestaña nueva de `/customers/{id}`
 
 Si la ficha del paciente **no** trae la sección "Datos del Cliente", el
-bookmarklet carga `/customers/{idTutor}` en un `<iframe>` oculto (mismo origen
-`app.myvete.com` → sin CORS, `contentDocument` accesible), espera a que la SPA
-renderice (polling, timeout 10 s) y raspa de ahí. El resultado va al panel en un
-**2do** mensaje `MYVETE_FILIACION`. En consola:
+bookmarklet abre `/customers/{idTutor}` en una **pestaña nueva** (`window.open`,
+disparado dentro del clic para que no lo mate el bloqueador de pop-ups), espera a
+que la SPA renderice (polling + `MutationObserver`, timeout 30 s) y raspa de ahí.
+El iframe oculto que se usaba antes dejó de servir: MyVete responde 403 a
+`/customers/{id}` en contexto iframe/fetch. El resultado va al panel en un **2do**
+mensaje `MYVETE_FILIACION`. En consola:
 
 ```
-MyVete Bookmarklet: abriendo iframe oculto para raspar tutor -> https://app.myvete.com/customers/123
-MyVete Bookmarklet: tutor raspado (iframe /customers/123) -> nombre: ... | teléfono: ... | email: ...
-MyVete Bookmarklet: 2do mensaje (tutor desde iframe) -> {...}
+MyVete Bookmarklet: pestaña de tutor abierta -> https://app.myvete.com/customers/123
+MyVete Bookmarklet: tutor raspado (pestaña /customers/123) -> nombre: ... | teléfono: ... | email: ...
+MyVete Bookmarklet: 2do mensaje (tutor desde pestaña) -> {...}
 ```
 
-Riesgo: si MyVete responde con `X-Frame-Options: DENY` / CSP `frame-ancestors`,
-el iframe no carga y se resuelve con `null` (el médico completa a mano). El log
-mostrará `doc inaccesible (X-Frame-Options?)` o `timeout`.
+Diagnóstico: `localStorage.setItem('myvete_debug_tutor','1')` deja la pestaña
+abierta si vence el timeout (en `window.__myveteTutorWin`) y loguea el polling
+cada ~2 s. Volver a producción: `localStorage.setItem('myvete_debug_tutor','0')`.
 
 ## Regenerar tras editar `launcher.js`
 
