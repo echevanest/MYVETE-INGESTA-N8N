@@ -12,17 +12,17 @@
  * iframe por CSP/X-Frame-Options (no confirma READY en 9s), se cae solo a
  * window.open() en ventana aparte.
  *
- * Estrategia del tutor (07/09/2026): si la ficha del paciente NO trae los datos
- * del tutor, YA NO se abre una pestaña nueva de /customers/{id}. Esa vía caía al
- * home de MyVete: al ser una SPA, un cold-load de /customers/{id} en pestaña
- * nueva pierde el contexto de router/sesión y la ficha nunca renderiza. Ahora el
- * dato se pide desde la MISMA pestaña (sesión viva) con fetch():
- *   1) fetch de /customers/{id} como documento y raspado del HTML con los MISMOS
- *      selectores vía DOMParser;
- *   2) si eso da 403 (WAF) o rebota al home, se prueban endpoints JSON candidatos
- *      de la API interna;
- *   3) si nada devuelve datos, el panel muestra un aviso claro con enlace directo
- *      a /customers/{id} para que el médico lo cargue a mano.
+ * Estrategia del tutor (07/09/2026, rev. 2): si la ficha del paciente NO trae los
+ * datos del tutor, YA NO se abre una pestaña nueva de /customers/{id} ni se hace
+ * fetch de esa ruta HTML. MyVete es una SPA que redirige CUALQUIER carga dura de
+ * /customers/{id} (pestaña, fetch, navegación) al dashboard. En su lugar se llama
+ * a la API interna de MyVete desde la MISMA pestaña (sesión viva):
+ *     GET /api/customers/{id}?sessionId={sid}
+ * — confirmado 200 JSON inspeccionando el tráfico real (cuenta 444). Devuelve
+ * customerFullName + Contacts[] (Telefono movil / Email personal / ...). El
+ * sessionId se lee del Resource Timing de la propia página. Si la API no
+ * responde, el panel muestra un aviso con enlace directo a /customers/{id} para
+ * carga manual (y el idTutor copiable al portapapeles).
  *
  * Contrato del mensaje (debe calzar con el listener de interface/app.js Sección 2):
  *   { type: 'MYVETE_FILIACION', payload: { tutor: {...}, mascota: {...}, idTutor: 'string | null' } }
@@ -120,11 +120,9 @@
     return (texto || "").replace(/\s+/g, " ").trim();
   }
 
-  // Texto visible de un nodo. innerText necesita layout: en un Document creado por
-  // DOMParser (la respuesta de fetch, que nunca se renderiza) devuelve "" o
-  // undefined, mientras que textContent siempre trae el texto. Se prueba innerText
-  // primero (en la página viva respeta lo que está oculto por CSS) y se cae a
-  // textContent, que es la única vía en el doc parseado del fetch del tutor.
+  // Texto visible de un nodo. Se prueba innerText primero (respeta lo que está
+  // oculto por CSS) y se cae a textContent para nodos sin layout (innerText puede
+  // devolver "" o undefined en ese caso).
   function textoDe(nodo) {
     if (!nodo) return "";
     const via = nodo.innerText;
@@ -148,8 +146,8 @@
     return false;
   }
 
-  // Acepta un Document: el de la página actual, o el que devuelve DOMParser al
-  // parsear el HTML de /customers/{id} traído por fetch (ver obtenerTutorPorFetch).
+  // Localiza la sección "Datos del Cliente" en el Document de la página actual
+  // (el tutor ausente ya no se raspa de HTML: se pide a /api/customers/{id}).
   function encontrarSeccionDatosCliente(raiz) {
     const doc = raiz || document;
     try {
@@ -305,11 +303,10 @@
     return null;
   }
 
-  // Raspa nombre/teléfono/email de una sección ya localizada (sirve tanto para
-  // la página actual como para el Document que DOMParser arma con el HTML de
-  // /customers/{id} traído por fetch). `silencioso` corta los console.warn.
-  // Cada etiqueta prueba varias redacciones (MyVete podría usar "Celular:" o
-  // "E-mail:" en vez de "Teléfono celular:" / "Email personal:").
+  // Raspa nombre/teléfono/email de una sección "Datos del Cliente" ya localizada
+  // en la página actual. `silencioso` corta los console.warn. Cada etiqueta
+  // prueba varias redacciones (MyVete podría usar "Celular:" o "E-mail:" en vez
+  // de "Teléfono celular:" / "Email personal:").
   function rasparTutorDeSeccion(seccion, origen, silencioso) {
     const vacio = { nombre: null, telefono: null, email: null };
     if (!seccion) return vacio;
@@ -377,39 +374,110 @@
     return rasparTutorDeSeccion(seccion, "página actual", false);
   }
 
-  // Estrategia del tutor cuando la ficha del paciente no lo trae (reemplaza a la
-  // pestaña nueva de /customers/{id}, que en MyVete —una SPA— caía al home: un
-  // cold-load de esa ruta en pestaña nueva pierde el contexto de router/sesión y
-  // la ficha del cliente nunca renderiza). Se pide el dato desde la MISMA pestaña,
-  // donde la sesión está viva, con fetch():
-  //   1) fetch de /customers/{id} como documento (cookies incluidas) y raspado del
-  //      HTML devuelto con los MISMOS selectores, vía DOMParser;
-  //   2) si eso da 403 (WAF) o el fetch rebota al home, se prueban endpoints JSON
-  //      candidatos de la API interna y se mapean los campos por nombre de clave;
-  //   3) si nada devuelve datos, se resuelve con {nombre,telefono,email} en null y
-  //      el flujo de abajo manda al panel el aviso manual con enlace directo.
+  // Estrategia del tutor cuando la ficha del paciente no lo trae (o lo trae con
+  // placeholders). NO se abre una pestaña /customers/{id}: MyVete es una SPA que
+  // redirige CUALQUIER carga dura de esa ruta (pestaña nueva, fetch de HTML,
+  // navegación top-level) al dashboard, así que la ficha del cliente nunca
+  // renderiza. En su lugar se llama a la API interna de MyVete desde ESTA misma
+  // pestaña (sesión viva):
+  //
+  //   GET /api/customers/{id}?sessionId={sid}
+  //
+  // Confirmado el 07/09/2026 sobre app.myvete.com (cuenta 444) inspeccionando el
+  // tráfico de red real: responde 200 JSON a un fetch() same-origin normal (sin
+  // headers especiales), con la forma:
+  //   { customerFullName: "APELLIDO, NOMBRE", customerName, customerLastName,
+  //     Contacts: [ { contactValue: "...", Attribute: { attributeName: "Telefono
+  //     movil" | "Email personal" | "Telefono fijo" | ... } }, ... ], ... }
+  // El sessionId es el token que la SPA cuelga de cada llamada /api/...; se lee
+  // del Resource Timing de la propia página (siempre hay llamadas /api/ de MyVete
+  // ahí: kpis, schedules, socket.io, autologin...).
+  //
   // Devuelve SIEMPRE {nombre,telefono,email}: nunca rechaza.
 
-  // Recorre un objeto (respuesta JSON de la API) buscando nombre / teléfono /
-  // email por nombre de clave, sin asumir la forma exacta del endpoint. Bounded
-  // (profundidad <= 4) y best-effort: los valores basura y los que no pasan el
-  // regex de forma se descartan.
+  // Token de sesión propio de MyVete (?sessionId=... en cada /api/ que hace la
+  // SPA). Sin él la API responde 401/redirect.
+  function obtenerSessionIdMyVete() {
+    const RE = /[?&]sessionId=([A-Za-z0-9]{4,})/;
+    try {
+      const urls = performance.getEntriesByType("resource").map((e) => e.name);
+      for (const u of urls) {
+        const m = u.match(RE);
+        if (m) return m[1];
+      }
+    } catch (error) {
+      // Resource Timing no disponible: se prueban los fallbacks de abajo.
+    }
+    try {
+      const m = (window.location.href + " " + (window.name || "")).match(RE);
+      if (m) return m[1];
+    } catch (error) {
+      // ignorado
+    }
+    try {
+      const m = (document.documentElement.innerHTML || "").match(
+        /sessionId["'\s:=]+([A-Za-z0-9]{6,})/
+      );
+      if (m) return m[1];
+    } catch (error) {
+      // ignorado
+    }
+    return null;
+  }
+
+  // Mapea la respuesta de /api/customers/{id} de MyVete a {nombre,telefono,email}.
+  // nombre  <- customerFullName ("APELLIDO, NOMBRE") | customerName + lastName
+  // telefono/email <- Contacts[] emparejados por Attribute.attributeName; para
+  // teléfono se prefiere celular/móvil sobre fijo/laboral.
+  function tutorDesdeApiMyVete(j) {
+    const salida = { nombre: null, telefono: null, email: null };
+    if (!j || typeof j !== "object") return salida;
+
+    const nombre =
+      j.customerFullName ||
+      [j.customerName, j.customerLastName].filter(Boolean).join(" ").trim() ||
+      null;
+    if (nombre && !esValorBasura(nombre)) salida.nombre = normalizarConEspacios(nombre);
+
+    const contactos = Array.isArray(j.Contacts) ? j.Contacts : [];
+    const conValor = contactos
+      .map((c) => ({
+        etiqueta: normalizarTexto((c && c.Attribute && c.Attribute.attributeName) || ""),
+        valor: String((c && c.contactValue) || "").trim(),
+      }))
+      .filter((c) => c.valor && !esValorBasura(c.valor));
+
+    const ES_TEL = (t) => /tel[eé]fono|tel\.|celular|m[oó]vil|whats/.test(t);
+    const ES_TEL_PREF = (t) => /celular|m[oó]vil|whats/.test(t);
+    const ES_MAIL = (t) => /mail|correo/.test(t);
+
+    const tel =
+      conValor.find((c) => ES_TEL(c.etiqueta) && ES_TEL_PREF(c.etiqueta)) ||
+      conValor.find((c) => ES_TEL(c.etiqueta));
+    if (tel && REGEX_TELEFONO.test(tel.valor)) salida.telefono = tel.valor;
+
+    const mail = conValor.find((c) => ES_MAIL(c.etiqueta));
+    if (mail && REGEX_EMAIL.test(mail.valor)) salida.email = mail.valor;
+
+    return salida;
+  }
+
+  // Red de seguridad: si la forma de /api/customers/{id} cambiara, se recorre el
+  // objeto por nombre de clave (BFS: una clave poco profunda le gana a un "name"
+  // de mascota anidado). Bounded (profundidad <= 4).
   function tutorDesdeObjetoJson(raiz) {
     const salida = { nombre: null, telefono: null, email: null };
     if (!raiz || typeof raiz !== "object") return salida;
 
-    const CLAVE_NOMBRE = /^(nombre|name|nombre_completo|nombrecompleto|full_name|fullname|razon_social|razonsocial|cliente|nombre_cliente)$/i;
-    const CLAVE_APELLIDO = /^(apellido|apellidos|last_name|lastname)$/i;
-    const CLAVE_TEL = /(telefono|tel[_-]?(cel|movil|mob)|celular|movil|mobile|phone|whatsapp)/i;
+    const CLAVE_NOMBRE = /^(nombre|name|nombre_completo|nombrecompleto|full_name|fullname|customerfullname|customername|razon_social|razonsocial|cliente|nombre_cliente)$/i;
+    const CLAVE_APELLIDO = /^(apellido|apellidos|last_name|lastname|customerlastname)$/i;
+    const CLAVE_TEL = /(telefono|tel[_-]?(cel|movil|mob)|celular|movil|mobile|phone|whatsapp|contactvalue)/i;
     const CLAVE_MAIL = /(mail|correo)/i;
 
     let nombre = null;
     let apellido = null;
     const visto = new Set();
 
-    // Recorrido POR NIVELES (BFS): las claves del cliente están más arriba en el
-    // árbol que las de arrays anidados (mascotas, turnos), así que un "name" poco
-    // profundo le gana a un "name" de mascota más adentro.
     let nivel = [raiz];
     let prof = 0;
     while (nivel.length && prof <= 4) {
@@ -445,83 +513,60 @@
     const vacio = { nombre: null, telefono: null, email: null };
     if (!idTutorArg || typeof fetch !== "function") return Promise.resolve(vacio);
 
-    const origen = window.location.origin;
-    const idEnc = encodeURIComponent(idTutorArg);
-    const rutaHtml = origen + "/customers/" + idEnc;
-    const rutasJson = [
-      origen + "/customers/" + idEnc + ".json",
-      origen + "/api/customers/" + idEnc,
-      origen + "/api/v1/customers/" + idEnc,
-      origen + "/api/customer/" + idEnc,
-      origen + "/api/clientes/" + idEnc,
-    ];
+    const sid = obtenerSessionIdMyVete();
+    if (!sid) {
+      console.warn(
+        "MyVete Bookmarklet: no se pudo leer el sessionId de MyVete (sin llamadas /api/ en el " +
+          "Resource Timing). No se puede consultar /api/customers/" + idTutorArg + "."
+      );
+      return Promise.resolve(vacio);
+    }
+
+    const url =
+      window.location.origin + "/api/customers/" + encodeURIComponent(idTutorArg) +
+      "?sessionId=" + encodeURIComponent(sid);
 
     return (async function () {
-      // 1) HTML de la ficha del cliente + raspado con los selectores de siempre.
-      // Sin X-Requested-With: el WAF de MyVete filtra por ese header (y por
-      // Sec-Fetch-Dest, que no se puede setear); se pide lo más "navegación
-      // normal" posible. Si igual da 403, se cae a los endpoints JSON de abajo.
       try {
-        const res = await fetch(rutaHtml, {
-          credentials: "include",
-          redirect: "follow",
-          headers: { Accept: "text/html,application/xhtml+xml" },
-        });
-        const urlFinal = res.url || rutaHtml;
-        if (res.ok && /\/customers\/\d+/.test(urlFinal)) {
-          const html = await res.text();
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          const seccion = encontrarSeccionDatosCliente(doc);
-          if (seccion) {
-            const tutor = rasparTutorDeSeccion(seccion, "fetch HTML /customers/" + idTutorArg, false);
-            if (tutor.nombre || tutor.telefono || tutor.email) return tutor;
-          }
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) {
           console.warn(
-            "MyVete Bookmarklet: el HTML de /customers/" + idTutorArg +
-              " no trajo la sección 'Datos del Cliente'. Probando API JSON."
+            "MyVete Bookmarklet: /api/customers/" + idTutorArg + " respondió " + res.status +
+              " (¿sessionId vencido?)."
           );
-        } else {
-          console.warn(
-            "MyVete Bookmarklet: fetch HTML de /customers/" + idTutorArg + " no sirvió (status " +
-              res.status + ", url final " + urlFinal + "). Probando API JSON."
-          );
+          return vacio;
         }
-      } catch (error) {
-        console.warn("MyVete Bookmarklet: fetch HTML de /customers/" + idTutorArg + " falló.", error);
-      }
-
-      // 2) Endpoints JSON candidatos de la API interna.
-      for (const url of rutasJson) {
+        let data = null;
         try {
-          const res = await fetch(url, {
-            credentials: "include",
-            redirect: "follow",
-            headers: { "X-Requested-With": "XMLHttpRequest", Accept: "application/json" },
-          });
-          if (!res.ok) continue;
-          const ct = (res.headers.get("content-type") || "").toLowerCase();
-          if (ct.indexOf("json") === -1) continue;
-          const data = await res.json();
-          const tutor = tutorDesdeObjetoJson(data);
-          if (tutor.nombre || tutor.telefono || tutor.email) {
-            console.log(
-              "MyVete Bookmarklet: tutor obtenido de API JSON (" + url + ") ->",
-              "nombre:", tutor.nombre || "(no encontrado)",
-              "| teléfono:", tutor.telefono || "(no encontrado)",
-              "| email:", tutor.email || "(no encontrado)"
-            );
-            return tutor;
-          }
+          data = await res.json();
         } catch (error) {
-          // endpoint inexistente / CORS / no-JSON: se prueba el siguiente.
+          console.warn("MyVete Bookmarklet: /api/customers/" + idTutorArg + " no devolvió JSON.", error);
+          return vacio;
         }
-      }
 
-      console.warn(
-        "MyVete Bookmarklet: ninguna vía automática (HTML ni API JSON) devolvió el tutor " +
-          idTutorArg + ". El panel mostrará el aviso para cargarlo a mano."
-      );
-      return vacio;
+        let tutor = tutorDesdeApiMyVete(data);
+        if (!tutor.nombre && !tutor.telefono && !tutor.email) {
+          tutor = tutorDesdeObjetoJson(data); // red de seguridad ante cambio de forma
+        }
+
+        if (tutor.nombre || tutor.telefono || tutor.email) {
+          console.log(
+            "MyVete Bookmarklet: tutor obtenido de /api/customers/" + idTutorArg + " ->",
+            "nombre:", tutor.nombre || "(no encontrado)",
+            "| teléfono:", tutor.telefono || "(no encontrado)",
+            "| email:", tutor.email || "(no encontrado)"
+          );
+          return tutor;
+        }
+        console.warn(
+          "MyVete Bookmarklet: /api/customers/" + idTutorArg +
+            " respondió 200 pero sin datos de contacto reconocibles."
+        );
+        return vacio;
+      } catch (error) {
+        console.warn("MyVete Bookmarklet: fetch a /api/customers/" + idTutorArg + " falló.", error);
+        return vacio;
+      }
     })();
   }
 
@@ -892,10 +937,10 @@
   const panel = abrirCanalPanel(urlPanelConDatos);
   panel.enviar(mensaje);
 
-  // Recuperación del tutor ausente: fetch() asíncrono desde ESTA pestaña (sesión
-  // viva). Cuando resuelve, se manda un 2do mensaje al panel: con los datos si el
-  // fetch los consiguió, o con `tutorAutoFallo` + `tutorUrl` para que el panel
-  // muestre el aviso de carga manual con enlace directo a /customers/{id}.
+  // Recuperación del tutor ausente: llamada a /api/customers/{id} desde ESTA
+  // pestaña (sesión viva). Cuando resuelve, se manda un 2do mensaje al panel: con
+  // los datos si la API los devolvió, o con `tutorAutoFallo` + `tutorUrl` para
+  // que el panel muestre el aviso de carga manual con enlace directo.
   if (tutorFaltante) {
     const urlTutorManual = window.location.origin + "/customers/" + encodeURIComponent(idTutor);
     obtenerTutorPorFetch(idTutor).then((tutorFetch) => {
@@ -904,7 +949,7 @@
           type: "MYVETE_FILIACION",
           payload: { tutor: tutorFetch, idTutor: idTutor },
         };
-        console.log("MyVete Bookmarklet: 2do mensaje (tutor por fetch) ->", JSON.stringify(mensaje2));
+        console.log("MyVete Bookmarklet: 2do mensaje (tutor por API) ->", JSON.stringify(mensaje2));
         panel.enviar(mensaje2);
       } else {
         const mensajeManual = {

@@ -317,12 +317,19 @@ function sanitizarPeso(valorCrudo) {
 
 // Aviso "no se pudo traer el tutor automáticamente" (#aviso-tutor-auto en el
 // bloque Filiación). El bookmarklet lo pide vía payload.tutorAutoFallo cuando ni
-// la ficha del paciente ni el fetch a /customers/{id} dieron los datos del
-// tutor. Se arma con un enlace directo para abrir la ficha del tutor en MyVete.
+// la ficha del paciente ni la API /api/customers/{id} dieron los datos del
+// tutor. Se arma con: enlace directo a la ficha del tutor en MyVete + el idTutor
+// visible y un botón para copiarlo al portapapeles (así el médico lo pega en el
+// buscador de MyVete en un paso).
 function mostrarAvisoTutor(url, idTutor) {
   const aviso = document.getElementById('aviso-tutor-auto');
   if (!aviso) return;
-  aviso.textContent = 'No se pudieron obtener los datos del tutor automáticamente. ';
+  aviso.textContent = '';
+
+  aviso.appendChild(
+    document.createTextNode('No se pudieron obtener los datos del tutor automáticamente. '),
+  );
+
   const destino = url || (idTutor ? `https://app.myvete.com/customers/${idTutor}` : null);
   if (destino) {
     const enlace = document.createElement('a');
@@ -331,13 +338,57 @@ function mostrarAvisoTutor(url, idTutor) {
     enlace.rel = 'noopener noreferrer';
     enlace.textContent = 'Abrir ficha del tutor en MyVete ↗';
     aviso.appendChild(enlace);
-    aviso.appendChild(document.createTextNode(' y completá nombre, teléfono y e-mail a mano.'));
-  } else {
-    aviso.appendChild(
-      document.createTextNode('Completá nombre, teléfono y e-mail del tutor a mano.'),
-    );
   }
+  aviso.appendChild(
+    document.createTextNode(' Completá nombre, teléfono y e-mail a mano.'),
+  );
+
+  if (idTutor) {
+    aviso.appendChild(document.createElement('br'));
+    aviso.appendChild(document.createTextNode('ID de tutor: '));
+    const cod = document.createElement('code');
+    cod.textContent = String(idTutor);
+    aviso.appendChild(cod);
+
+    const btnCopiar = document.createElement('button');
+    btnCopiar.type = 'button';
+    btnCopiar.className = 'btn-copiar-id';
+    btnCopiar.textContent = 'Copiar ID';
+    btnCopiar.addEventListener('click', () => {
+      const marcarOk = () => {
+        btnCopiar.textContent = '✓ Copiado';
+        setTimeout(() => { btnCopiar.textContent = 'Copiar ID'; }, 1500);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(String(idTutor)).then(marcarOk).catch(() => {
+          copiarConSeleccion(cod);
+          marcarOk();
+        });
+      } else {
+        copiarConSeleccion(cod);
+        marcarOk();
+      }
+    });
+    aviso.appendChild(btnCopiar);
+  }
+
   aviso.hidden = false;
+}
+
+// Fallback de copiado cuando navigator.clipboard no está disponible (iframe sin
+// permiso, contexto no seguro): selecciona el <code> con el ID y usa execCommand.
+function copiarConSeleccion(nodo) {
+  try {
+    const rango = document.createRange();
+    rango.selectNodeContents(nodo);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(rango);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+  } catch (error) {
+    /* si ni así se puede, el ID queda visible para copiar a mano */
+  }
 }
 
 function ocultarAvisoTutor() {

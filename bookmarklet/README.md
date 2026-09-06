@@ -77,50 +77,77 @@ valor) siguen existiendo.
 cuele en un campo de contacto (visto 06/09/2026: la ficha traía la sección "Datos
 del Cliente" con nombre `Sin asignar` y un `06/09/2026 - Hace 0 segundos` en el
 lugar del teléfono). Efecto: esos valores no viajan al panel como reales y
-`tutorVacio` da `true`, así que **la recuperación por fetch se dispara igual
-aunque la sección exista pero venga sin cargar**. En consola:
+`tutorVacio` da `true`, así que **la recuperación por API se dispara igual aunque
+la sección exista pero venga sin cargar**. En consola:
 
 ```
 MyVete Bookmarklet: nombre de tutor descartado (placeholder/fecha): Sin asignar
 MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se recupera por fetch desde /customers/1310951.
 ```
 
-### Recuperación del tutor por `fetch` (07/09/2026)
+### Recuperación del tutor por la API interna de MyVete (07/09/2026, rev. 2)
 
 Si la ficha del paciente **no** trae la sección "Datos del Cliente" (o la trae con
-los campos del tutor en placeholder), el bookmarklet **ya no abre una pestaña
-nueva** de `/customers/{id}`. Esa vía caía al **home** de MyVete: al ser una SPA,
-un cold-load de esa ruta en pestaña nueva pierde el contexto de router/sesión y
-la ficha del cliente nunca renderiza (`tutor: null` en el panel).
+los campos en placeholder), el bookmarklet consulta la **API interna** de MyVete
+desde la **misma pestaña** (sesión viva):
 
-En su lugar, el dato se pide desde la **misma pestaña** (sesión viva), con
-`fetch()`, en este orden:
+```
+GET /api/customers/{idTutor}?sessionId={sid}
+```
 
-1. `fetch('/customers/{id}')` como documento (`credentials: 'include'`) y raspado
-   del HTML devuelto con los **mismos selectores**, vía `DOMParser`.
-2. Si eso da `403` (WAF) o el fetch rebota al home, se prueban endpoints JSON
-   candidatos de la API interna (`/customers/{id}.json`, `/api/customers/{id}`,
-   `/api/v1/customers/{id}`, `/api/customer/{id}`, `/api/clientes/{id}`) y se
-   mapean nombre / teléfono / email por nombre de clave.
-3. Si **nada** devuelve datos, el bookmarklet manda al panel
-   `payload: { idTutor, tutorAutoFallo: true, tutorUrl }` y el panel muestra el
-   aviso **"No se pudieron obtener los datos del tutor automáticamente"** con un
-   enlace directo a `/customers/{id}` para cargarlo a mano.
+Descubierto inspeccionando el tráfico de red real de MyVete (cuenta 444). Datos
+clave:
+
+- **Ni la pestaña nueva ni el `fetch` de HTML sirven**: MyVete es una SPA (React)
+  y **redirige al dashboard cualquier carga dura** de `/customers/{id}` — pestaña
+  nueva, `fetch`, o navegación top-level. Confirmado: `fetch('/customers/{id}')`
+  devuelve `200` pero con `res.url === 'https://app.myvete.com/'`.
+- La **API** en cambio responde `200 JSON` a un `fetch()` same-origin normal (sin
+  headers especiales), con la forma:
+  ```jsonc
+  {
+    "customerFullName": "APELLIDO, NOMBRE",
+    "customerName": "...", "customerLastName": "...",
+    "Contacts": [
+      { "contactValue": "1130000000", "Attribute": { "attributeName": "Telefono movil" } },
+      { "contactValue": "n@dominio.com", "Attribute": { "attributeName": "Email personal" } },
+      { "contactValue": "", "Attribute": { "attributeName": "Telefono fijo" } }
+    ]
+  }
+  ```
+- El `sessionId` es el token que la SPA cuelga de **cada** llamada `/api/...`. El
+  bookmarklet lo lee del **Resource Timing** de la propia página
+  (`performance.getEntriesByType('resource')`), que siempre tiene llamadas `/api/`
+  de MyVete (kpis, schedules, `socket.io`, `autologin`…).
+
+Mapeo (`tutorDesdeApiMyVete`):
+
+| campo panel | origen en el JSON |
+|---|---|
+| `nombre` | `customerFullName` (ya "APELLIDO, NOMBRE") — si falta, `customerName` + `customerLastName` |
+| `telefono` | `Contacts[].contactValue` cuyo `Attribute.attributeName` matchee `tel/celular/móvil`, prefiriendo `celular/móvil` sobre `fijo/laboral` |
+| `email` | `Contacts[].contactValue` cuyo `Attribute.attributeName` matchee `mail/correo` |
+
+Red de seguridad: si la forma del endpoint cambiara, se cae a `tutorDesdeObjetoJson`
+(recorrido BFS del objeto por nombre de clave).
 
 En consola (caso con datos):
 
 ```
-MyVete Bookmarklet: tutor raspado (fetch HTML /customers/123) -> nombre: ... | teléfono: ... | email: ...
-MyVete Bookmarklet: 2do mensaje (tutor por fetch) -> {...}
+MyVete Bookmarklet: tutor obtenido de /api/customers/123 -> nombre: PEREZ, JUAN | teléfono: 1130000000 | email: juan@mail.com
+MyVete Bookmarklet: 2do mensaje (tutor por API) -> {...}
 ```
 
 En consola (caso sin datos → aviso manual):
 
 ```
-MyVete Bookmarklet: fetch HTML de /customers/123 no sirvió (status 403, url final ...). Probando API JSON.
-MyVete Bookmarklet: ninguna vía automática (HTML ni API JSON) devolvió el tutor 123. El panel mostrará el aviso para cargarlo a mano.
+MyVete Bookmarklet: /api/customers/123 respondió 200 pero sin datos de contacto reconocibles.
 MyVete Bookmarklet: 2do mensaje (aviso manual, sin datos de tutor) -> {"type":"MYVETE_FILIACION","payload":{"idTutor":"123","tutorAutoFallo":true,"tutorUrl":"https://app.myvete.com/customers/123"}}
 ```
+
+En ese caso el panel muestra **"No se pudieron obtener los datos del tutor
+automáticamente"** con enlace directo a `/customers/{id}` y el `idTutor` copiable
+al portapapeles (botón "Copiar ID").
 
 ## Regenerar tras editar `launcher.js`
 

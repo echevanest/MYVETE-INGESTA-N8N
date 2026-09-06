@@ -228,6 +228,30 @@ section {
   font-weight: 600;
 }
 
+.aviso-tutor code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: #fbe6bf;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+.btn-copiar-id {
+  margin-left: 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  color: #7a4a00;
+  background: #fbe6bf;
+  border: 1px solid #f0c675;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn-copiar-id:hover {
+  background: #f7dca6;
+}
+
 /* --- Filiación / Consulta de hoy — campos de formulario ----------------- */
 
 .grid-filiacion,
