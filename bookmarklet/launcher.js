@@ -93,6 +93,30 @@
   const REGEX_TELEFONO = /^[+\d][\d\s\-()]{5,}$/;
   const REGEX_EMAIL = /\S+@\S+\.\S+/;
 
+  // Blindaje anti-placeholder (detectado 06/09/2026 en logs en vivo, idTutor
+  // 1310951): la ficha del paciente puede traer la sección "Datos del Cliente"
+  // con los campos del tutor SIN cargar — MyVete pinta literales tipo
+  // "Sin asignar" en el nombre y encaja un timestamp de la ficha
+  // ("06/09/2026 - Hace 0 segundos") donde debería ir el teléfono. Esos valores
+  // NO son datos: hay que tratarlos como "campo vacío" para que
+  //   a) no viajen al panel como si fueran reales, y
+  //   b) `tutorVacio` dé true y se dispare el Plan B (pestaña /customers/{id}).
+  // Lista de textos-basura (comparación exacta, ya normalizados a minúsculas):
+  const PLACEHOLDERS_BASURA = [
+    "sin asignar", "no asignado", "no asignada", "sin datos", "sin dato",
+    "no encontrado", "no encontrada", "no disponible", "no especificado",
+    "no especificada", "sin especificar", "sin información", "sin informacion",
+    "no informado", "no informa", "no registra", "sin registrar", "ninguno",
+    "ninguna", "n/a", "na", "n/d", "s/d", "s/n", "-", "--", "---", "—", "–",
+    "...", "vacío", "vacio", "pendiente",
+  ];
+  // "Hace 0 segundos", "hace 5 minutos", "hace 2 días", "hace un momento"...
+  const REGEX_TIEMPO_RELATIVO =
+    /\bhace\s+(un[oa]?|\d+)\s+(segund|minut|hor|d[ií]a|semana|mes|año|anio|momento)/i;
+  // Fechas 06/09/2026 · 6-9-26 · 2026-09-06 y horas 14:30 · 14:30:05.
+  const REGEX_FECHA =
+    /(\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b)|(\b\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}\b)|(\b\d{1,2}:\d{2}(?::\d{2})?\b)/;
+
   function escaparRegex(texto) {
     return String(texto).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
@@ -105,6 +129,22 @@
   // muestran tal cual al médico (nombre, email con mayúsculas, etc.).
   function normalizarConEspacios(texto) {
     return (texto || "").replace(/\s+/g, " ").trim();
+  }
+
+  // true si `texto` es un placeholder de MyVete ("Sin asignar", "-", ...) o un
+  // timestamp/fecha ("06/09/2026 - Hace 0 segundos") en vez de un dato real de
+  // contacto. Se usa para NO aceptar esos valores como nombre/teléfono/email y
+  // para decidir que el tutor "no está en la página actual" (dispara el Plan B).
+  function esValorBasura(texto) {
+    const t = normalizarTexto(texto);
+    if (!t) return true;
+    if (PLACEHOLDERS_BASURA.indexOf(t) !== -1) return true;
+    // Mismo placeholder pero con signos alrededor: "(sin asignar)", "sin asignar.".
+    const sinSignos = t.replace(/[()[\].,;:*"'¡!¿?_]+/g, " ").replace(/\s+/g, " ").trim();
+    if (PLACEHOLDERS_BASURA.indexOf(sinSignos) !== -1) return true;
+    if (REGEX_TIEMPO_RELATIVO.test(t)) return true;
+    if (REGEX_FECHA.test(t)) return true;
+    return false;
   }
 
   // Acepta un Document (el de la página actual o el de una pestaña same-origin).
@@ -290,8 +330,17 @@
         "Correo electrónico:", "Correo electronico:",
       ]);
 
-      const telefonoOk = telefono && REGEX_TELEFONO.test(telefono) ? telefono : null;
-      const emailOk = email && REGEX_EMAIL.test(email) ? email : null;
+      // Se descartan placeholders y timestamps ANTES de validar la forma: un
+      // "Sin asignar" en el nombre o un "06/09/2026 - Hace 0 segundos" en el
+      // teléfono no son datos, son "campo sin cargar".
+      const nombreOk = nombre && !esValorBasura(nombre) ? nombre : null;
+      const telefonoOk =
+        telefono && !esValorBasura(telefono) && REGEX_TELEFONO.test(telefono) ? telefono : null;
+      const emailOk =
+        email && !esValorBasura(email) && REGEX_EMAIL.test(email) ? email : null;
+      if (!silencioso && nombre && !nombreOk) {
+        console.warn("MyVete Bookmarklet: nombre de tutor descartado (placeholder/fecha):", nombre);
+      }
       if (!silencioso && telefono && !telefonoOk) {
         console.warn("MyVete Bookmarklet: teléfono raspado no pasó la validación de forma:", telefono);
       }
@@ -299,7 +348,7 @@
         console.warn("MyVete Bookmarklet: email raspado no pasó la validación de forma:", email);
       }
 
-      const resultado = { nombre: nombre || null, telefono: telefonoOk, email: emailOk };
+      const resultado = { nombre: nombreOk, telefono: telefonoOk, email: emailOk };
       if (!silencioso) {
         console.log(
           "MyVete Bookmarklet: tutor raspado (" + (origen || "?") + ") ->",
@@ -602,9 +651,27 @@
   // Plan B, apertura sincrónica: si el tutor no vino en la página actual y hay
   // idTutor, la pestaña /customers/{id} se abre AHORA, dentro del hilo del clic.
   // Diferirla a un .then() haría que el bloqueador de pop-ups la mate.
+  //
+  // "No vino" = los tres campos son null O son basura (placeholder / fecha).
+  // rasparTutorDeSeccion ya null-ea la basura, pero se revalida acá con
+  // esValorBasura por si un valor se colara: el objetivo es que la ficha con el
+  // tutor "Sin asignar" dispare el Plan B en vez de dar el tutor por resuelto.
   const tutorSync = (datosFiliacion && datosFiliacion.tutor) || {};
-  const tutorVacio = !tutorSync.nombre && !tutorSync.telefono && !tutorSync.email;
+  const tutorTieneNombre = !!tutorSync.nombre && !esValorBasura(tutorSync.nombre);
+  const tutorTieneTelefono = !!tutorSync.telefono && !esValorBasura(tutorSync.telefono);
+  const tutorTieneEmail = !!tutorSync.email && !esValorBasura(tutorSync.email);
+  const tutorVacio = !tutorTieneNombre && !tutorTieneTelefono && !tutorTieneEmail;
   const necesitaPestanaTutor = tutorVacio && !!idTutor;
+  if (tutorVacio && idTutor) {
+    console.log(
+      "MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se activa el Plan B (pestaña /customers/" +
+        idTutor + ")."
+    );
+  } else if (tutorVacio && !idTutor) {
+    console.warn(
+      "MyVete Bookmarklet: tutor ausente y sin idTutor recuperable; no se puede activar el Plan B. Cargá el tutor a mano en el panel."
+    );
+  }
   let tutorWin = null;
   if (necesitaPestanaTutor) {
     const urlTutor = window.location.origin + "/customers/" + encodeURIComponent(idTutor);

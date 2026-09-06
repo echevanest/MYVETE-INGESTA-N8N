@@ -69,9 +69,25 @@ si aparece el encabezado "Datos del Cliente", si el contenedor tiene las
 etiquetas esperadas, y si los divs `.col-sm-8.col-xs-12` (selector actual del
 valor) siguen existiendo.
 
+### Placeholders y timestamps no cuentan como dato
+
+`launcher.js` descarta como "campo vacío" los literales de MyVete (`Sin asignar`,
+`No disponible`, `-`, `N/D`, …) y cualquier fecha/hora u "hace X minutos" que se
+cuele en un campo de contacto (visto 06/09/2026: la ficha traía la sección "Datos
+del Cliente" con nombre `Sin asignar` y un `06/09/2026 - Hace 0 segundos` en el
+lugar del teléfono). Efecto: esos valores no viajan al panel como reales y
+`tutorVacio` da `true`, así que **el Plan B se dispara igual aunque la sección
+exista pero venga sin cargar**. En consola:
+
+```
+MyVete Bookmarklet: nombre de tutor descartado (placeholder/fecha): Sin asignar
+MyVete Bookmarklet: tutor ausente/placeholder en la página actual; se activa el Plan B (pestaña /customers/1310951).
+```
+
 ### Plan B — pestaña nueva de `/customers/{id}`
 
-Si la ficha del paciente **no** trae la sección "Datos del Cliente", el
+Si la ficha del paciente **no** trae la sección "Datos del Cliente" (o la trae con
+los campos del tutor en placeholder), el
 bookmarklet abre `/customers/{idTutor}` en una **pestaña nueva** (`window.open`,
 disparado dentro del clic para que no lo mate el bloqueador de pop-ups), espera a
 que la SPA renderice (polling + `MutationObserver`, timeout 30 s) y raspa de ahí.
