@@ -268,9 +268,10 @@ let bloqueFiliacionEditado = false;
 // ID de tutor de MyVete (segmento numérico de /customers/{id}). Este archivo
 // corre en el origen del panel, no en MyVete, así que NO puede leerlo de la URL
 // de MyVete: lo raspa el bookmarklet (launcher.js) y lo pasa como query param
-// `?idTutor=` al abrir el panel, con respaldo dentro del payload del postMessage.
-// Viaja en el payload de salida como filiacion.tutor.id_myvete y es la clave de
-// upsert prevista para la tabla `tutores`.
+// `?idTutor=` al abrir el panel, con respaldo dentro del payload del postMessage
+// y dentro del hash `#data=` (ver Sección 2.bis). Viaja en el payload de salida
+// como filiacion.tutor.id_myvete y es la clave de upsert prevista para la tabla
+// `tutores`.
 let idTutorMyVete = new URLSearchParams(window.location.search).get('idTutor') || null;
 
 const btnEditarFiliacion = document.getElementById('btn-editar-filiacion');
@@ -314,18 +315,20 @@ function sanitizarPeso(valorCrudo) {
   return limpio === '' ? null : limpio;
 }
 
-// Recepción de filiación raspada por el Bookmarklet de MyVete.
-window.addEventListener('message', (evento) => {
-  if (!evento.data || evento.data.type !== 'MYVETE_FILIACION') return;
+// Aplica un payload de filiación al formulario. Idempotente y por campo: solo
+// pisa lo que llega con valor no nulo, así se puede llamar varias veces (1er
+// mensaje con mascota + tutor de la página; 2do mensaje con el tutor raspado
+// aparte) y desde varias fuentes (postMessage, hash `#data=`) sin pisar de más.
+function aplicarFiliacion(payload, origen) {
+  if (!payload) return;
+  console.log(`MyVete Panel: filiación aplicada (${origen || '?'}) ->`, JSON.stringify(payload));
 
-  console.log('MyVete Panel: MYVETE_FILIACION recibido ->', JSON.stringify(evento.data.payload));
-
-  const { tutor, mascota } = evento.data.payload || {};
+  const { tutor, mascota } = payload;
 
   // Respaldo del query param: si el bookmarklet no pudo poner el idTutor en la
-  // URL (o el panel ya estaba abierto de antes), todavía llega dentro del mensaje.
-  if (!idTutorMyVete && evento.data.payload && evento.data.payload.idTutor != null) {
-    idTutorMyVete = String(evento.data.payload.idTutor);
+  // URL (o el panel ya estaba abierto de antes), todavía llega dentro del payload.
+  if (!idTutorMyVete && payload.idTutor != null) {
+    idTutorMyVete = String(payload.idTutor);
   }
 
   if (tutor) {
@@ -351,7 +354,58 @@ window.addEventListener('message', (evento) => {
       if (pesoSanitizado != null) document.getElementById('paciente-peso').value = pesoSanitizado;
     }
   }
+}
+
+// Recepción de filiación raspada por el Bookmarklet de MyVete (modo iframe, o
+// modo ventana cuando el navegador conserva el canal con el opener).
+window.addEventListener('message', (evento) => {
+  if (!evento.data || evento.data.type !== 'MYVETE_FILIACION') return;
+  console.log('MyVete Panel: MYVETE_FILIACION recibido por postMessage.');
+  aplicarFiliacion(evento.data.payload || {}, 'postMessage');
 });
+
+// ---------------------------------------------------------------------------
+// 2.bis. Filiación por hash de URL — `#data=<JSON codificado>`
+// ---------------------------------------------------------------------------
+// El postMessage falla en el fallback de ventana nueva: MyVete bloquea el iframe
+// por CSP/X-Frame-Options y, al abrir el panel con window.open, el canal con el
+// opener no siempre sobrevive (bloqueadores, `noopener`, timing de carga). Para
+// que la ventana nueva sea autosuficiente, el bookmarklet embute el payload en el
+// fragmento de la URL (`...index.html?idTutor=123#data=%7B...%7D`). El fragmento
+// NO viaja al servidor (no queda en logs de GitHub Pages) y lo lee el SPA acá.
+// El 2do mensaje (tutor raspado aparte) sigue yendo por postMessage: si ese
+// canal está vivo, completa; si no, el médico lo carga a mano.
+function leerFiliacionDesdeHash() {
+  try {
+    const hash = window.location.hash || '';
+    const marca = '#data=';
+    if (hash.indexOf(marca) !== 0) return;
+
+    const crudo = hash.slice(marca.length);
+    if (!crudo) return;
+
+    let json;
+    try {
+      json = decodeURIComponent(crudo);
+    } catch {
+      json = crudo; // por si ya venía sin codificar
+    }
+    const payload = JSON.parse(json);
+    aplicarFiliacion(payload, 'hash #data=');
+
+    // Limpia el fragmento para no re-aplicar datos viejos si el médico recarga
+    // la pestaña, y para no dejar el payload a la vista en la barra de direcciones.
+    try {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    } catch (error) {
+      window.location.hash = '';
+    }
+  } catch (error) {
+    console.warn('MyVete Panel: no se pudo leer la filiación del hash #data=.', error);
+  }
+}
+
+leerFiliacionDesdeHash();
 
 // ---------------------------------------------------------------------------
 // 3. Bloque Medicación — filas dinámicas con estado (continua/nueva/modificada/suspendida)

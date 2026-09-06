@@ -619,15 +619,32 @@
     }
   }
 
-  // El ID de tutor viaja por query param: interface/app.js corre en el origen del
-  // panel (no en MyVete), así que la URL es el único canal disponible al cargar el
-  // documento — el postMessage (más abajo) lo repite solo como respaldo.
+  // Transporte de datos hacia el panel. El panel (interface/app.js) corre en OTRO
+  // origen (echevanest.github.io), así que la única vía que no depende de que el
+  // canal con el opener sobreviva es la propia URL:
+  //   - `?idTutor=` en el query string (respaldo histórico, lo lee app.js);
+  //   - `#data=<JSON codificado>` en el FRAGMENTO, con la filiación completa
+  //     ({ tutor, mascota, idTutor }). El fragmento no viaja al servidor (no
+  //     queda en logs de GitHub Pages) y app.js lo lee al cargar y lo limpia.
+  // Con esto la ventana nueva del fallback es autosuficiente: recibe el paciente
+  // aunque MyVete haya bloqueado el iframe y el postMessage no llegue. El
+  // postMessage se sigue usando (modo iframe y 2do mensaje) pero ya no es la
+  // única vía.
   const params = new URLSearchParams();
   if (idTutor) params.set("idTutor", idTutor);
   const queryString = params.toString();
   const urlPanel =
     PANEL_URL +
     (queryString ? (PANEL_URL.indexOf("?") === -1 ? "?" : "&") + queryString : "");
+
+  const payloadPanel = Object.assign({}, datosFiliacion, { idTutor: idTutor });
+  let urlPanelConDatos = urlPanel;
+  try {
+    urlPanelConDatos = urlPanel + "#data=" + encodeURIComponent(JSON.stringify(payloadPanel));
+  } catch (error) {
+    // si JSON.stringify/encode falla, el panel depende del postMessage (modo iframe).
+    console.warn("MyVete Bookmarklet: no se pudo serializar la filiación para el hash de la URL.", error);
+  }
 
   console.log("MyVete Bookmarklet: montando panel embebido ->", urlPanel);
   console.log(
@@ -848,7 +865,7 @@
   };
   console.log("MyVete Bookmarklet: 1er mensaje al panel ->", JSON.stringify(mensaje));
 
-  const panel = abrirCanalPanel(urlPanel);
+  const panel = abrirCanalPanel(urlPanelConDatos);
   panel.enviar(mensaje);
 
   // Plan B (continuación): la pestaña /customers/{id} ya se abrió sincrónicamente

@@ -26,6 +26,23 @@ del tutor; el panel va embebido. Si MyVete bloquea el iframe por
 CSP / `X-Frame-Options` (no confirma `MYVETE_PANEL_READY` en 9 s), el bookmarklet
 cae solo a `window.open()` en ventana aparte.
 
+### Cómo llegan los datos al panel
+
+El panel corre en **otro origen** (`echevanest.github.io`), así que no puede
+depender de `window.opener` / `postMessage` (se pierde con `noopener`, con
+bloqueadores o por timing al abrir en ventana nueva). El bookmarklet embute la
+filiación completa en la **URL**:
+
+- `?idTutor=123` en el query string (respaldo histórico);
+- `#data=<JSON codificado>` en el **fragmento**, con `{ tutor, mascota, idTutor }`.
+  El fragmento no viaja al servidor (no queda en logs de GitHub Pages);
+  `interface/app.js` lo lee al cargar (`leerFiliacionDesdeHash()`) y **lo limpia**
+  con `history.replaceState` para no re-aplicar datos viejos en un refresh.
+
+El `postMessage` se sigue usando en modo iframe y para el **2do** mensaje (tutor
+raspado en la pestaña aparte), pero ya no es la única vía: la ventana nueva es
+autosuficiente con lo que trae la URL.
+
 ## Cambiar la URL del panel sin regenerar
 
 Desde la consola de MyVete, una sola vez:
@@ -76,5 +93,18 @@ cada ~2 s. Volver a producción: `localStorage.setItem('myvete_debug_tutor','0')
 
 ```sh
 npx terser@5 bookmarklet/launcher.js --compress --mangle -o bookmarklet/bookmarklet.min.js
-node -e "const fs=require('fs');const m=fs.readFileSync('bookmarklet/bookmarklet.min.js','utf8').trim();fs.writeFileSync('bookmarklet/bookmarklet.txt','javascript:'+encodeURIComponent(m).replace(/%20/g,' ')+'\n')"
+node -e "const fs=require('fs');const m=fs.readFileSync('bookmarklet/bookmarklet.min.js','utf8').replace(/\r?\n/g,'').trim();fs.writeFileSync('bookmarklet/bookmarklet.txt','javascript:'+encodeURIComponent(m)+'\n')"
+```
+
+`bookmarklet.txt` queda **en una sola línea, 100 % percent-encoded** (sin espacios
+literales, sin comas sueltas, sin `\n` interno — solo el salto final del archivo).
+El `.replace(/%20/g,' ')` de la versión anterior reinyectaba ~550 espacios
+literales: al copiar desde la vista *Raw* de GitHub y pegar en la barra de
+direcciones, esos espacios/quiebres rompían el `javascript:` y el navegador
+navegaba a la URL en vez de ejecutarlo. Ya no.
+
+Verificación rápida:
+
+```sh
+node -e "const t=require('fs').readFileSync('bookmarklet/bookmarklet.txt','utf8');const b=t.replace(/\n$/,'');console.log('una línea:',!b.includes('\n'),'| sin espacios:',!b.includes(' '),'| prefijo ok:',b.startsWith('javascript:'))"
 ```
