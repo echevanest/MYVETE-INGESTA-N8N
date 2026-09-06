@@ -1,0 +1,28 @@
+# Prueba anti-regresión del bookmarklet de MyVete.
+# Corre bookmarklet/verificar.mjs en cada push / PR que toque el bookmarklet o
+# el panel. Si falla, el check queda en rojo con el mensaje "VERSIÓN INESTABLE —
+# revertir al tag v1.0.0-estable".
+name: verificar-bookmarklet
+
+on:
+  push:
+    paths:
+      - "bookmarklet/**"
+      - "interface/**"
+      - ".github/workflows/verificar.yml"
+  pull_request:
+    paths:
+      - "bookmarklet/**"
+      - "interface/**"
+  workflow_dispatch: {}
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node bookmarklet/verificar.mjs
+        run: node bookmarklet/verificar.mjs

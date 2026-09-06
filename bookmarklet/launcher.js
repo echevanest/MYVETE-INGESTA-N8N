@@ -36,6 +36,21 @@
 (function () {
   "use strict";
 
+  // ===== VERSIÓN =====
+  // Etiqueta de versión visible en consola. Debe coincidir con la de
+  // interface/app.js y con el tag de Git del último estado estable
+  // (v1.0.0-estable). Si algo se rompe, revertir a ese tag:
+  //   git checkout v1.0.0-estable
+  // El script de verificación bookmarklet/verificar.mjs comprueba que ambas
+  // versiones coincidan y que la lógica de la API siga intacta.
+  const VERSION = "1.0.0-estable";
+  console.log(
+    "%cMyVete Bookmarklet v" + VERSION,
+    "font-weight:bold;color:#0b8457",
+    "— lógica de tutor por API interna (/api/customers/{id}). " +
+      "Revertir: git checkout v1.0.0-estable"
+  );
+
   // ===== CONFIGURACIÓN =====
   // URL del panel (interface/index.html), servido por GitHub Pages desde la raíz
   // del repo: /MYVETE-INGESTA-N8N/interface/index.html.

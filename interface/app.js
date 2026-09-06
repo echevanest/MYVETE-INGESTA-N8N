@@ -3,6 +3,16 @@
 // consolidarPayloadFinal is not defined). Ver INFORME_CODE V4.8 e
 // INFORME_CODE "reconstrucción app.js" para el alcance exacto de esta versión.
 
+// Etiqueta de versión visible en consola. Debe coincidir con la de
+// bookmarklet/launcher.js y con el tag de Git del último estado estable
+// (v1.0.0-estable). Revertir: `git checkout v1.0.0-estable`.
+const VERSION = '1.0.0-estable';
+console.log(
+  '%cMyVete Panel v' + VERSION,
+  'font-weight:bold;color:#0b8457',
+  '— recepción de filiación (tutor por API interna de MyVete).',
+);
+
 // ---------------------------------------------------------------------------
 // 0. Handshake con el bookmarklet (launcher.js) — señal "panel listo"
 // ---------------------------------------------------------------------------
