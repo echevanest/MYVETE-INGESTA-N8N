@@ -166,9 +166,15 @@ create index idx_datos_eco_mine2_clas  on public.datos_ecocardiografia (mine2_cl
 create index idx_datos_eco_hp_clas     on public.datos_ecocardiografia (hp_clasificacion);
 create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_at);
 
--- El SPA (interface/app.js) sólo tiene campos para un subconjunto (~26) de estas
--- columnas — el resto viaja siempre como null hasta que se decida sumarlas a la
--- UI. Nodo n8n que la puebla: "Insert Datos Ecocardiografía" (ver n8n/README.md).
+-- El SPA (interface/app.js Sección 8) tiene campos para un subconjunto (~29) de
+-- estas columnas — el resto viaja siempre como null hasta que se decida sumarlas
+-- a la UI. Nodo n8n que la puebla: "Insert Datos Ecocardiografía" (ver
+-- n8n/README.md).
+--
+-- El SPA también tiene 4 campos de electrocardiograma (FC/ritmo/eje/duración P)
+-- en el mismo bloque visual, pero NO hay columnas EKG en esta tabla: viajan
+-- aparte en `payload.bloque_ekg` y n8n los ignora por ahora (2026-09-08, al
+-- unificar el viejo "Apéndice Métrico" dentro de este bloque).
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security

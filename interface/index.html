@@ -178,116 +178,29 @@
         </label>
       </div>
 
-      <!-- Apéndice Métrico — Ecocardiograma / Electro (INFORME_CODE V4.8, congelado
-           2026-07-26; reemplaza el set provisorio de V4.4/V4.6). Colapsado por defecto
-           para no saturar la carga diaria: la mayoría de las consultas no trae estudio
-           de imagen. Las llaves eco_*/ekg_* que arma app.js (MAPEO_METRICAS) son ahora
-           el contrato final de bloque_metrico — agregar un campo nuevo a futuro implica
-           sumar una entrada en MAPEO_METRICAS, no reestructurar el motor de envío
-           (criterio de modularidad V4.8). Nunca se precargan por PERFILES_CLINICOS
-           (restricción explícita V4.4): los campos siempre empiezan vacíos. -->
-      <details id="bloque-metrico" class="bloque-metrico">
-        <summary>Apéndice Métrico (Ecocardiograma / Electro)</summary>
+      <!-- Datos Ecocardiográficos + Electrocardiograma — bloque ÚNICO de
+           estudios complementarios (unificado el 2026-09-08: absorbió el viejo
+           "Apéndice Métrico", que se eliminó). Colapsado por defecto: la mayoría
+           de las consultas no trae estudio de imagen. Nunca se precarga por
+           perfiles clínicos — los campos empiezan vacíos.
 
-        <fieldset class="grid-metricas">
-          <legend>Ecocardiograma — Core (MINE Score 2)</legend>
-          <label class="campo-label">
-            Relación AI/Ao (lineal)
-            <input type="number" step="0.01" id="metrica-eco-ai-ao" class="input-control" placeholder="Ej: 1.3" />
-          </label>
-          <label class="campo-label">
-            Relación AI/Ao (área, planimetría 2D)
-            <input type="number" step="0.01" id="metrica-eco-ai-ao-area" class="input-control" placeholder="Ej: 1.4" />
-          </label>
-          <label class="campo-label">
-            LVIDDn (normalizado)
-            <input type="number" step="0.01" id="metrica-eco-lviddn" class="input-control" placeholder="Ej: 1.7" />
-          </label>
-          <label class="campo-label">
-            Velocidad E (m/s)
-            <input type="number" step="0.01" id="metrica-eco-e-vel" class="input-control" placeholder="Ej: 0.9" />
-          </label>
-        </fieldset>
+           Ecocardiografía: el id de cada input es EXACTAMENTE
+           `eco-<nombre_de_columna>` de la tabla Supabase `datos_ecocardiografia`
+           (una fila por atención, PK atencion_id resuelto en n8n a partir de la
+           atención recién creada; ver app.js Sección 8 y n8n/README.md).
+           Electrocardiografía: ids `eco-ekg_*`; NO tienen columna en esa tabla,
+           así que viajan aparte en `payload.bloque_ekg` (leerBloqueEKG), que n8n
+           ignora por ahora — igual que hacía con el difunto `bloque_metrico`.
 
-        <fieldset class="grid-metricas">
-          <legend>Ecocardiograma — Tradicional y volumétrico</legend>
-          <label class="campo-label">
-            Fracción de Acortamiento — FS (%)
-            <input type="number" step="0.1" id="metrica-eco-fs" class="input-control" placeholder="Ej: 35" />
-          </label>
-          <label class="campo-label">
-            Fracción de Eyección — Teichholz (%)
-            <input type="number" step="0.1" id="metrica-eco-fe-teichholz" class="input-control" placeholder="Ej: 65" />
-          </label>
-          <label class="campo-label">
-            Fracción de Eyección — Simpson (%)
-            <input type="number" step="0.1" id="metrica-eco-fe-simpson" class="input-control" placeholder="Ej: 60" />
-          </label>
-          <label class="campo-label">
-            Volumen Atrial Izquierdo — LAV (mL)
-            <input type="number" step="0.01" id="metrica-eco-lav" class="input-control" placeholder="Ej: 8.5" />
-          </label>
-          <label class="campo-label">
-            LAV Indexado — LAVI (mL/kg)
-            <input type="number" step="0.01" id="metrica-eco-lavi" class="input-control" placeholder="Ej: 1.2" />
-          </label>
-          <label class="campo-label">
-            LVIDd crudo (mm)
-            <input type="number" step="0.01" id="metrica-eco-lvid-d-crudo" class="input-control" placeholder="Ej: 32.0" />
-          </label>
-          <label class="campo-label">
-            LVIDs crudo (mm)
-            <input type="number" step="0.01" id="metrica-eco-lvid-s-crudo" class="input-control" placeholder="Ej: 20.0" />
-          </label>
-          <label class="campo-label">
-            SIVd (mm)
-            <input type="number" step="0.01" id="metrica-eco-sivd" class="input-control" placeholder="Ej: 6.5" />
-          </label>
-          <label class="campo-label">
-            PPd (mm)
-            <input type="number" step="0.01" id="metrica-eco-ppd" class="input-control" placeholder="Ej: 7.0" />
-          </label>
-        </fieldset>
-
-        <fieldset class="grid-metricas">
-          <legend>Electrocardiograma</legend>
-          <label class="campo-label">
-            FC electro (lpm)
-            <input type="number" id="metrica-ekg-fc" class="input-control" placeholder="Ej: 130" />
-          </label>
-          <label class="campo-label">
-            Ritmo
-            <input type="text" id="metrica-ekg-ritmo" class="input-control" placeholder="Ej: Sinusal" />
-          </label>
-          <label class="campo-label">
-            Eje eléctrico (°)
-            <input type="number" id="metrica-ekg-eje" class="input-control" placeholder="Ej: 70" />
-          </label>
-          <label class="campo-label">
-            Duración P (ms)
-            <input type="number" id="metrica-ekg-p-ms" class="input-control" placeholder="Ej: 40" />
-          </label>
-        </fieldset>
-      </details>
-
-      <!-- Datos Ecocardiográficos — bloque dedicado que viaja a la tabla
-           Supabase `datos_ecocardiografia` (una fila por atención, PK
-           atencion_id resuelto en n8n a partir de la atención recién creada;
-           ver app.js Sección 8 y n8n/README.md). Es DISTINTO del "Apéndice
-           Métrico" de arriba, que sigue alimentando `atenciones_cardiologia.metricas`
-           sin cambios — los dos coexisten por ahora (unificar es limpieza futura).
-           El id de cada input de dato es EXACTAMENTE `eco-<nombre_de_columna>`,
-           así el mapeo UI→columna es directo. Flujo (decidido 2026-09-08):
+           Flujo (decidido 2026-09-08):
            1) cargar PDF + "Extraer datos del PDF" → autollena los campos;
-           2) los campos quedan bloqueados; "Editar campos" los habilita para
-              corrección manual;
-           3) al enviar la consulta, app.js arma el objeto con las 72 columnas
-              (las que no tienen campo, o quedaron vacías, viajan como null).
-           Unidades (la tabla es `numeric` a secas, sin unidad): lineales en cm,
-           fracciones en %, velocidades en m/s — misma convención que el
-           extractor de PDF en app.js. -->
+           2) los campos quedan bloqueados; "Editar campos" los habilita (eco y EKG);
+           3) al enviar, app.js arma `datos_ecocardiografia` con las 72 columnas
+              (null las vacías o sin campo) y `bloque_ekg` con los 4 campos EKG.
+           Unidades (la tabla es `numeric` sin unidad): lineales en cm, fracciones
+           en %, velocidades en m/s — misma convención que el extractor de app.js. -->
       <details id="bloque-ecocardiografia" class="bloque-metrico">
-        <summary>Datos Ecocardiográficos (informe → Supabase)</summary>
+        <summary>Estudios complementarios (Ecocardiograma / Electro)</summary>
 
         <div class="eco-pdf-carga">
           <input type="file" id="eco-pdf-input" accept=".pdf" />
@@ -383,8 +296,24 @@
             <input type="number" step="0.01" id="eco-volumen_ai_esv_simpson" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
-            Vol. AI — Simpson
+            Vol. AI — Simpson (LAV)
             <input type="number" step="0.01" id="eco-volumen_ai_simp_simpson" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Índices / normalizados</legend>
+          <label class="campo-label">
+            Relación AI/Ao (área, planimetría 2D)
+            <input type="number" step="0.01" id="eco-ai_ao_area" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            LVIDDn (DVID normalizado)
+            <input type="number" step="0.01" id="eco-dvid_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            LAVI (Vol. AI indexado, mL/kg)
+            <input type="number" step="0.01" id="eco-volumen_ai_indexado" class="input-control campo-eco" disabled />
           </label>
         </fieldset>
 
@@ -417,6 +346,29 @@
           <label class="campo-label">
             HP — clasificación
             <input type="text" id="eco-hp_clasificacion" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <!-- Electrocardiograma — mismos ids `eco-ekg_*` para que "Editar campos" y
+             el autollenado los alcancen, pero NO son columnas de
+             datos_ecocardiografia: app.js los separa a payload.bloque_ekg. -->
+        <fieldset class="grid-metricas">
+          <legend>Electrocardiograma</legend>
+          <label class="campo-label">
+            FC electro (lpm)
+            <input type="number" id="eco-ekg_fc" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Ritmo
+            <input type="text" id="eco-ekg_ritmo" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Eje eléctrico (°)
+            <input type="number" id="eco-ekg_eje" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Duración P (ms)
+            <input type="number" id="eco-ekg_p_ms" class="input-control campo-eco" disabled />
           </label>
         </fieldset>
 

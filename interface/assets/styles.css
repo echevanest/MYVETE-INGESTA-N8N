@@ -298,7 +298,9 @@ section {
   }
 }
 
-/* --- Bloque Métrico (Ecocardiograma / Electro) — colapsable ------------- */
+/* --- Estudios complementarios (Ecocardiograma / Electro) — colapsable ---- */
+/* La clase .bloque-metrico se conserva por el nombre histórico; hoy la usa
+   #bloque-ecocardiografia (el "Apéndice Métrico" se eliminó el 2026-09-08). */
 
 .bloque-metrico {
   margin-bottom: 0.75rem;

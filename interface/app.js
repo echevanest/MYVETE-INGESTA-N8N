@@ -618,39 +618,14 @@ function leerMedicacion() {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Apéndice Métrico — MAPEO_METRICAS (contrato final de bloque_metrico, V4.8)
+// 4. (libre) — el "Apéndice Métrico" / MAPEO_METRICAS / leerBloqueMetrico se
+//     eliminó el 2026-09-08 al unificar todo el eco en un solo bloque. Las
+//     métricas de ecocardiograma viven ahora en la Sección 8
+//     (leerBloqueEcocardiografia → payload.datos_ecocardiografia) y las de
+//     electrocardiograma en leerBloqueEKG → payload.bloque_ekg. El viejo
+//     payload.bloque_metrico ya no se emite (n8n nunca lo consumió: la clave
+//     `metricas` de atenciones_cardiologia se arma con la salida de la IA).
 // ---------------------------------------------------------------------------
-const MAPEO_METRICAS = {
-  'metrica-eco-ai-ao': 'eco_ai_ao',
-  'metrica-eco-ai-ao-area': 'eco_ai_ao_area',
-  'metrica-eco-lviddn': 'eco_lviddn',
-  'metrica-eco-e-vel': 'eco_e_vel',
-  'metrica-eco-fs': 'eco_fs',
-  'metrica-eco-fe-teichholz': 'eco_fe_teichholz',
-  'metrica-eco-fe-simpson': 'eco_fe_simpson',
-  'metrica-eco-lav': 'eco_lav',
-  'metrica-eco-lavi': 'eco_lavi',
-  'metrica-eco-lvid-d-crudo': 'eco_lvid_d_crudo',
-  'metrica-eco-lvid-s-crudo': 'eco_lvid_s_crudo',
-  'metrica-eco-sivd': 'eco_sivd',
-  'metrica-eco-ppd': 'eco_ppd',
-  'metrica-ekg-fc': 'ekg_fc',
-  'metrica-ekg-ritmo': 'ekg_ritmo',
-  'metrica-ekg-eje': 'ekg_eje',
-  'metrica-ekg-p-ms': 'ekg_p_ms',
-};
-
-function leerBloqueMetrico() {
-  const bloque = {};
-  Object.entries(MAPEO_METRICAS).forEach(([idCampo, clave]) => {
-    const campo = document.getElementById(idCampo);
-    if (!campo) return;
-    const valorCrudo = campo.value.trim();
-    if (valorCrudo === '') return; // omitir claves nulas/vacías
-    bloque[clave] = campo.type === 'number' ? Number(valorCrudo) : valorCrudo;
-  });
-  return bloque;
-}
 
 // ---------------------------------------------------------------------------
 // 5. Consolidación del Payload Final
@@ -684,13 +659,15 @@ function consolidarPayloadFinal() {
       indicaciones: document.getElementById('consulta-indicaciones').value.trim(),
     },
     medicacion: leerMedicacion(),
-    bloque_metrico: leerBloqueMetrico(),
     // Bloque para la tabla Supabase `datos_ecocardiografia` (Sección 8). Objeto
     // con las 72 columnas (null las vacías) o null si no se cargó ningún dato;
     // n8n lo inserta recién después de crear la atención, con atencion_id = id
-    // de esa atención. leerBloqueEcocardiografia es function declaration
-    // (hoisted): disponible aunque se defina más abajo en el archivo.
+    // de esa atención. leerBloqueEcocardiografia / leerBloqueEKG son function
+    // declarations (hoisted): disponibles aunque se definan más abajo.
     datos_ecocardiografia: leerBloqueEcocardiografia(),
+    // Electrocardiograma — bloque aparte (la tabla eco no tiene columnas EKG).
+    // n8n lo ignora por ahora, igual que hacía con el viejo bloque_metrico.
+    bloque_ekg: leerBloqueEKG(),
   };
 }
 
@@ -952,6 +929,20 @@ const MAPEO_EXTRACCION_PDF = [
     regex: /\b(?:AI\s*\/\s*Ao|LA\s*\/\s*Ao|Relaci[óo]n\s+AI\s*\/?\s*Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
   { columna: 'velocidad_e_mitral', siglas: ['Onda E', 'Vel E', 'E mitral'],
     regex: /\b(?:Onda\s*E|Vel\.?\s*E|E\s*mitral|Vmax\s*E)\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(m\/s|cm\/s)?/i, unidad: 'm/s' },
+  // Campos que venían del "Apéndice Métrico" y no estaban ya arriba (2026-09-08).
+  { columna: 'ai_ao_area', siglas: ['AI/Ao area', 'AI/Ao área', 'LA/Ao area'],
+    regex: /\b(?:AI|LA)\s*\/\s*Ao\s*(?:\(?\s*[áa]rea\s*\)?|2D)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
+  { columna: 'dvid_indexado', siglas: ['LVIDDN', 'LVIDdN', 'DVIDn', 'LVIDDn'],
+    regex: /\bLVID[dD]?\s*[nN]\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
+  { columna: 'volumen_ai_indexado', siglas: ['LAVI', 'LAV Index', 'LAV indexado'],
+    regex: /\bLAVI\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(ml\/kg)?/i, unidad: null },
+  // Electrocardiograma — se autollena en #eco-ekg_* pero NO va a la tabla eco;
+  // leerBloqueEKG() lo separa a payload.bloque_ekg. FC/eje son best-effort;
+  // ritmo (texto libre) y duración P casi nunca parsean bien: quedan manuales.
+  { columna: 'ekg_fc', siglas: ['FC ECG', 'FC electro', 'HR ECG', 'FC EKG'],
+    regex: /\bFC\s*(?:ECG|EKG|electro\w*)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(bpm|lpm)?/i, unidad: 'bpm' },
+  { columna: 'ekg_eje', siglas: ['Eje eléctrico', 'Eje electrico', 'Eje', 'Axis'],
+    regex: /\bEje\s*(?:el[ée]ctrico)?\s*[:=]?\s*(-?\d+(?:[.,]\d+)?)\s*[°º]?/i, unidad: null },
 ];
 
 // "25,2" -> 25.2 ; "1.42" -> 1.42 ; basura -> NaN
@@ -1048,6 +1039,39 @@ function leerBloqueEcocardiografia() {
       obj[columna] = Number.isFinite(n) ? n : null;
     }
     if (obj[columna] != null) algunDato = true;
+  }
+  return algunDato ? obj : null;
+}
+
+// Electrocardiograma — bloque separado (la tabla `datos_ecocardiografia` no
+// tiene columnas EKG). Lee los 4 inputs #eco-ekg_* que viven visualmente dentro
+// del bloque eco unificado, y devuelve un objeto plano (null los vacíos) o null
+// si no se cargó ninguno. Va a payload.bloque_ekg — n8n lo ignora por ahora
+// (igual que el viejo bloque_metrico).
+const CAMPOS_EKG = {
+  ekg_fc: 'numero',
+  ekg_ritmo: 'texto',
+  ekg_eje: 'numero',
+  ekg_p_ms: 'numero',
+};
+
+function leerBloqueEKG() {
+  const obj = {};
+  let algunDato = false;
+  for (const [clave, tipo] of Object.entries(CAMPOS_EKG)) {
+    const campo = document.getElementById(`eco-${clave}`);
+    const crudo = campo ? String(campo.value).trim() : '';
+    if (crudo === '') {
+      obj[clave] = null;
+      continue;
+    }
+    if (tipo === 'texto') {
+      obj[clave] = crudo;
+    } else {
+      const n = Number(crudo.replace(',', '.'));
+      obj[clave] = Number.isFinite(n) ? n : null;
+    }
+    if (obj[clave] != null) algunDato = true;
   }
   return algunDato ? obj : null;
 }
