@@ -166,10 +166,15 @@ create index idx_datos_eco_mine2_clas  on public.datos_ecocardiografia (mine2_cl
 create index idx_datos_eco_hp_clas     on public.datos_ecocardiografia (hp_clasificacion);
 create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_at);
 
--- El SPA (interface/app.js Sección 8) tiene campos para un subconjunto (~29) de
+-- El SPA (interface/app.js Sección 8) tiene campos para un subconjunto (~30) de
 -- estas columnas — el resto viaja siempre como null hasta que se decida sumarlas
 -- a la UI. Nodo n8n que la puebla: "Insert Datos Ecocardiografía" (ver
 -- n8n/README.md).
+--
+-- 3 columnas *_indexado/a las calcula el SPA desde #paciente-peso, no se cargan
+-- a mano: dvid_indexado = dvid/peso^0.294 (Cornell); volumen_ai_indexado =
+-- volumen_ai_simp_simpson/peso (mL/kg); masa_vi_indexada = masa_vi/BSA (g/m²),
+-- BSA = 0.1017·peso^0.6667.
 --
 -- El SPA también tiene 4 campos de electrocardiograma (FC/ritmo/eje/duración P)
 -- en el mismo bloque visual, pero NO hay columnas EKG en esta tabla: viajan

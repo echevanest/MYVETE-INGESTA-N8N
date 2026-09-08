@@ -937,12 +937,21 @@ const MAPEO_EXTRACCION_PDF = [
   { columna: 'volumen_ai_indexado', siglas: ['LAVI', 'LAV Index', 'LAV indexado'],
     regex: /\bLAVI\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(ml\/kg)?/i, unidad: null },
   // Electrocardiograma — se autollena en #eco-ekg_* pero NO va a la tabla eco;
-  // leerBloqueEKG() lo separa a payload.bloque_ekg. FC/eje son best-effort;
-  // ritmo (texto libre) y duración P casi nunca parsean bien: quedan manuales.
-  { columna: 'ekg_fc', siglas: ['FC ECG', 'FC electro', 'HR ECG', 'FC EKG'],
-    regex: /\bFC\s*(?:ECG|EKG|electro\w*)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(bpm|lpm)?/i, unidad: 'bpm' },
-  { columna: 'ekg_eje', siglas: ['Eje eléctrico', 'Eje electrico', 'Eje', 'Axis'],
-    regex: /\bEje\s*(?:el[ée]ctrico)?\s*[:=]?\s*(-?\d+(?:[.,]\d+)?)\s*[°º]?/i, unidad: null },
+  // leerBloqueEKG() lo separa a payload.bloque_ekg. Formato observado en el PDF
+  // de prueba: "FC promedio   :   138bpm" / "Eje QRS   :   63°". Los regex
+  // EXIGEN la unidad pegada (bpm / °) para no confundir "FC" con la frecuencia
+  // cardíaca de las constantes vitales. `siglas: []` desactiva el fallback laxo.
+  { columna: 'ekg_fc', siglas: [],
+    regex: /\bFC(?:\s*(?:promedio|media|prom\.?))?\s*:?\s*(\d+(?:[.,]\d+)?)\s*bpm/i, unidad: null },
+  { columna: 'ekg_eje', siglas: [],
+    regex: /\bEje(?:\s*(?:QRS|el[ée]ctrico|medio))?\s*:?\s*(-?\d+(?:[.,]\d+)?)\s*[°º]/i, unidad: null },
+  { columna: 'ekg_ritmo', siglas: [], tipo: 'texto',
+    // Espacio ÚNICO entre palabras a propósito: el texto de PDF separa columnas
+    // con 2+ espacios, así "Ritmo: Sinusal respiratorio   Eje QRS..." corta en
+    // "Sinusal respiratorio" y no arrastra la etiqueta siguiente.
+    regex: /\bRitmo\s*:?\s*([A-Za-zÁÉÍÓÚáéíóúñ]+(?: [A-Za-zÁÉÍÓÚáéíóúñ]+){0,3})/i },
+  { columna: 'ekg_p_ms', siglas: [],
+    regex: /\bDuraci[óo]n\s*(?:de\s*)?(?:la\s*)?(?:onda\s*)?P\b\s*:?\s*(\d+(?:[.,]\d+)?)\s*ms/i, unidad: null },
 ];
 
 // "25,2" -> 25.2 ; "1.42" -> 1.42 ; basura -> NaN
@@ -984,6 +993,13 @@ function ecoExtraerPorRegex(texto, config) {
   }
 
   if (!match) return null;
+
+  // Campos de texto (p. ej. ekg_ritmo): se devuelve el grupo 1 tal cual, sin
+  // pasar por el parseo numérico.
+  if (config.tipo === 'texto') {
+    const txt = String(match[1] || '').trim();
+    return txt === '' ? null : txt;
+  }
 
   // Unidad: la del propio match; si no vino, ventana corta (5 chars) pegada al
   // final del número.
@@ -1076,6 +1092,71 @@ function leerBloqueEKG() {
   return algunDato ? obj : null;
 }
 
+// --- Índices calculados a partir del peso -----------------------------------
+// Se derivan 3 columnas `*_indexado/a` cuando están su valor crudo y el peso:
+//   dvid_indexado       = dvid / peso^0.294            (Cornell — LVIDDn, dvid en cm)
+//   volumen_ai_indexado = volumen_ai_simp_simpson / peso   (LAVI en mL/kg)
+//   masa_vi_indexada    = masa_vi / BSA                (g/m²), BSA = 0.1017·peso^0.6667 (Meeh-Rubner)
+// Reglas (confirmadas 2026-09-08): si falta el valor crudo, ese índice no se
+// calcula (la clave no aparece en el objeto devuelto y el campo del form no se
+// toca); si el peso es 0/negativo/no numérico, no se calcula ninguno.
+const BSA_K = 0.1017;
+const BSA_EXP = 0.6667;
+const CORNELL_EXP = 0.294;
+
+function redondear3(x) {
+  return Math.round(x * 1000) / 1000;
+}
+
+function calcularIndicesEco(datos, peso) {
+  const p = ecoANumero(peso);
+  if (!Number.isFinite(p) || p <= 0) return {};
+
+  const indices = {};
+  const dvid = ecoANumero(datos.dvid);
+  const volAi = ecoANumero(datos.volumen_ai_simp_simpson);
+  const masaVi = ecoANumero(datos.masa_vi);
+
+  if (Number.isFinite(dvid)) {
+    indices.dvid_indexado = redondear3(dvid / Math.pow(p, CORNELL_EXP));
+  }
+  if (Number.isFinite(volAi)) {
+    indices.volumen_ai_indexado = redondear3(volAi / p);
+  }
+  if (Number.isFinite(masaVi)) {
+    const bsa = BSA_K * Math.pow(p, BSA_EXP);
+    indices.masa_vi_indexada = redondear3(masaVi / bsa);
+  }
+  return indices;
+}
+
+// Lee dvid / volumen_ai_simp_simpson / masa_vi y #paciente-peso del formulario,
+// calcula los índices y los escribe en sus campos #eco-*. Sólo pisa los campos
+// de índices que se pudieron calcular — no borra un valor cargado a mano cuando
+// falta su crudo. Se llama tras autollenar desde el PDF y al cambiar el peso.
+function recalcularIndicesEcoDesdeFormulario() {
+  const leerCampo = (id) => {
+    const el = document.getElementById(id);
+    return el ? el.value : '';
+  };
+  const datos = {
+    dvid: leerCampo('eco-dvid'),
+    volumen_ai_simp_simpson: leerCampo('eco-volumen_ai_simp_simpson'),
+    masa_vi: leerCampo('eco-masa_vi'),
+  };
+  const indices = calcularIndicesEco(datos, leerCampo('paciente-peso'));
+  for (const [columna, valor] of Object.entries(indices)) {
+    const campo = document.getElementById(`eco-${columna}`);
+    if (campo) campo.value = valor;
+  }
+  return indices;
+}
+
+const campoPesoPaciente = document.getElementById('paciente-peso');
+if (campoPesoPaciente) {
+  campoPesoPaciente.addEventListener('input', recalcularIndicesEcoDesdeFormulario);
+}
+
 const btnEditarEco = document.getElementById('btn-editar-eco');
 if (btnEditarEco) {
   btnEditarEco.addEventListener('click', () => {
@@ -1118,10 +1199,20 @@ if (btnExtraerEcoPdf) {
 
       const datos = extraerDatosEcocardiografia(textoCompleto);
       const llenos = autollenarCamposEco(datos);
+      const indices = recalcularIndicesEcoDesdeFormulario();
 
       let resumen = `📊 ${llenos} campo(s) autollenado(s). Revisá y usá "Editar campos" si hay que corregir.\n\n`;
       for (const [columna, valor] of Object.entries(datos)) {
         resumen += `${columna}: ${valor != null ? valor : '—'}\n`;
+      }
+      const clavesIndices = Object.keys(indices);
+      if (clavesIndices.length) {
+        resumen += `\nÍndices calculados (peso ${document.getElementById('paciente-peso')?.value || '?'} kg):\n`;
+        for (const [columna, valor] of Object.entries(indices)) {
+          resumen += `${columna}: ${valor}\n`;
+        }
+      } else {
+        resumen += '\nÍndices calculados: — (falta peso o los valores crudos)\n';
       }
       escribirLog(resumen);
     } catch (error) {
