@@ -102,11 +102,83 @@ create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (masc
 -- acceso a n8n desde este repo/sesión; ver STATUS.md).
 
 -- ---------------------------------------------------------------------------
+-- datos_ecocardiografia
+-- ---------------------------------------------------------------------------
+-- Una fila por atención (relación 1:1). NO se creó por migración nativa de
+-- Supabase (no aparece en supabase_migrations.schema_migrations) — se creó
+-- directo en el proyecto antes de la sesión del 2026-09-08. Este bloque es
+-- introspección de information_schema/pg_constraint/pg_indexes del 2026-09-08.
+--
+-- PK = atencion_id (no hay columna `id` propia): la fila se identifica por la
+-- atención a la que pertenece. FK a atenciones_cardiologia con ON DELETE
+-- CASCADE, así que borrar una atención (o su mascota, o su tutor) se lleva la
+-- fila de eco. El workflow n8n hace UPSERT con on_conflict=atencion_id.
+--
+-- ~72 columnas de datos (todas nullable), casi todas `numeric` sin unidad
+-- declarada. Convención de unidades fijada del lado del SPA (interface/app.js
+-- Sección 8, y este comentario): lineales en cm, fracciones en %, velocidades
+-- en m/s. Las 7 columnas `text`: efusion_pericardica, efusion_pleural,
+-- patron_llenado_vi, observaciones, acvim_estadio, mine2_clasificacion,
+-- hp_clasificacion.
+create table public.datos_ecocardiografia (
+  atencion_id uuid primary key references public.atenciones_cardiologia (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  -- Modo M / lineales
+  sivd numeric, sivs numeric, dvid numeric, dvs numeric, ppvid numeric, ppvis numeric,
+  -- Función sistólica Modo M / Teichholz
+  fe_modom numeric, fs_modom numeric,
+  volumen_fdi_modom numeric, volumen_fsi_modom numeric, volumen_si_modom numeric,
+  gasto_cardiaco_modom numeric,
+  masa_vi numeric, indice_masa_vi numeric, mvcf numeric,
+  -- Simpson
+  fe_simpson numeric,
+  volumen_ai_esv_simpson numeric, volumen_ai_simp_simpson numeric,
+  volumen_vi_fd_simpson numeric, volumen_vi_fs_simpson numeric,
+  -- Aurícula izq / aorta
+  ai_lineal numeric, ao_lineal numeric, ai_ao_lineal numeric, ai_ao_area numeric,
+  -- Doppler aórtico / pulmonar
+  vmax_ao numeric, gp_ao numeric, vti_ao numeric, thp_ao numeric,
+  vmax_pulmonar numeric, gp_pulmonar numeric,
+  -- Doppler mitral / tricúspide
+  vmax_mitral numeric, gp_mitral numeric,
+  velocidad_e_mitral numeric, velocidad_a_mitral numeric, relacion_ea_mitral numeric,
+  vmax_tricuspideo numeric, gp_tricuspideo numeric,
+  velocidad_e_tricuspideo numeric, velocidad_a_tricuspideo numeric, relacion_ea_tricuspideo numeric,
+  -- Función longitudinal / atrial / derecho
+  mapse numeric, tapse numeric, fa_atrial numeric,
+  vp_ap numeric, ao_ap numeric, dapd numeric, dvccd numeric,
+  -- Efusiones / patrón (text)
+  efusion_pericardica text, efusion_pleural text, patron_llenado_vi text, observaciones text,
+  -- Indexados a superficie corporal / peso
+  dvid_indexado numeric, dvs_indexado numeric, sivd_indexado numeric, sivs_indexado numeric,
+  ppvid_indexado numeric, ppvis_indexado numeric,
+  ai_indexado numeric, ao_indexado numeric, masa_vi_indexada numeric, volumen_ai_indexado numeric,
+  volumen_fdi_indexado numeric, volumen_fsi_indexado numeric, volumen_si_indexado numeric,
+  gasto_cardiaco_indexado numeric,
+  volumen_vi_fd_indexado numeric, volumen_vi_fs_indexado numeric,
+  -- Clasificación / scores
+  acvim_estadio text, mine2_puntaje numeric, mine2_clasificacion text,
+  hp_gradiente numeric, hp_clasificacion text
+);
+
+create index idx_datos_eco_acvim       on public.datos_ecocardiografia (acvim_estadio);
+create index idx_datos_eco_mine2_clas  on public.datos_ecocardiografia (mine2_clasificacion);
+create index idx_datos_eco_hp_clas     on public.datos_ecocardiografia (hp_clasificacion);
+create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_at);
+
+-- El SPA (interface/app.js) sólo tiene campos para un subconjunto (~26) de estas
+-- columnas — el resto viaja siempre como null hasta que se decida sumarlas a la
+-- UI. Nodo n8n que la puebla: "Insert Datos Ecocardiografía" (ver n8n/README.md).
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
 alter table public.tutores enable row level security;
 alter table public.mascotas enable row level security;
 alter table public.atenciones_cardiologia enable row level security;
+alter table public.datos_ecocardiografia enable row level security;
 
--- Sin políticas definidas todavía (ver hallazgo crítico arriba). No se agregó
--- ninguna en esta sesión — pendiente de decisión.
+-- Sin políticas definidas todavía (ver hallazgo crítico arriba); las 4 tablas
+-- igual. Los nodos n8n escriben con la credencial service_role, que bypassa
+-- RLS — no hace falta política para `anon`. No se agregó ninguna en esta
+-- sesión.

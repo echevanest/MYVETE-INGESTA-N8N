@@ -270,6 +270,162 @@
         </fieldset>
       </details>
 
+      <!-- Datos Ecocardiográficos — bloque dedicado que viaja a la tabla
+           Supabase `datos_ecocardiografia` (una fila por atención, PK
+           atencion_id resuelto en n8n a partir de la atención recién creada;
+           ver app.js Sección 8 y n8n/README.md). Es DISTINTO del "Apéndice
+           Métrico" de arriba, que sigue alimentando `atenciones_cardiologia.metricas`
+           sin cambios — los dos coexisten por ahora (unificar es limpieza futura).
+           El id de cada input de dato es EXACTAMENTE `eco-<nombre_de_columna>`,
+           así el mapeo UI→columna es directo. Flujo (decidido 2026-09-08):
+           1) cargar PDF + "Extraer datos del PDF" → autollena los campos;
+           2) los campos quedan bloqueados; "Editar campos" los habilita para
+              corrección manual;
+           3) al enviar la consulta, app.js arma el objeto con las 72 columnas
+              (las que no tienen campo, o quedaron vacías, viajan como null).
+           Unidades (la tabla es `numeric` a secas, sin unidad): lineales en cm,
+           fracciones en %, velocidades en m/s — misma convención que el
+           extractor de PDF en app.js. -->
+      <details id="bloque-ecocardiografia" class="bloque-metrico">
+        <summary>Datos Ecocardiográficos (informe → Supabase)</summary>
+
+        <div class="eco-pdf-carga">
+          <input type="file" id="eco-pdf-input" accept=".pdf" />
+          <button type="button" id="btn-extraer-eco-pdf" class="btn btn-secundario">
+            📄 Extraer datos del PDF
+          </button>
+          <button type="button" id="btn-editar-eco" class="btn btn-secundario">
+            ✏️ Editar campos
+          </button>
+          <pre id="eco-pdf-log" class="eco-pdf-log" hidden></pre>
+        </div>
+
+        <fieldset class="grid-metricas">
+          <legend>Modo M / lineales (cm)</legend>
+          <label class="campo-label">
+            DVID — diám. VI diástole
+            <input type="number" step="0.01" id="eco-dvid" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            DVS — diám. VI sístole
+            <input type="number" step="0.01" id="eco-dvs" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            SIVd
+            <input type="number" step="0.01" id="eco-sivd" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            SIVs
+            <input type="number" step="0.01" id="eco-sivs" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            PPVId
+            <input type="number" step="0.01" id="eco-ppvid" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            PPVIs
+            <input type="number" step="0.01" id="eco-ppvis" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            AI (lineal)
+            <input type="number" step="0.01" id="eco-ai_lineal" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Ao (lineal)
+            <input type="number" step="0.01" id="eco-ao_lineal" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Relación AI/Ao (lineal)
+            <input type="number" step="0.01" id="eco-ai_ao_lineal" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Función sistólica</legend>
+          <label class="campo-label">
+            FE — Modo M (%)
+            <input type="number" step="0.1" id="eco-fe_modom" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            FS — Modo M (%)
+            <input type="number" step="0.1" id="eco-fs_modom" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            FE — Simpson (%)
+            <input type="number" step="0.1" id="eco-fe_simpson" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Masa VI (g)
+            <input type="number" step="0.01" id="eco-masa_vi" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Volúmenes (mL)</legend>
+          <label class="campo-label">
+            Vol. FDI — Modo M
+            <input type="number" step="0.01" id="eco-volumen_fdi_modom" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Vol. FSI — Modo M
+            <input type="number" step="0.01" id="eco-volumen_fsi_modom" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Vol. sistólico — Modo M
+            <input type="number" step="0.01" id="eco-volumen_si_modom" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Gasto cardíaco — Modo M
+            <input type="number" step="0.01" id="eco-gasto_cardiaco_modom" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Vol. AI ESV — Simpson
+            <input type="number" step="0.01" id="eco-volumen_ai_esv_simpson" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Vol. AI — Simpson
+            <input type="number" step="0.01" id="eco-volumen_ai_simp_simpson" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Doppler</legend>
+          <label class="campo-label">
+            Velocidad E mitral (m/s)
+            <input type="number" step="0.01" id="eco-velocidad_e_mitral" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <fieldset class="grid-metricas">
+          <legend>Clasificación / scores</legend>
+          <label class="campo-label">
+            MINE2 — puntaje
+            <input type="number" step="0.1" id="eco-mine2_puntaje" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            MINE2 — clasificación
+            <input type="text" id="eco-mine2_clasificacion" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Estadio ACVIM
+            <input type="text" id="eco-acvim_estadio" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            HP — gradiente (mmHg)
+            <input type="number" step="0.1" id="eco-hp_gradiente" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            HP — clasificación
+            <input type="text" id="eco-hp_clasificacion" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <label class="campo-label campo-ancho">
+          Observaciones del estudio
+          <textarea id="eco-observaciones" class="textarea-control campo-eco" rows="3" disabled></textarea>
+        </label>
+      </details>
+
       <!-- Dictado por voz (Web Speech API nativa, sin librerías): cada botón
            .btn-dictado agrega a #app.js el reconocimiento en español que concatena
            el texto dictado al final del campo indicado en data-target, sin borrar
@@ -316,6 +472,13 @@
       <!-- TODO: botón "Confirmar y enviar a MyVete" (dispara postMessage) -->
     </section>
   </main>
+
+  <!-- PDF.js — usado por el bloque "Datos Ecocardiográficos" (app.js Sección 8)
+       para extraer texto del PDF del ecocardiograma. Debe ir antes de app.js. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  </script>
 
   <script src="./app.js"></script>
 </body>

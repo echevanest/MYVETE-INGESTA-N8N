@@ -1,9 +1,9 @@
 {
-  "_nota": "Export real via API de n8n (GET /api/v1/workflows/5gGWXOjY2BBOAfuw) tomado el 2026-09-03 despues de aplicar los 3 cambios de esta sesion: (1) credencial httpHeaderAuth de los 3 nodos Supabase cambiada de la apikey publicable a una nueva credencial con la service_role key (bypassea RLS; RLS queda habilitado y SIN politicas para anon, que es el estado seguro deseado); (2) Upsert Tutor con on_conflict condicional (id_myvete si el payload lo trae, si no email) y id_myvete agregado al jsonBody; (3) Insert Atencion Cardiologia con anamnesis_raw/diagnostico_raw/indicaciones_raw agregados al jsonBody. Probado E2E con un POST sintetico al webhook de produccion el mismo dia -- ver STATUS.md Seccion G. No hay apikey en texto plano en este archivo: los 3 nodos HTTP Request usan unicamente la credencial (oculta, gestionada por n8n), no un header 'apikey' visible en parameters.",
+  "_nota": "Export real via API de n8n (GET /api/v1/workflows/5gGWXOjY2BBOAfuw). Base 2026-09-03 (ver STATUS.md Seccion G). Actualizado 2026-09-08: se agregaron 2 nodos al final de la cadena Supabase para guardar datos ecocardiograficos en la tabla `datos_ecocardiografia` (PK atencion_id = id de la atencion recien creada). Cadena nueva: ... Insert Atencion Cardiologia -> 'IF - ¿Trae Ecocardiografia?' -> (rama true) 'Insert Datos Ecocardiografia'. El IF chequea Boolean(body.datos_ecocardiografia): si el SPA no cargo ningun dato eco manda null y no se inserta fila vacia. 'Insert Datos Ecocardiografia' es POST /rest/v1/datos_ecocardiografia?on_conflict=atencion_id (upsert merge-duplicates), onError=continueRegularOutput para que un fallo del tramo eco no marque la ejecucion como error ni afecte los inserts anteriores. Usa la misma credencial service_role (EPCExaKpytpqeH99). Probado E2E con POST sintetico al webhook de produccion el 2026-09-08 (datos marcados TEST-QA-ECO-0908, borrados despues). No hay apikey en texto plano en este archivo: los nodos HTTP Request usan unicamente la credencial (oculta, gestionada por n8n).",
   "id": "5gGWXOjY2BBOAfuw",
   "name": "MYVETE - Ingesta Filiación & Orquestador Core",
   "active": true,
-  "versionCounter": 10,
+  "versionCounter": 11,
   "nodes": [
     {
       "parameters": {
@@ -126,6 +126,51 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "credentials": { "httpHeaderAuth": { "id": "EPCExaKpytpqeH99", "name": "Supabase myvete-cardiologia (service_role, apikey header)" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "eco-cond-0001",
+              "leftValue": "={{ Boolean($('Webhook').item.json.body.datos_ecocardiografia) }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0eco0if0-1111-4a2b-9c3d-0000000000a1",
+      "name": "IF - ¿Trae Ecocardiografía?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/datos_ecocardiografia?on_conflict=atencion_id",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({}, $('Webhook').item.json.body.datos_ecocardiografia || {}, { atencion_id: $('Insert Atención Cardiología').item.json.id })) }}"
+      },
+      "id": "0eco0ins-2222-4a2b-9c3d-0000000000a2",
+      "name": "Insert Datos Ecocardiografía",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "credentials": { "httpHeaderAuth": { "id": "EPCExaKpytpqeH99", "name": "Supabase myvete-cardiologia (service_role, apikey header)" } }
     }
   ],
   "connections": {
@@ -137,6 +182,8 @@
       ]]
     },
     "Upsert Tutor": { "main": [[ { "node": "Upsert Mascota", "type": "main", "index": 0 } ]] },
-    "Upsert Mascota": { "main": [[ { "node": "Insert Atención Cardiología", "type": "main", "index": 0 } ]] }
+    "Upsert Mascota": { "main": [[ { "node": "Insert Atención Cardiología", "type": "main", "index": 0 } ]] },
+    "Insert Atención Cardiología": { "main": [[ { "node": "IF - ¿Trae Ecocardiografía?", "type": "main", "index": 0 } ]] },
+    "IF - ¿Trae Ecocardiografía?": { "main": [[ { "node": "Insert Datos Ecocardiografía", "type": "main", "index": 0 } ], []] }
   }
 }

@@ -685,6 +685,12 @@ function consolidarPayloadFinal() {
     },
     medicacion: leerMedicacion(),
     bloque_metrico: leerBloqueMetrico(),
+    // Bloque para la tabla Supabase `datos_ecocardiografia` (Sección 8). Objeto
+    // con las 72 columnas (null las vacías) o null si no se cargó ningún dato;
+    // n8n lo inserta recién después de crear la atención, con atencion_id = id
+    // de esa atención. leerBloqueEcocardiografia es function declaration
+    // (hoisted): disponible aunque se defina más abajo en el archivo.
+    datos_ecocardiografia: leerBloqueEcocardiografia(),
   };
 }
 
@@ -852,3 +858,250 @@ document.querySelectorAll('.btn-dictado').forEach((boton) => {
     recognition.start();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 8. Datos Ecocardiográficos — extracción de PDF + bloque `datos_ecocardiografia`
+// ---------------------------------------------------------------------------
+// Sustituye al "MÓDULO DE PRUEBA" que estaba sin comitear. Dos responsabilidades:
+//
+//  a) Extraer valores del PDF del ecocardiograma (PDF.js ya cargado en
+//     index.html) con heurística de regex y AUTOLLENAR los campos #eco-* del
+//     bloque "Datos Ecocardiográficos". Los campos arrancan disabled; el botón
+//     "Editar campos" los habilita para corrección manual (decisión 2026-09-08:
+//     el PDF prellena, el profesional revisa/edita, después envía).
+//
+//  b) leerBloqueEcocardiografia(): arma el objeto con TODAS las columnas de la
+//     tabla Supabase `datos_ecocardiografia` (menos atencion_id/created_at, que
+//     los pone la base y n8n). Las columnas sin campo en la UI, o con el campo
+//     vacío, viajan como null. consolidarPayloadFinal() lo agrega como
+//     payload.datos_ecocardiografia (o null si no se cargó ningún dato).
+//
+// El id de cada input de dato es EXACTAMENTE `eco-<nombre_de_columna>`, así el
+// mapeo UI → columna es directo y no hay una segunda tabla de nombres.
+//
+// Unidades (la tabla es `numeric` sin unidad): lineales en cm (el extractor
+// convierte mm → cm), fracciones en %, velocidades en m/s (cm/s → m/s). Es una
+// convención elegida acá, no un dato del schema.
+//
+// Correcciones ya incorporadas del módulo previo: separador sigla/número
+// opcional; unidad capturada dentro del regex (grupo 2) con ventana corta de
+// respaldo (5 chars) para no cruzar al campo siguiente; coma decimal; "%"
+// opcional en FE/FS; límite de palabra (\b) antes de cada sigla.
+
+// Columnas reales de public.datos_ecocardiografia (introspección 2026-09-08),
+// sin atencion_id ni created_at. El orden es el de la tabla.
+const COLUMNAS_DATOS_ECO = [
+  'sivd', 'sivs', 'dvid', 'dvs', 'ppvid', 'ppvis',
+  'fe_modom', 'fs_modom',
+  'volumen_fdi_modom', 'volumen_fsi_modom', 'volumen_si_modom', 'gasto_cardiaco_modom',
+  'masa_vi', 'indice_masa_vi', 'mvcf',
+  'fe_simpson',
+  'volumen_ai_esv_simpson', 'volumen_ai_simp_simpson',
+  'volumen_vi_fd_simpson', 'volumen_vi_fs_simpson',
+  'ai_lineal', 'ao_lineal', 'ai_ao_lineal', 'ai_ao_area',
+  'vmax_ao', 'gp_ao', 'vti_ao', 'thp_ao',
+  'vmax_pulmonar', 'gp_pulmonar',
+  'vmax_mitral', 'gp_mitral',
+  'velocidad_e_mitral', 'velocidad_a_mitral', 'relacion_ea_mitral',
+  'vmax_tricuspideo', 'gp_tricuspideo',
+  'velocidad_e_tricuspideo', 'velocidad_a_tricuspideo', 'relacion_ea_tricuspideo',
+  'mapse', 'tapse', 'fa_atrial',
+  'vp_ap', 'ao_ap', 'dapd', 'dvccd',
+  'efusion_pericardica', 'efusion_pleural', 'patron_llenado_vi', 'observaciones',
+  'dvid_indexado', 'dvs_indexado', 'sivd_indexado', 'sivs_indexado',
+  'ppvid_indexado', 'ppvis_indexado',
+  'ai_indexado', 'ao_indexado', 'masa_vi_indexada', 'volumen_ai_indexado',
+  'volumen_fdi_indexado', 'volumen_fsi_indexado', 'volumen_si_indexado', 'gasto_cardiaco_indexado',
+  'volumen_vi_fd_indexado', 'volumen_vi_fs_indexado',
+  'acvim_estadio', 'mine2_puntaje', 'mine2_clasificacion', 'hp_gradiente', 'hp_clasificacion',
+];
+
+// Columnas `text` de la tabla (el resto son `numeric`).
+const COLUMNAS_DATOS_ECO_TEXTO = new Set([
+  'efusion_pericardica', 'efusion_pleural', 'patron_llenado_vi', 'observaciones',
+  'acvim_estadio', 'mine2_clasificacion', 'hp_clasificacion',
+]);
+
+// Heurística PDF → columna. `unidad` es la de DESTINO: solo 'cm' dispara
+// conversión desde mm y solo 'm/s' desde cm/s; el resto se toma tal cual.
+// `siglas` alimenta el fallback cuando el regex principal no matchea.
+const MAPEO_EXTRACCION_PDF = [
+  { columna: 'dvid', siglas: ['DIVId', 'LVIDd', 'LVEDD', 'DVId', 'DVI'],
+    regex: /\b(?:DIVId|LVIDd|LVEDD|DVId|DVI)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'dvs', siglas: ['DIVIs', 'LVIDs', 'LVESD', 'DVIs', 'DVS'],
+    regex: /\b(?:DIVIs|LVIDs|LVESD|DVIs|DVS)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'sivd', siglas: ['SIVd', 'IVSd'],
+    regex: /\b(?:SIVd|IVSd)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'sivs', siglas: ['SIVs', 'IVSs'],
+    regex: /\b(?:SIVs|IVSs)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'ppvid', siglas: ['PPVId', 'LVPWd'],
+    regex: /\b(?:PPVId|LVPWd)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'ppvis', siglas: ['PPVIs', 'LVPWs'],
+    regex: /\b(?:PPVIs|LVPWs)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'fe_modom', siglas: ['FE(Teich)', 'EF(Teich)', 'FE', 'EF'],
+    regex: /\b(?:FE\(Teich\)|EF\(Teich\)|FE|EF)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(%)?/i, unidad: '%' },
+  { columna: 'fs_modom', siglas: ['FS(Teich)', 'FS'],
+    regex: /(?:%\s*)?\b(?:FS\(Teich\)|FS)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(%)?/i, unidad: '%' },
+  { columna: 'fe_simpson', siglas: ['FE Simpson', 'EF Simpson', 'Simpson'],
+    regex: /\b(?:FE|EF)\s*\(?\s*Simpson\s*\)?\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(%)?/i, unidad: '%' },
+  { columna: 'ai_lineal', siglas: ['Diámetro AI', 'Diametro AI', 'AI', 'LA'],
+    regex: /\b(?:Di[áa]metro\s+AI|AI|LA)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'ao_lineal', siglas: ['Ao Diam', 'Diámetro aorta', 'Diametro aorta', 'Ao'],
+    regex: /\b(?:Ao\s?Diam|Di[áa]metro\s+aorta|Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+  { columna: 'ai_ao_lineal', siglas: ['AI/Ao', 'LA/Ao'],
+    regex: /\b(?:AI\s*\/\s*Ao|LA\s*\/\s*Ao|Relaci[óo]n\s+AI\s*\/?\s*Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
+  { columna: 'velocidad_e_mitral', siglas: ['Onda E', 'Vel E', 'E mitral'],
+    regex: /\b(?:Onda\s*E|Vel\.?\s*E|E\s*mitral|Vmax\s*E)\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(m\/s|cm\/s)?/i, unidad: 'm/s' },
+];
+
+// "25,2" -> 25.2 ; "1.42" -> 1.42 ; basura -> NaN
+function ecoANumero(valorCrudo) {
+  if (valorCrudo == null) return NaN;
+  return parseFloat(String(valorCrudo).replace(',', '.'));
+}
+
+// Devuelve el número ya en la unidad de destino, o null si no es numérico.
+// Si la unidad no se detectó, se ASUME que ya viene en la de destino (RIESGO:
+// un valor real en mm sin unidad explícita queda 10x más chico — no hay forma
+// fiable de saberlo solo del texto).
+function ecoNormalizarValor(valorCrudo, unidadDetectada, unidadDestino) {
+  const num = ecoANumero(valorCrudo);
+  if (isNaN(num)) return null;
+  const u = String(unidadDetectada || '').toLowerCase();
+  if (u === 'mm' && unidadDestino === 'cm') return Math.round((num / 10) * 1000) / 1000;
+  if (u === 'cm/s' && unidadDestino === 'm/s') return Math.round((num / 100) * 1000) / 1000;
+  return num;
+}
+
+function ecoEscaparRegex(texto) {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ecoExtraerPorRegex(texto, config) {
+  let match = texto.match(config.regex);
+
+  // Fallback: sigla suelta, separador y unidad opcionales.
+  if (!match) {
+    for (const sigla of config.siglas) {
+      const rf = new RegExp(
+        ecoEscaparRegex(sigla) + '\\s*[:=]?\\s*(\\d+(?:[.,]\\d+)?)\\s*(mm|cm|%|m\\/s|cm\\/s)?',
+        'i',
+      );
+      match = texto.match(rf);
+      if (match) break;
+    }
+  }
+
+  if (!match) return null;
+
+  // Unidad: la del propio match; si no vino, ventana corta (5 chars) pegada al
+  // final del número.
+  let unidad = match[2];
+  if (!unidad && typeof match.index === 'number') {
+    const cola = texto.slice(match.index + match[0].length, match.index + match[0].length + 5);
+    const m2 = cola.match(/^\s*(mm|cm|%|m\/s|cm\/s)/i);
+    if (m2) unidad = m2[1];
+  }
+
+  return ecoNormalizarValor(match[1], unidad, config.unidad);
+}
+
+// Recorre MAPEO_EXTRACCION_PDF y devuelve { <columna>: number|null }.
+function extraerDatosEcocardiografia(texto) {
+  const resultados = {};
+  for (const config of MAPEO_EXTRACCION_PDF) {
+    resultados[config.columna] = ecoExtraerPorRegex(texto, config);
+  }
+  return resultados;
+}
+
+// Vuelca lo extraído en los inputs #eco-<columna> (solo los no-null que tengan
+// campo). Devuelve cuántos campos se llenaron.
+function autollenarCamposEco(datos) {
+  let llenos = 0;
+  for (const [columna, valor] of Object.entries(datos)) {
+    const campo = document.getElementById(`eco-${columna}`);
+    if (!campo || valor == null) continue;
+    campo.value = valor;
+    llenos += 1;
+  }
+  return llenos;
+}
+
+// Objeto con las 72 columnas de datos_ecocardiografia (null las vacías). Texto
+// se manda trim; numéricos con Number (coma → punto). Devuelve null si no hay
+// ni un dato cargado, para que n8n no inserte una fila vacía.
+function leerBloqueEcocardiografia() {
+  const obj = {};
+  let algunDato = false;
+  for (const columna of COLUMNAS_DATOS_ECO) {
+    const campo = document.getElementById(`eco-${columna}`);
+    const crudo = campo ? String(campo.value).trim() : '';
+    if (crudo === '') {
+      obj[columna] = null;
+      continue;
+    }
+    if (COLUMNAS_DATOS_ECO_TEXTO.has(columna)) {
+      obj[columna] = crudo;
+    } else {
+      const n = Number(crudo.replace(',', '.'));
+      obj[columna] = Number.isFinite(n) ? n : null;
+    }
+    if (obj[columna] != null) algunDato = true;
+  }
+  return algunDato ? obj : null;
+}
+
+const btnEditarEco = document.getElementById('btn-editar-eco');
+if (btnEditarEco) {
+  btnEditarEco.addEventListener('click', () => {
+    const campos = document.querySelectorAll('.campo-eco');
+    // Si alguno sigue bloqueado, este clic desbloquea todos; si están todos
+    // habilitados, los vuelve a bloquear.
+    const habilitar = Array.from(campos).some((c) => c.disabled);
+    campos.forEach((c) => { c.disabled = !habilitar; });
+    btnEditarEco.textContent = habilitar ? '🔒 Bloquear campos' : '✏️ Editar campos';
+  });
+}
+
+const btnExtraerEcoPdf = document.getElementById('btn-extraer-eco-pdf');
+if (btnExtraerEcoPdf) {
+  btnExtraerEcoPdf.addEventListener('click', async () => {
+    const input = document.getElementById('eco-pdf-input');
+    const log = document.getElementById('eco-pdf-log');
+    const escribirLog = (txt) => { log.textContent = txt; log.hidden = false; };
+
+    if (!input || !input.files || input.files.length === 0) {
+      escribirLog('⚠️ Elegí un PDF primero.');
+      return;
+    }
+    if (typeof pdfjsLib === 'undefined') {
+      escribirLog('❌ PDF.js no cargó (revisá la conexión o los <script> de index.html).');
+      return;
+    }
+
+    escribirLog('📄 Procesando PDF...');
+    try {
+      const arrayBuffer = await input.files[0].arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      let textoCompleto = '';
+      for (let i = 1; i <= pdf.numPages; i += 1) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        textoCompleto += `\n--- PÁGINA ${i} ---\n${content.items.map((it) => it.str).join(' ')}`;
+      }
+
+      const datos = extraerDatosEcocardiografia(textoCompleto);
+      const llenos = autollenarCamposEco(datos);
+
+      let resumen = `📊 ${llenos} campo(s) autollenado(s). Revisá y usá "Editar campos" si hay que corregir.\n\n`;
+      for (const [columna, valor] of Object.entries(datos)) {
+        resumen += `${columna}: ${valor != null ? valor : '—'}\n`;
+      }
+      escribirLog(resumen);
+    } catch (error) {
+      escribirLog(`❌ Error al leer el PDF: ${error.message}`);
+    }
+  });
+}

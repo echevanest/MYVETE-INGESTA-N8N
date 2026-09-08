@@ -344,6 +344,29 @@ section {
   }
 }
 
+/* --- Datos Ecocardiográficos: carga de PDF + log ----------------------- */
+
+.eco-pdf-carga {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.eco-pdf-log {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+  padding: 0.5rem 0.75rem;
+  max-height: 220px;
+  overflow: auto;
+  background: #f4f6f8;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
 /* --- Dictado por voz (Sección B) ----------------------------------------- */
 
 .campo-con-dictado {
