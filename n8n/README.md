@@ -38,3 +38,19 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 **Prueba E2E (2026-09-03):** POST sintético directo a `https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion-v4` con datos marcados como test (`id_myvete: TEST-QA-CODE-0001`) → `200 OK` con `borrador_medico` correcto → verificado en Supabase: fila en `tutores` (conciliada por `id_myvete`), fila en `mascotas` (FK correcto), fila en `atenciones_cardiologia` con `metricas`, `informe_borrador` y los 3 campos `_raw` poblados. Datos de prueba borrados después de verificar. **No se probó con el bookmarklet real contra MyVete** — sigue pendiente una corrida real en navegador.
 
 **Prueba E2E (2026-09-08) — tramo ecocardiografía:** `PUT /workflows/5gGWXOjY2BBOAfuw` agregó los 2 nodos (versionCounter 10 → 11, workflow sigue `active`). POST sintético al webhook de producción con `datos_ecocardiografia` poblado (`id_myvete: TEST-QA-ECO-0908`) → `200 OK` → fila en `datos_ecocardiografia` con `atencion_id` = id de la atención creada en la misma ejecución y todos los valores correctos. UPSERT verificado por separado (`on_conflict=atencion_id`, re-POST con `dvid` cambiado → fila actualizada, resto preservado). Datos de prueba borrados (delete del tutor → cascada). Falta la corrida real desde el SPA en navegador (subir PDF, autollenar, enviar).
+
+**Estado 2026-09-09:** producción sin cambios respecto al 2026-09-08 (releído por API: `versionCounter 13`, `active`, mismos 8 nodos; el bump 11→13 son re-saves sin cambio estructural en los nodos revisados). El respaldo `workflow_v5_supabase.sanitized.json` queda en vC 11 — desactualizado en el número de versión, no en la estructura.
+
+## Workflow STAGING Sprint 6 — Informe PDF + envío por mail
+
+**NO es producción.** Copia creada 2026-09-09 para armar y revisar el Sprint 6 sin tocar `5gGWXOjY2BBOAfuw`. Detalle y pendientes en `STATUS.md` Sección J.
+
+*   **Workflow ID:** `lkOwTFmVTZu7EMoU` — "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]"
+*   **Estado:** `active: false`. Webhook path `ingesta-filiacion-v6-test` (NO `ingesta-filiacion-v4`, para no colisionar con prod).
+*   **Respaldo local:** `n8n/workflow_v6_pdf_mail.STAGING.json` (export vía API, credenciales solo por referencia de id).
+*   **Base:** los 8 nodos de producción + 7 nodos nuevos colgados de la salida de `Insert Atención Cardiología` (segunda conexión, **en paralelo** a la rama del `IF - ¿Trae Ecocardiografía?`).
+*   **Cadena nueva:** `Preparar Datos para PDF` (Code) → `Crear Google Doc` → `Insertar contenido en Doc` (batchUpdate) → `Exportar PDF (autenticado)` (Drive `files/export?mimeType=application/pdf`, binario `data`) → `IF - ¿Tutor con email?` → (true) `Enviar informe al tutor` (Gmail OAuth2 `Gmail account INFOACIVET`, PDF adjunto) → `Archivar Google Doc` (`{trashed:true}`); la rama false del IF va directo a `Archivar Google Doc`.
+*   **Método PDF:** Google Doc → export (patrón `ARES_04_GEN_PDF`), credencial `Google Drive Docs Slides` (`k2oarx2fLAT9LgPw`). El Doc **no se hace público** (tiene PII del tutor): se exporta autenticado y se manda a papelera tras el envío.
+*   **`onError: continueRegularOutput`** en los 5 nodos HTTP/Gmail nuevos — un fallo de PDF/mail no afecta los inserts previos ni la respuesta HTTP.
+*   **Sin validar:** falta la prueba E2E sintética (activar la copia, POST al webhook de test con un email propio, verificar Doc→PDF→mail→papelera). Envía un mail real por INFOACIVET y crea/descarta un Doc en esa cuenta de Google.
+*   **ECG:** el bloque `ekg` en `Preparar Datos para PDF` está comentado, listo para la próxima iteración (`payload.bloque_ekg` ya llega, n8n lo ignora hoy).

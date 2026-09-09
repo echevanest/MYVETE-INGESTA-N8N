@@ -1,6 +1,6 @@
 # 🗺️ ESTADO DEL PROYECTO: INTERFAZ LOCAL & n8n
 
-*   **Última actualización:** 2026-09-08 — ver Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
+*   **Última actualización:** 2026-09-09 — ver Sección J (Sprint 6: generación de informe PDF + envío por mail — **armado en un workflow COPIA/STAGING, sin tocar producción, sin validar todavía**). 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
 *   **Versión de la Arquitectura:** V5.0 — COMPLETADA Y VALIDADA E2E (Streaming de Dictado Interino + Conexión End-to-End n8n Cloud Validada + Nodo IA en producción + Fix de renderizado de `borrador_medico` + Bookmarklet de Filiación: extracción de mascota **y** de tutor validadas E2E contra MyVete real — cobertura de filiación 100%)
 *   **Control de versión:** Repositorio Git local inicializado (branch `master`). Commit `8634294` (V4.9 consolidado); extracción de tutor (V5.0), validada E2E, en curso de commit.
 *   **Nota sobre "ARCHIVO MAESTRO v5.2":** referenciado en conversación externa (Gemini/Arquitectura) como fuente de un DDL de Supabase — no se encontró ningún archivo con ese nombre en este repo ni en el Google Drive conectado al momento de escribir la Sección F. Si existe, no está compartido con esta sesión.
@@ -108,9 +108,48 @@ Arquitectura elegida: **Combined Payload** (el bloque eco viaja dentro del paylo
 
 ---
 
+### J. Sprint 6 — Informe PDF + envío por mail al tutor (2026-09-09) — EN STAGING, SIN VALIDAR
+
+Objetivo del sprint: al enviar el formulario, n8n genera un informe PDF de la consulta y lo manda por mail al tutor. **Nada de esto está en producción todavía** — se armó y quedó en un workflow COPIA para revisión de DeepSy antes de tocar `5gGWXOjY2BBOAfuw`.
+
+**Estado del proyecto confirmado al abrir el sprint (verificado 2026-09-09 contra la API de n8n, no contra dumps):**
+
+*   **Workflow de producción `5gGWXOjY2BBOAfuw`:** `active`, `versionCounter 13`, `updatedAt 2026-09-08T17:46`. Los 8 nodos (incluidos `IF - ¿Trae Ecocardiografía?` + `Insert Datos Ecocardiografía`) **ya están en prod**. El respaldo del repo `n8n/workflow_v5_supabase.sanitized.json` está en vC 11 — 2 saves atrás pero estructuralmente idéntico en los nodos revisados (Respond to Webhook, IF eco, Insert Atención, Insert Datos Eco).
+*   **`Respond to Webhook` cuelga en rama paralela desde `IA`** y NO espera a la cadena Supabase → el SPA **nunca recibe `atencion_id`**. Cualquier generación de PDF que necesite datos ya conciliados tiene que ocurrir DENTRO de la cadena Supabase, no en la ruta de respuesta.
+*   **SPA:** `consolidarPayloadFinal()` (`interface/app.js:633`) ya emite `datos_ecocardiografia`, `bloque_ekg`, `filiacion.tutor.email` (nullable), `consulta.*`. Sin cambios de SPA necesarios para el Sprint 6. (Ojo: `interface/app.js` / `index.html` / `supabase/schema.sql` tienen cambios SIN COMMITEAR previos a esta sesión — trabajo de visibilidad de campos eco + índices ampliados de la Sección I, no auditado acá.)
+*   **NO hay credencial SMTP en n8n.** El envío se hace con el **nodo Gmail (OAuth2)**. Credenciales Gmail disponibles: `Gmail account INFOACIVET` (`eMVAugCGSCpQrcEj`), `Gmail - echevanest@gmail.com` (`rz2DSV3KtfiLr5fV`), `Gmail account 3` (`aYooILceNBCd7ZJF`). **Elegida: `Gmail account INFOACIVET`** (casilla institucional ACIVET).
+*   **NO hay PDFMake ni renderer de PDF en la instancia.** El único precedente es `ARES_04_GEN_PDF` (`UZDXleh1j4g6aaPA`): crea un Google Doc vía API → `batchUpdate` insertText → URL `/export?format=pdf`. **Método elegido para el Sprint 6: Google Doc → export PDF** (patrón ARES_04). Credencial Drive: `Google Drive Docs Slides` (`k2oarx2fLAT9LgPw`), la misma que usa ARES_04 (su OAuth cubre el scope de Docs).
+*   **E2E real todavía pendiente** (heredado, no del Sprint 6): corrida del bookmarklet real contra MyVete en navegador; corrida real subiendo un PDF de eco desde el SPA. Lo validado es POST sintético al webhook.
+
+**Lo que se construyó (workflow COPIA, NO producción):**
+
+*   **Workflow STAGING:** `lkOwTFmVTZu7EMoU` — "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]". `active: false`. Webhook path `ingesta-filiacion-v6-test` (distinto de prod para no colisionar). Respaldo en `n8n/workflow_v6_pdf_mail.STAGING.json`.
+*   **7 nodos nuevos** colgados de la salida de `Insert Atención Cardiología` (segunda conexión, EN PARALELO a la rama del IF de eco — no aguas abajo de ella; el PDF usa `payload.datos_ecocardiografia` del webhook, no la fila de la DB):
+    1.  **`Preparar Datos para PDF`** (`n8n-nodes-base.code` v2) — lee EXPLÍCITO de `$('Webhook').item.json.body` y `$('IA - Estructurar Anamnesis')` (en esa posición `$input` sería la fila de Supabase, no el payload). Combina payload + salida IA, filtra campos NULL/vacíos (regla "solo campos medidos"), separa `valoresMedidos` / `valoresIndexados` / `scores`, arma el string `doc_content` con secciones que se omiten si están vacías. Bloque ECG **comentado** (preparado para la próxima iteración). Fallback `mascota.peso ?? mascota.pesoActual`.
+    2.  **`Crear Google Doc`** — `POST https://docs.googleapis.com/v1/documents`, título `Informe cardiologico - <paciente> - <fecha>`.
+    3.  **`Insertar contenido en Doc`** — `POST .../documents/{documentId}:batchUpdate`, `insertText` en index 1 con `doc_content`.
+    4.  **`Exportar PDF (autenticado)`** — `GET https://www.googleapis.com/drive/v3/files/{documentId}/export?mimeType=application/pdf`, `responseFormat: file` → binario en propiedad `data`. **NO se hace público el Doc** (a diferencia de ARES_04) porque el informe tiene datos personales del tutor.
+    5.  **`IF - ¿Tutor con email?`** — condición: email existe Y ≠ `N/D`.
+    6.  **`Enviar informe al tutor`** (`n8n-nodes-base.gmail` v2.1) — cred `Gmail account INFOACIVET`, `sendTo` = email del tutor, PDF adjunto desde la propiedad binaria `data`.
+    7.  **`Archivar Google Doc`** — `PATCH .../files/{documentId}` con `{ trashed: true }` (borra la copia con PII del Drive después del envío; también corre por la rama false del IF).
+*   **Los 5 nodos HTTP/Gmail nuevos con `onError: continueRegularOutput`** — un fallo de PDF/mail no rompe los inserts previos ni la respuesta HTTP (ya emitida en paralelo). Blast radius máximo: "no se envió el mail".
+
+**PENDIENTE para retomar (en orden):**
+
+1.  **Revisión de DeepSy** del diseño de los 7 nodos (`n8n/workflow_v6_pdf_mail.STAGING.json` + esta sección). Decisiones a confirmar/vetar: (a) rama colgada de `Insert Atención Cardiología` en paralelo al IF de eco; (b) Doc privado + export autenticado + papelera, en vez de Doc público; (c) PDF como texto plano en Google Doc (NO la maqueta visual de `MODELOS DE INFORMES/informe JOSEMA.pdf` — para ese aspecto haría falta un Doc-plantilla con `{{placeholders}}` que alguien arme y comparta); (d) remitente `INFOACIVET`.
+2.  **Prueba E2E sintética en STAGING:** activar `lkOwTFmVTZu7EMoU`, `POST` a `https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion-v6-test` con payload de prueba (incluir `filiacion.tutor.email` = una casilla propia, p. ej. `echevanest@gmail.com`, **no** un email inventado), verificar: Doc creado → PDF exportado → mail recibido con adjunto → Doc en papelera. Desactivar la copia al terminar. **OJO: esto envía un mail real por la casilla INFOACIVET y crea/descarta un Doc en esa cuenta de Google.**
+3.  **Ajuste de la plantilla** (`doc_content` en el nodo `Preparar Datos para PDF`) según feedback del PDF de prueba y, si se decide, migración a Doc-plantilla con placeholders para el diseño de `informe JOSEMA.pdf`.
+4.  **Portar a producción `5gGWXOjY2BBOAfuw`:** antes de tocar, `GET` del workflow de prod → guardar como `n8n/workflow_v6_pdf.prod.pre.json` y commitear (rollback). Agregar los 7 nodos + la segunda conexión desde `Insert Atención Cardiología`. Publicar. Actualizar `n8n/workflow_v5_supabase.sanitized.json` → `v6`.
+5.  **Iteración ECG:** descomentar el bloque `ekg` en `Preparar Datos para PDF` y agregar la sección "ELECTROCARDIOGRAMA" al `doc_content` (los 4 campos ya llegan en `payload.bloque_ekg`, que n8n hoy ignora).
+6.  **Auditoría (opcional):** columnas `informe_enviado_at` / `informe_email_to` / `informe_pdf_url` en `atenciones_cardiologia` + un `PATCH` final al registro. El `informe_borrador` jsonb ya persiste el objeto IA, así que el PDF es reproducible desde la DB aunque falle el envío.
+
+**Archivos nuevos/tocados en esta sesión:** `n8n/workflow_v6_pdf_mail.STAGING.json` (nuevo, respaldo de la copia), `STATUS.md` (esta sección), `n8n/README.md` (sección "Workflow STAGING Sprint 6"). **No se tocó producción, ni el SPA, ni Supabase.**
+
+---
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
-Sin frentes activos por el momento — próximo trabajo en la sección de pendientes abajo.
+**Sprint 6 — Informe PDF + envío por mail (ver Sección J).** Armado en el workflow COPIA `lkOwTFmVTZu7EMoU` (STAGING, inactivo). Falta: revisión de DeepSy → prueba E2E sintética en staging → ajuste de plantilla → portar a producción. Producción sin tocar.
 
 ---
 
