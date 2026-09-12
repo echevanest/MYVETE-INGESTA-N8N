@@ -1,6 +1,6 @@
 # 🗺️ ESTADO DEL PROYECTO: INTERFAZ LOCAL & n8n
 
-*   **Última actualización:** 2026-09-09 — ver Sección J (Sprint 6: generación de informe PDF + envío por mail — **armado en un workflow COPIA/STAGING, sin tocar producción, sin validar todavía**). 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
+*   **Última actualización:** 2026-09-12 — ver Sección J.3 (corrección de topología de workflows + Fix 1: migración de credencial Drive ARES→infoacivet en 7 nodos, **completo y verificado contra la API viva de n8n**). Sección J.2 (2026-09-10): Sprint 6 v2 (persistencia del PDF en Drive + índice en Sheets + alerta de fallo). Sección J (2026-09-09): primera versión del Sprint 6 (PDF + mail), también en STAGING. 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
 *   **Versión de la Arquitectura:** V5.0 — COMPLETADA Y VALIDADA E2E (Streaming de Dictado Interino + Conexión End-to-End n8n Cloud Validada + Nodo IA en producción + Fix de renderizado de `borrador_medico` + Bookmarklet de Filiación: extracción de mascota **y** de tutor validadas E2E contra MyVete real — cobertura de filiación 100%)
 *   **Control de versión:** Repositorio Git local inicializado (branch `master`). Commit `8634294` (V4.9 consolidado); extracción de tutor (V5.0), validada E2E, en curso de commit.
 *   **Nota sobre "ARCHIVO MAESTRO v5.2":** referenciado en conversación externa (Gemini/Arquitectura) como fuente de un DDL de Supabase — no se encontró ningún archivo con ese nombre en este repo ni en el Google Drive conectado al momento de escribir la Sección F. Si existe, no está compartido con esta sesión.
@@ -114,7 +114,7 @@ Objetivo del sprint: al enviar el formulario, n8n genera un informe PDF de la co
 
 **Estado del proyecto confirmado al abrir el sprint (verificado 2026-09-09 contra la API de n8n, no contra dumps):**
 
-*   **Workflow de producción `5gGWXOjY2BBOAfuw`:** `active`, `versionCounter 13`, `updatedAt 2026-09-08T17:46`. Los 8 nodos (incluidos `IF - ¿Trae Ecocardiografía?` + `Insert Datos Ecocardiografía`) **ya están en prod**. El respaldo del repo `n8n/workflow_v5_supabase.sanitized.json` está en vC 11 — 2 saves atrás pero estructuralmente idéntico en los nodos revisados (Respond to Webhook, IF eco, Insert Atención, Insert Datos Eco).
+*   **Workflow de producción `5gGWXOjY2BBOAfuw`:** `active`, `versionCounter 13`, `updatedAt 2026-09-08T17:46`. Los 8 nodos (incluidos `IF - ¿Trae Ecocardiografía?` + `Insert Datos Ecocardiografía`) **ya están en prod**. El respaldo del repo `n8n/workflow_v5_supabase.sanitized.json` está en vC 11 — 2 saves atrás pero estructuralmente idéntico en los nodos revisados (Respond to Webhook, IF eco, Insert Atención, Insert Datos Eco). **[Corrección 2026-09-12, ver Sección J.3: verificado contra la API viva que este workflow está `active: false` hoy y es CORE/rollback, no producción. No se sabe en qué momento entre el 09-09 y el 09-12 pasó a inactivo — no reconstruible desde este documento.]**
 *   **`Respond to Webhook` cuelga en rama paralela desde `IA`** y NO espera a la cadena Supabase → el SPA **nunca recibe `atencion_id`**. Cualquier generación de PDF que necesite datos ya conciliados tiene que ocurrir DENTRO de la cadena Supabase, no en la ruta de respuesta.
 *   **SPA:** `consolidarPayloadFinal()` (`interface/app.js:633`) ya emite `datos_ecocardiografia`, `bloque_ekg`, `filiacion.tutor.email` (nullable), `consulta.*`. Sin cambios de SPA necesarios para el Sprint 6. (Ojo: `interface/app.js` / `index.html` / `supabase/schema.sql` tienen cambios SIN COMMITEAR previos a esta sesión — trabajo de visibilidad de campos eco + índices ampliados de la Sección I, no auditado acá.)
 *   **NO hay credencial SMTP en n8n.** El envío se hace con el **nodo Gmail (OAuth2)**. Credenciales Gmail disponibles: `Gmail account INFOACIVET` (`eMVAugCGSCpQrcEj`), `Gmail - echevanest@gmail.com` (`rz2DSV3KtfiLr5fV`), `Gmail account 3` (`aYooILceNBCd7ZJF`). **Elegida: `Gmail account INFOACIVET`** (casilla institucional ACIVET).
@@ -147,9 +147,76 @@ Objetivo del sprint: al enviar el formulario, n8n genera un informe PDF de la co
 
 ---
 
+### J.2 — Sprint 6 v2: persistencia del PDF en Drive + índice en Sheets + alerta de fallo (2026-09-10) — EN STAGING, SIN VALIDAR
+
+Segunda iteración sobre la COPIA `lkOwTFmVTZu7EMoU` tras revisión de DeepSy. **Producción sigue sin tocar.** El workflow pasó de 15 a **24 nodos** (`active: false`). Respaldo actualizado en `n8n/workflow_v6_pdf_mail.STAGING.json`.
+
+**Decisiones de DeepSy aplicadas:**
+*   **B1 (credencial Sheets):** no se pudo leer el scope de `Google Drive Docs Slides` (`k2oarx2fLAT9LgPw`) — la API de n8n devuelve `403` en `GET /credentials/{id}`. Pero **ya existe una credencial dedicada `googleSheetsOAuth2Api`: `Google Sheets account` (`8UcIjrUyUocK69km`)**, en uso productivo por el workflow `ZLCcZ0H7iPgms3EU` ("REGISTRO DATOS PROFESIONALES") con un nodo nativo Google Sheets haciendo *append*. Se usa esa, con el nodo nativo Google Sheets. No hizo falta crear credencial nueva ni apostar al scope de la de Drive.
+*   **B2 (granularidad del check):** el `IF - ¿Persistió en Supabase?` verifica **solo el keystone** — que `Insert Atención Cardiología` haya devuelto `id`. Si lo devolvió, `Upsert Tutor`/`Upsert Mascota` necesariamente funcionaron (dependencia FK).
+*   **B3 (carpeta + Sheet):** Opción A — Marcelo los crea a mano y pasa los IDs. En el workflow quedan como **placeholders literales**: la cadena `{{FOLDER_ID}}` (2 usos: `Nombrar y mover PDF` addParents, `Buscar colisiones PDF` query `q`) y `{{SHEET_ID}}` (1 uso: `Registrar en Índice` documentId). Cuando lleguen los IDs → *find-and-replace* en el JSON del repo + `PUT` a n8n.
+*   **B4 (alerta):** dispara **SIEMPRE que falle la persistencia** (no condicionada a "informe enviado"). El `IF - ¿Persistió?` cuelga de **ambas** ramas del `IF - ¿Tutor con email?`. Mensaje armado por el Code node `Preparar alerta` con estado paso a paso (tutor / mascota / atención / eco / Doc / PDF Drive / mail) + el error crudo de PostgREST.
+
+**Cambios estructurales v1 → v2:**
+1.  `Upsert Tutor`, `Upsert Mascota`, `Insert Atención Cardiología` → **`onError: continueRegularOutput`** (el informe se emite aunque falle la persistencia; y el `IF - ¿Persistió?` puede leer el resultado desde otra rama sin romper).
+2.  `Archivar Google Doc` → renombrado a **`Eliminar Google Doc`**, `PATCH {trashed:true}` → **`DELETE files/{documentId}`**. Ya no cuelga del final: es una rama *fire-and-forget* de `Exportar PDF`.
+3.  **`Exportar PDF (autenticado)` hace fan-out a 3 ramas** (n8n copia el item con binario a cada conexión), **en este orden**: `Guardar PDF en Drive (subir)` → `Eliminar Google Doc` → `IF - ¿Tutor con email?`. El orden importa: con `executionOrder: v1` la rama Drive se completa entera (incluido `Registrar en Índice`) antes de la rama de alerta, así que `Preparar alerta` ya tiene el `webViewLink` del PDF y lo incluye en el mail de alerta.
+4.  **Rama Drive nueva:** `Guardar PDF en Drive (subir)` (`POST upload/drive/v3/files?uploadType=media`, `Content-Type: application/pdf`, binario `data`) → `Nombrar y mover PDF` (`PATCH files/{id}?addParents={{FOLDER_ID}}&removeParents=root`, body `{name: nombrePdfBase}`) → `Buscar colisiones PDF` (`GET files?q=name='<base>' and '{{FOLDER_ID}}' in parents`) → `IF - ¿Colisión de nombre?` (`files.length > 1`) → **true** `Renombrar PDF (colisión)` (`name: nombrePdfDesambiguado`) → `Registrar en Índice`; **false** → `Registrar en Índice`.
+5.  **`Registrar en Índice`** (`n8n-nodes-base.googleSheets` v4.7, cred `8UcIjrUyUocK69km`, `append`, `documentId = {{SHEET_ID}}`, `sheetName = "Hoja 1"`). Columnas: `Nombre Paciente | Nombre Tutor | Apellido Tutor | ID MyVete | ID Supabase | Link PDF | Fecha`. `Link PDF` = `webViewLink` de `Nombrar y mover PDF` (estable ante el rename). `ID Supabase` = `id` de la atención (vacío si falló).
+6.  **Rama alerta nueva:** `IF - ¿Tutor con email?` (true→`Enviar informe al tutor`→ , false→ ) `IF - ¿Persistió en Supabase?` → **true** nada · **false** `Preparar alerta` (Code — estado paso a paso + `webViewLink` del PDF) → `Alertar fallo persistencia` (`n8n-nodes-base.gmail`, cred `Gmail - echevanest@gmail.com` `rz2DSV3KtfiLr5fV`, `To: echevanest@gmail.com, infoacivet@gmail.com`, texto plano).
+7.  **`Preparar Datos para PDF`:** + parseo `apellidoTutor` / `nombreTutor` desde `"APELLIDO, NOMBRE"` (sin coma → todo a `nombreTutor`); + `mesAnio` (`AGOSTO 2026`); + `nombrePdfBase` (`<PACIENTE><APELLIDO> <MES> <AÑO>`, cada parte normalizada: sin acentos, solo `[A-Z0-9]`); + `nombrePdfDesambiguado` (`<PACIENTE><APELLIDO> (<NOMBRE>) <MES> <AÑO>`).
+8.  **SPA:** `interface/app.js` — `"Reporte generado"` → `"Informe enviado"` (única ocurrencia, línea del handler de envío). Solo surte efecto al portar a prod (el SPA apunta al webhook de producción).
+9.  Todos los nodos HTTP/Gmail/Sheets nuevos con `onError: continueRegularOutput`.
+
+**PENDIENTE de IDs (bloquea la prueba E2E):**
+*   Marcelo crea la carpeta `Informes MYVETE` y el Sheet `Índice de Informes MYVETE` (con la fila de encabezados, en la **misma cuenta de Google** que las credenciales `Google Drive Docs Slides` y `Google Sheets account` de n8n — hay que confirmar en la UI de n8n qué cuenta es cada una) y pasa: `FOLDER_ID` (de `drive.google.com/drive/folders/<ID>`) y `SHEET_ID` (de `docs.google.com/spreadsheets/d/<ID>`).
+*   Luego: *find-and-replace* de `{{FOLDER_ID}}` y `{{SHEET_ID}}` en `n8n/workflow_v6_pdf_mail.STAGING.json` → `PUT` a `lkOwTFmVTZu7EMoU`.
+
+**Resuelto por DeepSy (2026-09-10):**
+*   **Remitente del mail al tutor:** CONFIRMADO `Gmail account INFOACIVET` (`eMVAugCGSCpQrcEj`) — casilla institucional. El "(Gmail account 3)" del prompt era un error. Sin cambios (el nodo ya lo usaba).
+*   **Orden del fan-out de `Exportar PDF`:** se reordenó a Drive-primero (ver punto 3) para que el mail de alerta incluya el `webViewLink` del PDF. `Preparar alerta` ahora emite una línea `PDF del informe: <link>`.
+
+**PENDIENTE de validar en la E2E:**
+*   **Params de nodos Google contra la API real:** los nodos HTTP a Drive (`uploadType=media`, `addParents/removeParents`, `q` de búsqueda) y el nodo nativo Sheets se escribieron sin poder ejecutarlos (faltan los IDs). Sanity-check en la UI de n8n al cargar los IDs, antes de la E2E.
+*   **Cuenta de `Google Sheets account` vs `Google Drive Docs Slides`:** si son cuentas de Google distintas, el índice y los PDF quedan en Drives separados (funciona, pero el "Link PDF" apunta a otro Drive y el Sheet no se puede anidar en la carpeta).
+
+**NO se corrió la prueba E2E** (esperando IDs). Sigue pendiente todo lo de J: E2E sintética en staging, ajuste de plantilla `doc_content`, iteración ECG, portar a producción.
+
+**Archivos tocados en esta iteración:** `n8n/workflow_v6_pdf_mail.STAGING.json` (regenerado, 24 nodos, con placeholders), `interface/app.js` (texto del botón), `STATUS.md` (esta subsección). Workflow `lkOwTFmVTZu7EMoU` actualizado vía `PUT` a la API de n8n (`active: false`). **Producción, Supabase y el resto del SPA sin tocar.**
+
+---
+
+### J.3 — Corrección de topología + Fix 1: migración de credencial Drive (2026-09-12)
+
+**Corrección de topología (reemplaza el marco de J/J.2 sobre "producción"):** hubo un malentendido — no hay UN workflow con una copia de staging encima, hay DOS workflows con roles distintos, ninguno publicado hoy:
+
+*   **Workflow A — CORE (`5gGWXOjY2BBOAfuw`, "MYVETE - Ingesta Filiación & Orquestador Core"):** congelado, punto de rollback. Verificado contra la API viva 2026-09-12: `active: false`, 8 nodos, `updatedAt 2026-09-08T17:46` (sin cambios desde entonces). **No es producción** pese a lo escrito en la Sección J — ver nota agregada ahí.
+*   **Workflow B — candidato a producción (`lkOwTFmVTZu7EMoU`, "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]"):** tiene todo el Sprint 6 (24 nodos). Verificado 2026-09-12: `active: false`.
+*   **No hay producción activa hoy.** Plan de consolidación (decisión del dueño del proyecto): aplicar fixes pendientes a B → Prueba A → Prueba B → publicar B → validar en producción real 3-7 días → recién entonces borrar A → confirmar que solo queda B en n8n.
+
+**Hallazgo B (placeholders `{{FOLDER_ID}}`/`{{SHEET_ID}}`) — resuelto como falso positivo del lado del repo, no de n8n:** el workflow B vivo en n8n **ya tenía los IDs reales** (`FOLDER_ID = 1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn`, `SHEET_ID = 1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU`, verificado con `GET /workflows/lkOwTFmVTZu7EMoU`); era el archivo `n8n/workflow_v6_pdf_mail.STAGING.json` del repo el que había quedado desactualizado desde J.2 (nunca se re-exportó después del find-and-replace hecho directo en n8n). El punto 2 de "PENDIENTE de IDs" en J.2 está entonces completo, solo faltaba sincronizar el repo — ya resuelto (ver más abajo).
+
+**Fix 1 — COMPLETO (2026-09-12):** migración de credencial Google Drive de `k2oarx2fLAT9LgPw` ("Google Drive Docs Slides", cuenta ARES) a `4ugwVBPjLZ0Me9JS` ("Google Drive - infoacivet (MYVETE)") en 7 nodos del workflow B:
+Crear Google Doc, Insertar contenido en Doc, Exportar PDF (autenticado), Eliminar Google Doc, Guardar PDF en Drive (subir), Buscar colisiones PDF, Renombrar PDF (colisión). El nodo "Nombrar y mover PDF" ya tenía `4ugwVBPjLZ0Me9JS` de antes y no se tocó. Aplicado vía `PUT /workflows/lkOwTFmVTZu7EMoU` a la API de n8n; verificado con `GET` antes/después: exactamente esos 7 nodos cambiaron (diff nodo-por-nodo confirmado), `connections` idénticas, `active: false` conservado. Commit local `2236389` (sin push a `origin`).
+
+**Regla de sincronización adoptada:** n8n es la fuente de verdad operativa; el repo (`n8n/workflow_v6_pdf_mail.STAGING.json`) es un espejo — cada `PUT` a n8n va seguido, en el mismo turno, de un `GET` que sobreescribe el archivo del repo y se commitea junto con el cambio. Evita la desincronización que causó el falso positivo del Hallazgo B.
+
+**Fixes pendientes sobre el workflow B (en orden, esperando confirmación/ejecución):**
+*   **Fix 2:** actualizar el mapeo de "Registrar en Índice" al esquema nuevo: `fecha | paciente | tutor | veterinario_derivante | nombre_pdf | link_pdf | estado_persistencia | observaciones` (`veterinario_derivante` y `observaciones` mapean a `''` por ahora, Fase 1 los implementa). Reemplaza el esquema de columnas descrito en J.2 punto 5.
+*   **Fix 3:** reconectar la credencial Gmail `Gmail account INFOACIVET` (`eMVAugCGSCpQrcEj`, usada en "Enviar informe al tutor") — está desconectada. La otra credencial Gmail en uso, `Gmail - echevanest@gmail.com` (`rz2DSV3KtfiLr5fV`, en "Alertar fallo persistencia"), está OK. Acción de Marcelo, no de CODE.
+*   **Fix 4:** limpieza de residuos de la Prueba A (3 filas en Supabase + 1 PDF huérfano en Drive).
+
+Después de los 4 fixes: Prueba A → Prueba B → publicar B → validar en real → borrar A (Workflow CORE).
+
+**Pendientes menores de esta sesión:** commit `2236389` sigue sin pushear a `origin` (esperando autorización explícita); 4 archivos con cambios preexistentes sin commitear detectados por `git status` pero no auditados ni tocados en esta sesión: `STATUS.md` (este mismo archivo, cambios de sesiones previas + esta actualización), `interface/app.js`, `interface/index.html`, `supabase/schema.sql`.
+
+**Archivos tocados en esta sesión:** `n8n/workflow_v6_pdf_mail.STAGING.json` (re-exportado del workflow vivo tras Fix 1, reemplaza el archivo hand-mantenido — ahora es un export completo de la API de n8n con `_nota` actualizada), `STATUS.md` (esta subsección). **No se tocó Supabase, el SPA, ni se publicó ningún workflow.**
+
+---
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
-**Sprint 6 — Informe PDF + envío por mail (ver Sección J).** Armado en el workflow COPIA `lkOwTFmVTZu7EMoU` (STAGING, inactivo). Falta: revisión de DeepSy → prueba E2E sintética en staging → ajuste de plantilla → portar a producción. Producción sin tocar.
+**Sprint 6 — Informe PDF + envío por mail + persistencia Drive/Sheets + alerta (ver Secciones J, J.2, J.3).** Armado en el workflow candidato a producción `lkOwTFmVTZu7EMoU` (24 nodos, `active: false`). `FOLDER_ID`/`SHEET_ID` ya resueltos, Fix 1 (credencial Drive) completo. Falta: Fix 2 (mapeo "Registrar en Índice"), Fix 3 (reconectar Gmail INFOACIVET), Fix 4 (limpieza residuos Prueba A) → Prueba A → Prueba B → publicar como producción → validar 3-7 días en real → borrar workflow CORE (`5gGWXOjY2BBOAfuw`). Ningún workflow está publicado hoy.
 
 ---
 
