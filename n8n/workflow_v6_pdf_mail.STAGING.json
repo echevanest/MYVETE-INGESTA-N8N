@@ -1,19 +1,19 @@
 {
-  "_nota": "COPIA STAGING (no produccion) del Sprint 6: informe PDF + envio por mail. Base = workflow de produccion 5gGWXOjY2BBOAfuw (8 nodos) + 7 nodos nuevos colgados de Insert Atencion Cardiologia, en paralelo a la rama del IF de eco: Preparar Datos para PDF (Code) -> Crear Google Doc -> Insertar contenido en Doc (batchUpdate) -> Exportar PDF (autenticado, Drive files/export) -> IF Tutor con email? -> (true) Enviar informe al tutor (Gmail OAuth2 INFOACIVET, PDF adjunto) -> Archivar Google Doc (trashed:true); rama false del IF -> Archivar Google Doc. Metodo PDF = Google Doc -> export (patron ARES_04_GEN_PDF). Doc NO publico (PII), export autenticado + papelera. Los 5 nodos HTTP/Gmail nuevos con onError:continueRegularOutput. Webhook path ingesta-filiacion-v6-test. Estado en n8n: workflow lkOwTFmVTZu7EMoU, active:false, SIN validar. Ver STATUS.md Seccion J. Credenciales solo por referencia de id (el API de n8n no exporta secretos).",
+  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. Cambios v2 sobre v1: (1) onError:continueRegularOutput en Upsert Tutor / Upsert Mascota / Insert Atencion Cardiologia; (2) Archivar Google Doc -> Eliminar Google Doc (DELETE en vez de PATCH trashed:true), rama de Exportar PDF; (3) Exportar PDF hace fan-out a 3 ramas EN ESTE ORDEN: Guardar PDF en Drive (subir) -> Eliminar Google Doc -> IF - Tutor con email? (Drive primero para que executionOrder v1 lo complete antes de la rama de alerta y el link del PDF entre en el mail de alerta); (4) rama Drive: Guardar PDF en Drive (subir, uploadType=media) -> Nombrar y mover PDF (PATCH addParents=FOLDER_ID, name=nombrePdfBase) -> Buscar colisiones PDF -> IF colision (files>1) -> [true] Renombrar PDF (colision) a nombrePdfDesambiguado -> Registrar en Indice (Google Sheets append, documentId=SHEET_ID, cred Google Sheets account 8UcIjrUyUocK69km); (5) IF - Persistio en Supabase? (keystone: Insert Atencion devolvio id) sobre ambas ramas del IF de email -> [false] Preparar alerta (Code, detalle por paso + link PDF) -> Alertar fallo persistencia (Gmail rz2DSV3KtfiLr5fV, To echevanest@gmail.com + infoacivet@gmail.com); (6) Preparar Datos para PDF: + parseo apellido/nombre tutor desde APELLIDO-COMA-NOMBRE, + nombrePdfBase / nombrePdfDesambiguado / mesAnio. FOLDER_ID y SHEET_ID YA RESUELTOS en n8n vivo (verificado 2026-09-12): FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - CONFIRMADO. FIX 1 (2026-09-12): migrada credencial Google Drive de k2oarx2fLAT9LgPw (ARES, Google Drive Docs Slides) a 4ugwVBPjLZ0Me9JS (Google Drive - infoacivet MYVETE) en los 7 nodos: Crear Google Doc, Insertar contenido en Doc, Exportar PDF (autenticado), Eliminar Google Doc, Guardar PDF en Drive (subir), Buscar colisiones PDF, Renombrar PDF (colision). Nombrar y mover PDF ya tenia infoacivet de antes. Webhook path ingesta-filiacion-v6-test. Estado en n8n: lkOwTFmVTZu7EMoU, active:false, SIN validar E2E. Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n. Ver STATUS.md Seccion J / J.2.",
   "id": "lkOwTFmVTZu7EMoU",
   "name": "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]",
+  "description": null,
   "active": false,
+  "activeVersionId": null,
+  "createdAt": "2026-09-09T16:50:01.964Z",
+  "updatedAt": "2026-09-12T21:59:42.883Z",
+  "isArchived": false,
+  "versionId": "a4e9fe01-f288-4ace-8c9e-77fa90265866",
+  "versionCounter": 11,
+  "sourceWorkflowId": null,
+  "triggerCount": 1,
   "nodes": [
     {
-      "id": "8e6f1a2b-1111-4a2b-9c3d-000000000001",
-      "name": "Webhook",
-      "webhookId": "8e6f1a2b-1111-4a2b-9c3d-000000000099",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        208,
-        384
-      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "ingesta-filiacion-v6-test",
@@ -21,37 +21,35 @@
         "options": {
           "allowedOrigins": "*"
         }
-      }
+      },
+      "id": "8e6f1a2b-1111-4a2b-9c3d-000000000001",
+      "name": "Webhook",
+      "webhookId": "8e6f1a2b-1111-4a2b-9c3d-000000000099",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        208,
+        496
+      ]
     },
     {
-      "id": "8e6f1a2b-2222-4a2b-9c3d-000000000002",
-      "name": "Respond to Webhook",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        688,
-        304
-      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { \"status\": \"success\", \"message\": \"Anamnesis procesada correctamente\", \"timestamp\": $now.toISO(), \"borrador_medico\": $json.output?.[0]?.content?.[0]?.text ?? null } }}",
         "options": {
           "responseCode": 200
         }
-      }
+      },
+      "id": "8e6f1a2b-2222-4a2b-9c3d-000000000002",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        688,
+        416
+      ]
     },
     {
-      "id": "d57ddb11-aaff-48d1-85d3-a1bad215c9b2",
-      "name": "IA - Estructurar Anamnesis",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 5000,
-      "position": [
-        384,
-        384
-      ],
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -82,6 +80,17 @@
           }
         }
       },
+      "id": "d57ddb11-aaff-48d1-85d3-a1bad215c9b2",
+      "name": "IA - Estructurar Anamnesis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        384,
+        496
+      ],
       "credentials": {
         "openAiApi": {
           "id": "LChLJhcSz4xuxdIF",
@@ -90,14 +99,6 @@
       }
     },
     {
-      "id": "a09c2f07-a92c-4534-9268-e247ebcd5510",
-      "name": "Upsert Tutor",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        688,
-        464
-      ],
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/tutores?on_conflict=' + ($('Webhook').item.json.body.filiacion.tutor.id_myvete ? 'id_myvete' : 'email') }}",
@@ -121,22 +122,23 @@
         "jsonBody": "={{ JSON.stringify({ id_myvete: $('Webhook').item.json.body.filiacion.tutor.id_myvete, nombre: $('Webhook').item.json.body.filiacion.tutor.nombre, telefono: $('Webhook').item.json.body.filiacion.tutor.telefono, email: $('Webhook').item.json.body.filiacion.tutor.email }) }}",
         "options": {}
       },
+      "id": "a09c2f07-a92c-4534-9268-e247ebcd5510",
+      "name": "Upsert Tutor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        576
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "EPCExaKpytpqeH99",
           "name": "Supabase myvete-cardiologia (service_role, apikey header)"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "eb7ff6e8-94a7-46a1-b27d-6285be3396bf",
-      "name": "Upsert Mascota",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        928,
-        464
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/mascotas?on_conflict=tutor_id,nombre",
@@ -160,22 +162,23 @@
         "jsonBody": "={{ JSON.stringify({ tutor_id: $('Upsert Tutor').item.json.id, nombre: $('Webhook').item.json.body.filiacion.mascota.nombre, especie: $('Webhook').item.json.body.filiacion.mascota.especie, raza: $('Webhook').item.json.body.filiacion.mascota.raza }) }}",
         "options": {}
       },
+      "id": "eb7ff6e8-94a7-46a1-b27d-6285be3396bf",
+      "name": "Upsert Mascota",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        928,
+        576
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "EPCExaKpytpqeH99",
           "name": "Supabase myvete-cardiologia (service_role, apikey header)"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "21075e90-f34b-4f33-b7a3-628cfab7ca29",
-      "name": "Insert Atención Cardiología",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1168,
-        464
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/atenciones_cardiologia",
@@ -199,22 +202,23 @@
         "jsonBody": "={{ JSON.stringify((() => { const informe = $('IA - Estructurar Anamnesis').item.json.output?.[0]?.content?.[0]?.text || {}; return { mascota_id: $('Upsert Mascota').item.json.id, datos_filiacion: $('Webhook').item.json.body.filiacion, metricas: { fc: informe.fc, fr: informe.fr, pas: informe.pas, pam: informe.pam, pad: informe.pad, mucosas: informe.mucosas }, informe_borrador: informe, anamnesis_raw: $('Webhook').item.json.body.consulta?.anamnesis ?? null, diagnostico_raw: $('Webhook').item.json.body.consulta?.diagnostico ?? null, indicaciones_raw: $('Webhook').item.json.body.consulta?.indicaciones ?? null }; })()) }}",
         "options": {}
       },
+      "id": "21075e90-f34b-4f33-b7a3-628cfab7ca29",
+      "name": "Insert Atención Cardiología",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        576
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "EPCExaKpytpqeH99",
           "name": "Supabase myvete-cardiologia (service_role, apikey header)"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "0eco0if0-1111-4a2b-9c3d-0000000000a1",
-      "name": "IF - ¿Trae Ecocardiografía?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1392,
-        464
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -238,18 +242,17 @@
           "combinator": "and"
         },
         "options": {}
-      }
+      },
+      "id": "0eco0if0-1111-4a2b-9c3d-0000000000a1",
+      "name": "IF - ¿Trae Ecocardiografía?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1392,
+        464
+      ]
     },
     {
-      "id": "0eco0ins-2222-4a2b-9c3d-0000000000a2",
-      "name": "Insert Datos Ecocardiografía",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
-      "position": [
-        1616,
-        448
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/datos_ecocardiografia?on_conflict=atencion_id",
@@ -273,36 +276,36 @@
         "jsonBody": "={{ JSON.stringify(Object.assign({}, $('Webhook').item.json.body.datos_ecocardiografia || {}, { atencion_id: $('Insert Atención Cardiología').item.json.id })) }}",
         "options": {}
       },
+      "id": "0eco0ins-2222-4a2b-9c3d-0000000000a2",
+      "name": "Insert Datos Ecocardiografía",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1616,
+        448
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "EPCExaKpytpqeH99",
           "name": "Supabase myvete-cardiologia (service_role, apikey header)"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
+      "parameters": {
+        "jsCode": "// ===== SPRINT 6 - Preparar Datos para PDF =====\n// Lee EXPLICITAMENTE de los nodos origen. En esta posicion del workflow,\n// $input seria la fila de respuesta de Supabase, NO el payload del webhook.\nconst payload  = $('Webhook').item.json.body;\nconst iaOutput = $('IA - Estructurar Anamnesis').item.json;\nconst informe  = iaOutput.output?.[0]?.content?.[0]?.text || {};\n\nconst filiacion = payload.filiacion || {};\nconst tutor     = filiacion.tutor || {};\nconst mascota   = filiacion.mascota || {};\n\nconst consulta = {\n  fc: informe.fc ?? payload.consulta?.fc ?? null,\n  fr: informe.fr ?? payload.consulta?.fr ?? null,\n  pas: informe.pas ?? payload.consulta?.pas ?? null,\n  pam: informe.pam ?? payload.consulta?.pam ?? null,\n  pad: informe.pad ?? payload.consulta?.pad ?? null,\n  mucosas: informe.mucosas ?? payload.consulta?.mucosas ?? null,\n  diagnostico: payload.consulta?.diagnostico ?? informe.diagnostico_sugerido ?? null,\n  indicaciones: payload.consulta?.indicaciones ?? informe.indicaciones_sugeridas ?? null,\n  resumen: informe.resumen_anamnesis ?? null,\n};\n\nconst eco = payload.datos_ecocardiografia || {};\n\nfunction obtenerUnidad(clave) {\n  const u = {\n    dvid:'cm', dvs:'cm', sivd:'cm', sivs:'cm', ppvid:'cm', ppvis:'cm',\n    ai_lineal:'cm', ao_lineal:'cm', fe_modom:'%', fs_modom:'%', fe_simpson:'%',\n    velocidad_e_mitral:'m/s', velocidad_a_mitral:'m/s',\n    vmax_ao:'m/s', vmax_pulmonar:'m/s', vmax_mitral:'m/s', vmax_tricuspideo:'m/s',\n    masa_vi:'g', indice_masa_vi:'g/m2', masa_vi_indexada:'g/m2',\n    mvcf:'circ/s', hp_gradiente:'mmHg', tapse:'cm', mapse:'cm',\n  };\n  return u[clave] || '';\n}\nfunction formatearNombreCampo(clave) {\n  const n = {\n    dvid:'DVI Diastole', dvs:'DVI Sistole', sivd:'SIV Diastole', sivs:'SIV Sistole',\n    ppvid:'PPVI Diastole', ppvis:'PPVI Sistole', ai_lineal:'AI Lineal', ao_lineal:'Ao Lineal',\n    ai_ao_lineal:'Relacion AI/Ao', ai_ao_area:'Relacion AI/Ao (area)',\n    fe_modom:'FE (Modo M)', fs_modom:'FS (Modo M)', fe_simpson:'FE (Simpson)',\n    velocidad_e_mitral:'Velocidad E Mitral', velocidad_a_mitral:'Velocidad A Mitral',\n    relacion_ea_mitral:'Relacion E/A Mitral',\n    masa_vi:'Masa VI', indice_masa_vi:'Indice Masa VI', masa_vi_indexada:'Masa VI Indexada',\n    mvcf:'MVCF', epr:'EPR', hp_gradiente:'Gradiente HP',\n    dvid_indexado:'DVI Diastole Indexado (LVIDDn)', dvs_indexado:'DVI Sistole Indexado',\n    volumen_ai_indexado:'Volumen AI Indexado (LAVI)',\n  };\n  return n[clave] || clave.replace(/_/g, ' ').replace(/\\b\\w/g, function (c) { return c.toUpperCase(); });\n}\nfunction obtenerCamposConValor(objeto) {\n  const campos = [];\n  const excluir = ['id','created_at','updated_at','atencion_id','mascota_id','tutor_id',\n    'acvim_estadio','mine2_puntaje','mine2_clasificacion','hp_clasificacion','observaciones',\n    'efusion_pericardica','efusion_pleural','patron_llenado_vi'];\n  for (const [clave, valor] of Object.entries(objeto)) {\n    if (excluir.includes(clave)) continue;\n    if (valor === null || valor === undefined || valor === '' || valor === 'null') continue;\n    if (typeof valor === 'number' && isNaN(valor)) continue;\n    const esIndexado = clave.includes('_indexado') || clave.includes('indexada') ||\n      clave.includes('indice_') || ['masa_vi','mvcf','epr','lavi'].includes(clave);\n    campos.push({ clave, nombreMostrar: formatearNombreCampo(clave), valor, esIndexado, unidad: obtenerUnidad(clave) });\n  }\n  return campos;\n}\n\nconst todos = obtenerCamposConValor(eco);\nconst valoresMedidos   = todos.filter(function (c) { return !c.esIndexado; });\nconst valoresIndexados = todos.filter(function (c) { return  c.esIndexado; });\n\nconst scores = {};\nif (eco.acvim_estadio)         scores.acvim_estadio = eco.acvim_estadio;\nif (eco.mine2_puntaje != null) scores.mine2_puntaje = eco.mine2_puntaje;\nif (eco.mine2_clasificacion)   scores.mine2_clasificacion = eco.mine2_clasificacion;\nif (eco.hp_gradiente != null)  scores.hp_gradiente = eco.hp_gradiente;\nif (eco.hp_clasificacion)      scores.hp_clasificacion = eco.hp_clasificacion;\n\n// ===== ECG - PREPARADO PARA LA PROXIMA ITERACION (no se renderiza aun) =====\n// const ekg = payload.bloque_ekg || {};\n// const datosEKG = {};\n// if (ekg.ekg_fc)    datosEKG.fc    = ekg.ekg_fc;\n// if (ekg.ekg_ritmo) datosEKG.ritmo = ekg.ekg_ritmo;\n// if (ekg.ekg_eje)   datosEKG.eje   = ekg.ekg_eje;\n// if (ekg.ekg_p_ms)  datosEKG.p_ms  = ekg.ekg_p_ms;\n// -> agregar seccion 'ELECTROCARDIOGRAMA' en doc_content usando datosEKG\n\nconst peso  = mascota.peso ?? mascota.pesoActual ?? null;\nconst email = tutor.email || null;\nconst paciente = mascota.nombre || 'Paciente';\nconst fecha = new Date().toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' });\n\nconst L = '-'.repeat(56);\nconst HR = '='.repeat(56);\nlet t = '';\nt += 'INFORME CARDIOLOGICO VETERINARIO\\n' + HR + '\\n\\n';\nt += 'Fecha: ' + fecha + '\\n\\n';\nt += 'DATOS DEL PACIENTE\\n' + L + '\\n';\nt += 'Paciente: ' + paciente + '\\n';\nt += 'Especie: ' + (mascota.especie || 'N/D') + '    Raza: ' + (mascota.raza || 'N/D') + '\\n';\nif (peso != null) t += 'Peso: ' + peso + ' kg\\n';\nt += 'Tutor: ' + (tutor.nombre || 'N/D') + '\\n';\nt += 'Tel: ' + (tutor.telefono || 'N/D') + '    Email: ' + (email || 'N/D') + '\\n\\n';\n\nconst constLines = [];\nif (consulta.fc != null) constLines.push('FC: ' + consulta.fc + ' lpm');\nif (consulta.fr != null) constLines.push('FR: ' + consulta.fr + ' rpm');\nif (consulta.pas != null || consulta.pam != null || consulta.pad != null)\n  constLines.push('PAS/PAM/PAD: ' + [consulta.pas, consulta.pam, consulta.pad].map(function (x) { return x == null ? '-' : x; }).join('/') + ' mmHg');\nif (consulta.mucosas) constLines.push('Mucosas: ' + consulta.mucosas);\nif (constLines.length) t += 'CONSTANTES FISIOLOGICAS\\n' + L + '\\n' + constLines.join('\\n') + '\\n\\n';\n\nif (consulta.resumen) t += 'RESUMEN DE ANAMNESIS\\n' + L + '\\n' + consulta.resumen + '\\n\\n';\n\nif (valoresMedidos.length) {\n  t += 'ECOCARDIOGRAFIA - VALORES MEDIDOS\\n' + L + '\\n';\n  valoresMedidos.forEach(function (c) { t += c.nombreMostrar + ': ' + c.valor + (c.unidad ? ' ' + c.unidad : '') + '\\n'; });\n  t += '\\n';\n}\nif (valoresIndexados.length) {\n  t += 'ECOCARDIOGRAFIA - INDICES / CALCULADOS\\n' + L + '\\n';\n  valoresIndexados.forEach(function (c) { t += c.nombreMostrar + ': ' + c.valor + (c.unidad ? ' ' + c.unidad : '') + '\\n'; });\n  t += '\\n';\n}\nconst scoreLines = Object.entries(scores).map(function (kv) { return formatearNombreCampo(kv[0]) + ': ' + kv[1]; });\nif (scoreLines.length) t += 'SCORES / CLASIFICACION\\n' + L + '\\n' + scoreLines.join('\\n') + '\\n\\n';\n\nif (consulta.diagnostico) t += 'DIAGNOSTICO\\n' + L + '\\n' + consulta.diagnostico + '\\n\\n';\nif (consulta.indicaciones) t += 'INDICACIONES\\n' + L + '\\n' + consulta.indicaciones + '\\n\\n';\n\nt += L + '\\nGenerado automaticamente por el sistema de ingesta MyVete.\\n';\n\n\n// ===== SPRINT 6 v2 - parseo de tutor y nombres de archivo PDF =====\nconst _rawTutor = (tutor.nombre || '').trim();\nlet apellidoTutor = '', nombreTutor = '';\nif (_rawTutor.includes(',')) {\n  apellidoTutor = _rawTutor.split(',')[0].trim();\n  nombreTutor   = _rawTutor.split(',').slice(1).join(',').trim();\n} else {\n  nombreTutor = _rawTutor;   // sin coma: todo va a \"nombre\", apellido queda vacio\n}\nconst _norm = (s) => (s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');\nconst _MESES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];\nconst _hoy = new Date();\nconst mesAnio = _MESES[_hoy.getMonth()] + ' ' + _hoy.getFullYear();\nconst _basePrefix = _norm(paciente) + _norm(apellidoTutor);\nconst nombrePdfBase         = (_basePrefix + ' ' + mesAnio).trim();\nconst nombrePdfDesambiguado = (_basePrefix + ' (' + _norm(nombreTutor) + ') ' + mesAnio).trim();\n\nreturn [{ json: {\n  paciente: paciente,\n  nombreTutor: nombreTutor,\n  apellidoTutor: apellidoTutor,\n  mesAnio: mesAnio,\n  nombrePdfBase: nombrePdfBase,\n  nombrePdfDesambiguado: nombrePdfDesambiguado,\n  especie: mascota.especie || 'N/D',\n  raza: mascota.raza || 'N/D',\n  peso: peso == null ? 'N/D' : peso,\n  tutor: tutor.nombre || 'N/D',\n  telefono: tutor.telefono || 'N/D',\n  email: email,\n  fc: consulta.fc, fr: consulta.fr, pas: consulta.pas, pam: consulta.pam, pad: consulta.pad,\n  mucosas: consulta.mucosas || 'N/D',\n  diagnostico: consulta.diagnostico || '',\n  indicaciones: consulta.indicaciones || '',\n  resumen: consulta.resumen || '',\n  valoresMedidos: valoresMedidos,\n  valoresIndexados: valoresIndexados,\n  scores: scores,\n  fecha: fecha,\n  doc_content: t,\n}}];"
+      },
       "id": "s6-0001-prep-datos-pdf",
       "name": "Preparar Datos para PDF",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1392,
-        680
-      ],
-      "parameters": {
-        "jsCode": "// ===== SPRINT 6 - Preparar Datos para PDF =====\n// Lee EXPLICITAMENTE de los nodos origen. En esta posicion del workflow,\n// $input seria la fila de respuesta de Supabase, NO el payload del webhook.\nconst payload  = $('Webhook').item.json.body;\nconst iaOutput = $('IA - Estructurar Anamnesis').item.json;\nconst informe  = iaOutput.output?.[0]?.content?.[0]?.text || {};\n\nconst filiacion = payload.filiacion || {};\nconst tutor     = filiacion.tutor || {};\nconst mascota   = filiacion.mascota || {};\n\nconst consulta = {\n  fc: informe.fc ?? payload.consulta?.fc ?? null,\n  fr: informe.fr ?? payload.consulta?.fr ?? null,\n  pas: informe.pas ?? payload.consulta?.pas ?? null,\n  pam: informe.pam ?? payload.consulta?.pam ?? null,\n  pad: informe.pad ?? payload.consulta?.pad ?? null,\n  mucosas: informe.mucosas ?? payload.consulta?.mucosas ?? null,\n  diagnostico: payload.consulta?.diagnostico ?? informe.diagnostico_sugerido ?? null,\n  indicaciones: payload.consulta?.indicaciones ?? informe.indicaciones_sugeridas ?? null,\n  resumen: informe.resumen_anamnesis ?? null,\n};\n\nconst eco = payload.datos_ecocardiografia || {};\n\nfunction obtenerUnidad(clave) {\n  const u = {\n    dvid:'cm', dvs:'cm', sivd:'cm', sivs:'cm', ppvid:'cm', ppvis:'cm',\n    ai_lineal:'cm', ao_lineal:'cm', fe_modom:'%', fs_modom:'%', fe_simpson:'%',\n    velocidad_e_mitral:'m/s', velocidad_a_mitral:'m/s',\n    vmax_ao:'m/s', vmax_pulmonar:'m/s', vmax_mitral:'m/s', vmax_tricuspideo:'m/s',\n    masa_vi:'g', indice_masa_vi:'g/m2', masa_vi_indexada:'g/m2',\n    mvcf:'circ/s', hp_gradiente:'mmHg', tapse:'cm', mapse:'cm',\n  };\n  return u[clave] || '';\n}\nfunction formatearNombreCampo(clave) {\n  const n = {\n    dvid:'DVI Diastole', dvs:'DVI Sistole', sivd:'SIV Diastole', sivs:'SIV Sistole',\n    ppvid:'PPVI Diastole', ppvis:'PPVI Sistole', ai_lineal:'AI Lineal', ao_lineal:'Ao Lineal',\n    ai_ao_lineal:'Relacion AI/Ao', ai_ao_area:'Relacion AI/Ao (area)',\n    fe_modom:'FE (Modo M)', fs_modom:'FS (Modo M)', fe_simpson:'FE (Simpson)',\n    velocidad_e_mitral:'Velocidad E Mitral', velocidad_a_mitral:'Velocidad A Mitral',\n    relacion_ea_mitral:'Relacion E/A Mitral',\n    masa_vi:'Masa VI', indice_masa_vi:'Indice Masa VI', masa_vi_indexada:'Masa VI Indexada',\n    mvcf:'MVCF', epr:'EPR', hp_gradiente:'Gradiente HP',\n    dvid_indexado:'DVI Diastole Indexado (LVIDDn)', dvs_indexado:'DVI Sistole Indexado',\n    volumen_ai_indexado:'Volumen AI Indexado (LAVI)',\n  };\n  return n[clave] || clave.replace(/_/g, ' ').replace(/\\b\\w/g, function (c) { return c.toUpperCase(); });\n}\nfunction obtenerCamposConValor(objeto) {\n  const campos = [];\n  const excluir = ['id','created_at','updated_at','atencion_id','mascota_id','tutor_id',\n    'acvim_estadio','mine2_puntaje','mine2_clasificacion','hp_clasificacion','observaciones',\n    'efusion_pericardica','efusion_pleural','patron_llenado_vi'];\n  for (const [clave, valor] of Object.entries(objeto)) {\n    if (excluir.includes(clave)) continue;\n    if (valor === null || valor === undefined || valor === '' || valor === 'null') continue;\n    if (typeof valor === 'number' && isNaN(valor)) continue;\n    const esIndexado = clave.includes('_indexado') || clave.includes('indexada') ||\n      clave.includes('indice_') || ['masa_vi','mvcf','epr','lavi'].includes(clave);\n    campos.push({ clave, nombreMostrar: formatearNombreCampo(clave), valor, esIndexado, unidad: obtenerUnidad(clave) });\n  }\n  return campos;\n}\n\nconst todos = obtenerCamposConValor(eco);\nconst valoresMedidos   = todos.filter(function (c) { return !c.esIndexado; });\nconst valoresIndexados = todos.filter(function (c) { return  c.esIndexado; });\n\nconst scores = {};\nif (eco.acvim_estadio)         scores.acvim_estadio = eco.acvim_estadio;\nif (eco.mine2_puntaje != null) scores.mine2_puntaje = eco.mine2_puntaje;\nif (eco.mine2_clasificacion)   scores.mine2_clasificacion = eco.mine2_clasificacion;\nif (eco.hp_gradiente != null)  scores.hp_gradiente = eco.hp_gradiente;\nif (eco.hp_clasificacion)      scores.hp_clasificacion = eco.hp_clasificacion;\n\n// ===== ECG - PREPARADO PARA LA PROXIMA ITERACION (no se renderiza aun) =====\n// const ekg = payload.bloque_ekg || {};\n// const datosEKG = {};\n// if (ekg.ekg_fc)    datosEKG.fc    = ekg.ekg_fc;\n// if (ekg.ekg_ritmo) datosEKG.ritmo = ekg.ekg_ritmo;\n// if (ekg.ekg_eje)   datosEKG.eje   = ekg.ekg_eje;\n// if (ekg.ekg_p_ms)  datosEKG.p_ms  = ekg.ekg_p_ms;\n// -> agregar seccion 'ELECTROCARDIOGRAMA' en doc_content usando datosEKG\n\nconst peso  = mascota.peso ?? mascota.pesoActual ?? null;\nconst email = tutor.email || null;\nconst paciente = mascota.nombre || 'Paciente';\nconst fecha = new Date().toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' });\n\nconst L = '-'.repeat(56);\nconst HR = '='.repeat(56);\nlet t = '';\nt += 'INFORME CARDIOLOGICO VETERINARIO\\n' + HR + '\\n\\n';\nt += 'Fecha: ' + fecha + '\\n\\n';\nt += 'DATOS DEL PACIENTE\\n' + L + '\\n';\nt += 'Paciente: ' + paciente + '\\n';\nt += 'Especie: ' + (mascota.especie || 'N/D') + '    Raza: ' + (mascota.raza || 'N/D') + '\\n';\nif (peso != null) t += 'Peso: ' + peso + ' kg\\n';\nt += 'Tutor: ' + (tutor.nombre || 'N/D') + '\\n';\nt += 'Tel: ' + (tutor.telefono || 'N/D') + '    Email: ' + (email || 'N/D') + '\\n\\n';\n\nconst constLines = [];\nif (consulta.fc != null) constLines.push('FC: ' + consulta.fc + ' lpm');\nif (consulta.fr != null) constLines.push('FR: ' + consulta.fr + ' rpm');\nif (consulta.pas != null || consulta.pam != null || consulta.pad != null)\n  constLines.push('PAS/PAM/PAD: ' + [consulta.pas, consulta.pam, consulta.pad].map(function (x) { return x == null ? '-' : x; }).join('/') + ' mmHg');\nif (consulta.mucosas) constLines.push('Mucosas: ' + consulta.mucosas);\nif (constLines.length) t += 'CONSTANTES FISIOLOGICAS\\n' + L + '\\n' + constLines.join('\\n') + '\\n\\n';\n\nif (consulta.resumen) t += 'RESUMEN DE ANAMNESIS\\n' + L + '\\n' + consulta.resumen + '\\n\\n';\n\nif (valoresMedidos.length) {\n  t += 'ECOCARDIOGRAFIA - VALORES MEDIDOS\\n' + L + '\\n';\n  valoresMedidos.forEach(function (c) { t += c.nombreMostrar + ': ' + c.valor + (c.unidad ? ' ' + c.unidad : '') + '\\n'; });\n  t += '\\n';\n}\nif (valoresIndexados.length) {\n  t += 'ECOCARDIOGRAFIA - INDICES / CALCULADOS\\n' + L + '\\n';\n  valoresIndexados.forEach(function (c) { t += c.nombreMostrar + ': ' + c.valor + (c.unidad ? ' ' + c.unidad : '') + '\\n'; });\n  t += '\\n';\n}\nconst scoreLines = Object.entries(scores).map(function (kv) { return formatearNombreCampo(kv[0]) + ': ' + kv[1]; });\nif (scoreLines.length) t += 'SCORES / CLASIFICACION\\n' + L + '\\n' + scoreLines.join('\\n') + '\\n\\n';\n\nif (consulta.diagnostico) t += 'DIAGNOSTICO\\n' + L + '\\n' + consulta.diagnostico + '\\n\\n';\nif (consulta.indicaciones) t += 'INDICACIONES\\n' + L + '\\n' + consulta.indicaciones + '\\n\\n';\n\nt += L + '\\nGenerado automaticamente por el sistema de ingesta MyVete.\\n';\n\nreturn [{ json: {\n  paciente: paciente,\n  especie: mascota.especie || 'N/D',\n  raza: mascota.raza || 'N/D',\n  peso: peso == null ? 'N/D' : peso,\n  tutor: tutor.nombre || 'N/D',\n  telefono: tutor.telefono || 'N/D',\n  email: email,\n  fc: consulta.fc, fr: consulta.fr, pas: consulta.pas, pam: consulta.pam, pad: consulta.pad,\n  mucosas: consulta.mucosas || 'N/D',\n  diagnostico: consulta.diagnostico || '',\n  indicaciones: consulta.indicaciones || '',\n  resumen: consulta.resumen || '',\n  valoresMedidos: valoresMedidos,\n  valoresIndexados: valoresIndexados,\n  scores: scores,\n  fecha: fecha,\n  doc_content: t,\n}}];"
-      }
+        688
+      ]
     },
     {
-      "id": "s6-0002-crear-doc",
-      "name": "Crear Google Doc",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
-      "position": [
-        1616,
-        680
-      ],
       "parameters": {
         "method": "POST",
         "url": "https://docs.googleapis.com/v1/documents",
@@ -313,23 +316,23 @@
         "jsonBody": "={{ JSON.stringify({ title: 'Informe cardiologico - ' + $('Preparar Datos para PDF').item.json.paciente + ' - ' + $('Preparar Datos para PDF').item.json.fecha }) }}",
         "options": {}
       },
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "k2oarx2fLAT9LgPw",
-          "name": "Google Drive Docs Slides"
-        }
-      }
-    },
-    {
-      "id": "s6-0003-insert-contenido",
-      "name": "Insertar contenido en Doc",
+      "id": "s6-0002-crear-doc",
+      "name": "Crear Google Doc",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
       "position": [
-        1840,
-        680
+        1616,
+        688
       ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "=https://docs.googleapis.com/v1/documents/{{ $('Crear Google Doc').item.json.documentId }}:batchUpdate",
@@ -340,25 +343,24 @@
         "jsonBody": "={{ JSON.stringify({ requests: [ { insertText: { location: { index: 1 }, text: $('Preparar Datos para PDF').item.json.doc_content } } ] }) }}",
         "options": {}
       },
-      "credentials": {
-        "googleDriveOAuth2Api": {
-          "id": "k2oarx2fLAT9LgPw",
-          "name": "Google Drive Docs Slides"
-        }
-      }
-    },
-    {
-      "id": "s6-0004-export-pdf",
-      "name": "Exportar PDF (autenticado)",
+      "id": "s6-0003-insert-contenido",
+      "name": "Insertar contenido en Doc",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
       "position": [
-        2064,
-        680
+        1840,
+        688
       ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
       "parameters": {
-        "method": "GET",
         "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Crear Google Doc').item.json.documentId }}/export",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
@@ -374,28 +376,28 @@
         "options": {
           "response": {
             "response": {
-              "responseFormat": "file",
-              "outputPropertyName": "data"
+              "responseFormat": "file"
             }
           }
         }
       },
+      "id": "s6-0004-export-pdf",
+      "name": "Exportar PDF (autenticado)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2064,
+        688
+      ],
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "k2oarx2fLAT9LgPw",
-          "name": "Google Drive Docs Slides"
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "s6-0005-if-email",
-      "name": "IF - ¿Tutor con email?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        2288,
-        680
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -428,70 +430,483 @@
           "combinator": "and"
         },
         "options": {}
-      }
+      },
+      "id": "s6-0005-if-email",
+      "name": "IF - ¿Tutor con email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2288,
+        688
+      ]
     },
     {
-      "id": "s6-0006-gmail-tutor",
-      "name": "Enviar informe al tutor",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "onError": "continueRegularOutput",
-      "position": [
-        2512,
-        600
-      ],
       "parameters": {
-        "resource": "message",
-        "operation": "send",
         "sendTo": "={{ $('Preparar Datos para PDF').item.json.email }}",
         "subject": "=Informe cardiologico - {{ $('Preparar Datos para PDF').item.json.paciente }}",
         "emailType": "text",
         "message": "=Estimado/a tutor/a de {{ $('Preparar Datos para PDF').item.json.paciente }},\n\nAdjuntamos el informe cardiologico de la consulta del {{ $('Preparar Datos para PDF').item.json.fecha }}.\n\nAnte cualquier duda, responda este correo o comuniquese con la clinica.\n\nSaludos cordiales.",
         "options": {
+          "appendAttribution": false,
           "attachmentsUi": {
             "attachmentsBinary": [
-              {
-                "property": "data"
-              }
+              {}
             ]
-          },
-          "appendAttribution": false
+          }
         }
       },
+      "id": "s6-0006-gmail-tutor",
+      "name": "Enviar informe al tutor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2512,
+        608
+      ],
+      "webhookId": "25343fa2-f202-4712-8111-334d48a35305",
       "credentials": {
         "gmailOAuth2": {
           "id": "eMVAugCGSCpQrcEj",
           "name": "Gmail account INFOACIVET"
         }
       },
-      "webhookId": "25343fa2-f202-4712-8111-334d48a35305"
+      "onError": "continueRegularOutput"
     },
     {
-      "id": "s6-0007-archivar-doc",
-      "name": "Archivar Google Doc",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "onError": "continueRegularOutput",
-      "position": [
-        2736,
-        680
-      ],
       "parameters": {
-        "method": "PATCH",
+        "method": "DELETE",
         "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Crear Google Doc').item.json.documentId }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "googleDriveOAuth2Api",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ trashed: true }) }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            }
+          ]
+        },
         "options": {}
       },
+      "id": "s6-0007-archivar-doc",
+      "name": "Eliminar Google Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2288,
+        944
+      ],
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "k2oarx2fLAT9LgPw",
-          "name": "Google Drive Docs Slides"
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "uploadType",
+              "value": "media"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/pdf"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "s6v2-01-subir-pdf",
+      "name": "Guardar PDF en Drive (subir)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2288,
+        416
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Guardar PDF en Drive (subir)').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "addParents",
+              "value": "1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn"
+            },
+            {
+              "name": "removeParents",
+              "value": "root"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,webViewLink"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Preparar Datos para PDF').item.json.nombrePdfBase }) }}",
+        "options": {}
+      },
+      "id": "s6v2-02-nombrar-pdf",
+      "name": "Nombrar y mover PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2512,
+        416
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=name='{{ $('Preparar Datos para PDF').item.json.nombrePdfBase }}' and '1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn' in parents and trashed=false"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "s6v2-03-buscar-colision",
+      "name": "Buscar colisiones PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2736,
+        416
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s6v2-colision-c1",
+              "leftValue": "={{ ($json.files || []).length }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "s6v2-04-if-colision",
+      "name": "IF - ¿Colisión de nombre?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2960,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Nombrar y mover PDF').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,webViewLink"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Preparar Datos para PDF').item.json.nombrePdfDesambiguado }) }}",
+        "options": {}
+      },
+      "id": "s6v2-05-renombrar-pdf",
+      "name": "Renombrar PDF (colisión)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3184,
+        336
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "4ugwVBPjLZ0Me9JS",
+          "name": "Google Drive - infoacivet (MYVETE)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Hoja 1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nombre Paciente": "={{ $('Preparar Datos para PDF').item.json.paciente }}",
+            "Nombre Tutor": "={{ $('Preparar Datos para PDF').item.json.nombreTutor }}",
+            "Apellido Tutor": "={{ $('Preparar Datos para PDF').item.json.apellidoTutor }}",
+            "ID MyVete": "={{ $('Webhook').item.json.body.filiacion.tutor.id_myvete || '' }}",
+            "ID Supabase": "={{ $('Insert Atención Cardiología').item.json.id || ($('Insert Atención Cardiología').item.json[0] && $('Insert Atención Cardiología').item.json[0].id) || '' }}",
+            "Link PDF": "={{ $('Nombrar y mover PDF').item.json.webViewLink || '' }}",
+            "Fecha": "={{ $('Preparar Datos para PDF').item.json.fecha }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Nombre Paciente",
+              "displayName": "Nombre Paciente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nombre Tutor",
+              "displayName": "Nombre Tutor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Apellido Tutor",
+              "displayName": "Apellido Tutor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ID MyVete",
+              "displayName": "ID MyVete",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ID Supabase",
+              "displayName": "ID Supabase",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Link PDF",
+              "displayName": "Link PDF",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fecha",
+              "displayName": "Fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "s6v2-06-registrar-indice",
+      "name": "Registrar en Índice",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3408,
+        432
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "8UcIjrUyUocK69km",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s6v2-persistio-c1",
+              "leftValue": "={{ $('Insert Atención Cardiología').item.json.id || ($('Insert Atención Cardiología').item.json[0] && $('Insert Atención Cardiología').item.json[0].id) || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "s6v2-07-if-persistio",
+      "name": "IF - ¿Persistió en Supabase?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2736,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SPRINT 6 v2 - arma asunto/cuerpo de la alerta de fallo de persistencia.\n// Se ejecuta SOLO por la rama false de 'IF - ¿Persistió en Supabase?'.\nconst safe = (fn) => { try { return fn(); } catch (e) { return undefined; } };\nconst j = (nm) => safe(() => $(nm).item.json);\nconst rowId = (o) => o && (o.id || (Array.isArray(o) && o[0] && o[0].id));\nconst estado = (o) => o === undefined ? 'no ejecutado'\n  : rowId(o) ? 'OK'\n  : 'FALLO' + (o && o.error ? ' - ' + JSON.stringify(o.error).slice(0, 300) : '');\n\nconst prep = j('Preparar Datos para PDF') || {};\nconst atn  = j('Insert Atención Cardiología');\nconst tut  = j('Upsert Tutor');\nconst mas  = j('Upsert Mascota');\nconst eco  = j('Insert Datos Ecocardiografía');\nconst doc  = j('Crear Google Doc') || {};\nconst drv  = j('Nombrar y mover PDF') || {};\nconst mail = j('Enviar informe al tutor');\nconst idMyvete = safe(() => $('Webhook').item.json.body.filiacion.tutor.id_myvete) || 's/d';\n\nconst pasos = [\n  'Upsert Tutor:        ' + estado(tut),\n  'Upsert Mascota:      ' + estado(mas),\n  'Insert Atención:     ' + estado(atn) + '   <-- KEYSTONE',\n  'Insert Datos Eco:    ' + (eco === undefined ? 'no aplica (sin eco en el payload)' : estado(eco)),\n  'Crear Google Doc:    ' + (doc.documentId ? 'OK' : 'FALLO'),\n  'Guardar PDF Drive:   ' + (drv.id ? 'OK (' + (drv.webViewLink || '') + ')' : 'FALLO o pendiente de FOLDER_ID'),\n  'Mail al tutor:       ' + (mail === undefined ? 'no se envió (tutor sin email)' : (mail.id ? 'ENVIADO' : 'FALLO')),\n];\n\nconst asunto = '[MYVETE][ALERTA] Persistencia Supabase FALLÓ - ' + (prep.paciente || 'paciente s/d') + ' - ' + (prep.fecha || '');\nconst cuerpo = [\n  'La ingesta de una consulta NO se guardó correctamente en Supabase.',\n  'El informe PDF se generó igual; hay que cargar la consulta a mano en la base.',\n  '',\n  'Paciente:  ' + (prep.paciente || '') + '  (' + (prep.especie || '') + ' / ' + (prep.raza || '') + ')',\n  'Tutor:     ' + (prep.apellidoTutor || '') + ', ' + (prep.nombreTutor || ''),\n  'ID MyVete: ' + idMyvete,\n  'Fecha:     ' + (prep.fecha || ''),\n  'PDF del informe: ' + (drv.webViewLink || '(no disponible / ver ejecución)'),\n  '',\n  'ESTADO POR PASO:',\n  ...pasos,\n  '',\n  'Error crudo del insert de Atención:',\n  JSON.stringify((atn && atn.error) || atn || null).slice(0, 900),\n].join('\\n');\n\nreturn [{ json: { alerta_asunto: asunto, alerta_cuerpo: cuerpo } }];"
+      },
+      "id": "s6v2-08-preparar-alerta",
+      "name": "Preparar alerta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "echevanest@gmail.com, infoacivet@gmail.com",
+        "subject": "={{ $json.alerta_asunto }}",
+        "emailType": "text",
+        "message": "={{ $json.alerta_cuerpo }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "s6v2-09-alertar-fallo",
+      "name": "Alertar fallo persistencia",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3184,
+        704
+      ],
+      "webhookId": "s6v2-alert-2wpvur17",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rz2DSV3KtfiLr5fV",
+          "name": "Gmail - echevanest@gmail.com"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -609,6 +1024,16 @@
       "main": [
         [
           {
+            "node": "Guardar PDF en Drive (subir)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Eliminar Google Doc",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "IF - ¿Tutor con email?",
             "type": "main",
             "index": 0
@@ -627,7 +1052,7 @@
         ],
         [
           {
-            "node": "Archivar Google Doc",
+            "node": "IF - ¿Persistió en Supabase?",
             "type": "main",
             "index": 0
           }
@@ -638,7 +1063,92 @@
       "main": [
         [
           {
-            "node": "Archivar Google Doc",
+            "node": "IF - ¿Persistió en Supabase?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Persistió en Supabase?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Preparar alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar alerta": {
+      "main": [
+        [
+          {
+            "node": "Alertar fallo persistencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar PDF en Drive (subir)": {
+      "main": [
+        [
+          {
+            "node": "Nombrar y mover PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nombrar y mover PDF": {
+      "main": [
+        [
+          {
+            "node": "Buscar colisiones PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar colisiones PDF": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Colisión de nombre?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Colisión de nombre?": {
+      "main": [
+        [
+          {
+            "node": "Renombrar PDF (colisión)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar en Índice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renombrar PDF (colisión)": {
+      "main": [
+        [
+          {
+            "node": "Registrar en Índice",
             "type": "main",
             "index": 0
           }
@@ -646,7 +1156,34 @@
       ]
     }
   },
+  "nodeGroups": [],
   "settings": {
-    "executionOrder": "v1"
-  }
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": null,
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "lkOwTFmVTZu7EMoU",
+      "projectId": "Zd10owVJgf5TNlgm",
+      "project": {
+        "id": "Zd10owVJgf5TNlgm",
+        "name": "Marcelo Echevarria <echevanest@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "3681f54f-c910-4634-a36b-31064680e25f",
+        "createdAt": "2025-12-15T13:22:07.178Z",
+        "updatedAt": "2025-12-15T13:22:12.778Z"
+      },
+      "createdAt": "2026-09-09T16:50:01.967Z",
+      "updatedAt": "2026-09-09T16:50:01.967Z"
+    }
+  ],
+  "activeVersion": null
 }
