@@ -267,9 +267,30 @@ Verificación post-borrado: 0 filas `ZZ_TEST%` en `tutores`/`mascotas`, 0 filas 
 
 ---
 
+### J.5 — Transición a producción: marco histórico de versiones (2026-09-13)
+
+**Publicado.** El pendiente 8 de J.4 (y el punto 8 de la lista de Fase 2 más abajo) está resuelto: el workflow B quedó publicado como producción en esta sesión.
+
+*   **Workflow A — CORE (`5gGWXOjY2BBOAfuw`):** original, primera versión del pipeline (Webhook → IA → Supabase). Path histórico `ingesta-filiacion-v4`, intacto — no se tocó. Pasa a **backup**: `active: false` (ya lo estaba), renombrado a `"MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]"` vía `PUT /workflows/5gGWXOjY2BBOAfuw` (solo el campo `name`, verificado por diff nodo-por-nodo: 0 cambios en nodes/connections). Export local: `n8n/workflow_v5_core.BACKUP.json`. **No se borra** hasta que producción esté validada 3-7 días con tráfico real (roadmap 2.4) — recién ahí es candidato a borrado.
+*   **Workflow B — STAGING → producción (`lkOwTFmVTZu7EMoU`):** copia de CORE armada para el Sprint 6 (informe PDF, mail, persistencia Drive/Sheets, alerta) sin arriesgar el original. Republicado como producción en esta sesión: webhook path `ingesta-filiacion-v6-test` → `ingesta-filiacion`, `active: false` → `true`. Es el workflow que ahora recibe el tráfico real del SPA. Export local: `n8n/workflow_v6_pdf_mail.STAGING.json` (re-exportado post-publicación; el salto de tamaño del archivo se debe a que `activeVersion` — el snapshot que n8n genera al publicar — antes era `null` al estar inactivo).
+*   **Versiones históricas del path del webhook:**
+    | Path | Workflow / etapa |
+    |---|---|
+    | `ingesta-filiacion-v4` | CORE (original, ahora backup) |
+    | `ingesta-filiacion-v6-test` | STAGING durante el desarrollo del Sprint 6 |
+    | `ingesta-filiacion` | **Producción actual** (workflow B, publicado 2026-09-13) |
+*   **Regla de sincronización (ya vigente desde J.3, reconfirmada):** n8n es la fuente de verdad operativa; el repo es espejo. Cada `PUT`/activación a n8n va seguido, en el mismo turno, de un `GET` que sobreescribe el JSON del repo y se commitea junto con el cambio.
+*   **Regla de backup:** CORE no se toca ni se borra hasta validar producción en real. Ver pendiente 8 más abajo (ahora reformulado: "validar 3-7 días → borrar CORE").
+*   **Hallazgo técnico — `active` es read-only en `PUT /workflows/{id}`:** intentar mandar el JSON completo del GET (incluyendo `active`, `id`, `createdAt`, etc.) a `PUT` devuelve `HTTP 400 "request/body must NOT have additional properties"`. El endpoint solo acepta `name`, `nodes`, `connections`, `settings`, `staticData`. Para cambiar `active` hay que usar los endpoints dedicados `POST /workflows/{id}/activate` y `POST /workflows/{id}/deactivate`. Aplica a cualquier automatización futura contra esta API — no volver a intentar `active` dentro del body de un `PUT`.
+*   **SPA (`interface/app.js` línea 683):** `WEBHOOK_URL_N8N` actualizado de `.../webhook/ingesta-filiacion-v4` a `.../webhook/ingesta-filiacion`, en el mismo turno que la publicación (sin ventana donde el SPA apuntara a un webhook inactivo). Commit aparte, sin tocar el resto del archivo (que tiene cambios preexistentes sin commitear de la Sección I, fuera de este alcance).
+*   **No se disparó tráfico real** en esta sesión — la validación en producción (roadmap 2.2) queda pendiente, con Marcelo, con autorización explícita.
+*   **Commits locales de esta sesión** (sin push a `origin`): publicación de STAGING como producción, marcado de CORE como backup, actualización del webhook del SPA, esta documentación.
+
+---
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
-**Sprint 6 — Informe PDF + envío por mail + persistencia Drive/Sheets + alerta (ver Secciones J, J.2, J.3, J.4).** Armado en el workflow candidato a producción `lkOwTFmVTZu7EMoU` (26 nodos, `active: false`). Fixes 1, 2, 5, 6→7 completos; Pruebas E2E A, B1, B2 **todas exitosas**; residuos de Supabase limpiados (Drive/Sheets pendiente de Marcelo, ver J.4). Falta: Fix 3 (confirmar Gmail INFOACIVET), Fix 8 (validación de obligatorios), sección ECG, publicar como producción → validar 3-7 días en real → borrar workflow CORE (`5gGWXOjY2BBOAfuw`). Ningún workflow está publicado hoy.
+**Sprint 6 — publicado como producción (2026-09-13, ver Sección J.5).** El workflow `lkOwTFmVTZu7EMoU` (26 nodos) quedó `active: true` en el path `ingesta-filiacion`, recibiendo el tráfico del SPA. Fixes 1, 2, 5, 6→7 completos; Pruebas E2E A, B1, B2 **todas exitosas**; residuos de Supabase limpiados (Drive/Sheets pendiente de Marcelo, ver J.4). Workflow CORE (`5gGWXOjY2BBOAfuw`) queda como backup, sin tocar, hasta validar 3-7 días de tráfico real. Falta: Fix 3 (confirmar Gmail INFOACIVET), Fix 8 (validación de obligatorios), sección ECG, validación en real con tráfico real (con Marcelo) y recién entonces borrar CORE.
 
 ---
 
