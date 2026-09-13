@@ -214,9 +214,62 @@ Después de los 4 fixes: Prueba A → Prueba B → publicar B → validar en rea
 
 ---
 
+### J.4 — Fixes 2/5/6/7, Pruebas E2E A/B1/B2 (todas OK) + limpieza de residuos (2026-09-13)
+
+**Fixes aplicados sobre el workflow B (`lkOwTFmVTZu7EMoU`) desde J.3, en orden:**
+*   **Fix 2:** esquema de `Registrar en Índice` migrado al esquema real de la planilla: `fecha | paciente | tutor | veterinario_derivante | nombre_pdf | link_pdf | estado_persistencia | observaciones` (`veterinario_derivante`/`observaciones` vacíos por ahora, Fase 1 los completa).
+*   **Fix 5:** normalización de nombre de archivo PDF corregida para preservar la Ñ (el NFD + strip de diacríticos anterior la borraba también).
+*   **Fix 6 (insuficiente, reemplazado por Fix 7):** intento de resolver la excepción `"Node Renombrar PDF (colisión) hasn't been executed"` cambiando la expresión de `nombre_pdf` a `$items(...)[0]?.json?.name ?? ...`. No alcanzó: n8n lanza la excepción al parsear la referencia al nodo no ejecutado, antes de evaluar `$items()`/`??`.
+*   **Fix 7 (solución de raíz):** 2 nodos Set nuevos (`Set - Nombre con colisión`, `Set - Nombre sin colisión`) unifican `nombre_pdf_final`/`link_pdf_final` antes de `Registrar en Índice`, que ahora lee esas 2 variables sin ninguna expresión condicional sobre nodos no garantizados. Workflow pasó de 24 a 26 nodos. Commits locales `2007964`, `d5abeac`, `d1a707e` (sin push).
+*   **Fix 3 (reconectar Gmail INFOACIVET) y Fix 4 (limpieza residuos Prueba A):** no verificables/ejecutables por API — Fix 3 es acción de Marcelo en la UI de n8n (no se pudo confirmar por API si sigue desconectada); Fix 4 quedó absorbido por la limpieza final de esta misma sesión (ver más abajo), que cubre Prueba A + B1 + B2 juntas.
+
+**Pruebas E2E en STAGING — las 3 exitosas:**
+*   **Prueba A** (flujo limpio, sin colisión de nombre): OK.
+*   **Prueba B1** (upsert-update de un tutor ya existente + colisión de nombre de PDF, dispara la rama `Renombrar PDF (colisión)`): OK.
+*   **Prueba B2** (fallo forzado de persistencia en Supabase → dispara `Alertar fallo persistencia` a `echevanest@gmail.com` + `infoacivet@gmail.com`): OK.
+
+**Limpieza de residuos de las 3 pruebas (2026-09-13):**
+
+*Supabase (proyecto `myvete-cardiologia`, `tuedigqvvkvgongpcnjx`) — inventario confirmado por `SELECT` antes de borrar, coincidió exactamente con lo esperado, sin residuos adicionales (`information_schema` sobre `tutores`/`mascotas` no mostró ningún otro registro `ZZ_TEST%`):*
+| Tabla | Fila | Estado |
+|---|---|---|
+| `tutores` | `a7ef1ef0-c2ec-4816-9baa-16d80886b117` (MUÑOZ, PEDRO / `id_myvete=ZZ_TEST_E2E_SPRINT6_PRUEBA_A`) | Borrada |
+| `mascotas` | `40b8ca97-474f-4992-aa1d-85258a6bb8c2` (ZZ_TEST_LOLA) | Borrada |
+| `atenciones_cardiologia` | `a259e8e5-544d-4215-934b-b55a603941d3` (Prueba A), `0217b3b5-4aeb-4cea-964f-e540b3bd0c5d` (Prueba B1) | Borradas |
+| `datos_ecocardiografia` | atadas a las 2 atenciones de arriba | Borradas por cascada FK |
+
+Verificación post-borrado: 0 filas `ZZ_TEST%` en `tutores`/`mascotas`, 0 filas residuales en `atenciones_cardiologia`/`datos_ecocardiografia`. La fila preexistente "Test Diagnostico 3" / "Firulais Test 3" (documentada en Sección G, no es `ZZ_TEST` ni de esta sesión) se dejó intacta a propósito, fuera de alcance de esta limpieza.
+
+*Drive y Sheets — BLOQUEADO, pendiente de Marcelo:* la cuenta de Google conectada a esta sesión de Claude no tiene acceso a la carpeta `1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn` ni a los archivos `1vpxJneXsqdpwfnE-P5XTrtQhvaI5HdRK` / `1rVgqAylBn2hFEaoXpe2_bS7ufP8OceDY` (metadata devuelve "not found"), ni a la planilla `1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU`. No se pudo listar ni borrar nada del lado de Drive/Sheets. **Queda pendiente que Marcelo, a mano, en la cuenta de Google real de `infoacivet`/`Google Sheets account`:**
+1.  Borre (papelera) en la carpeta `Informes MYVETE` los 2 PDF: `ZZTESTLOLAMUÑOZ SEPTIEMBRE 2026.pdf` y `ZZTESTLOLAMUÑOZ (PEDRO) SEPTIEMBRE 2026.pdf`, y cualquier otro archivo `ZZTEST*` que aparezca (buscar `name contains 'ZZTEST'` en esa carpeta — la Prueba B2 pudo haber generado uno más).
+2.  Borre en la planilla "Índice de Informes MYVETE" (`Hoja 1`) todas las filas cuyo paciente sea `ZZ_TEST_LOLA` (2 conocidas de antes; verificar si la Prueba B2 agregó una fila con `estado_persistencia=FALLO` — probablemente sí, dado que esa prueba fuerza el fallo después de ya haber pasado por la rama de PDF/Sheets... revisar).
+3.  Gmail: no hace falta borrar nada (mails de prueba quedan en las casillas).
+
+**Re-exportación de `n8n/workflow_v6_pdf_mail.STAGING.json`:** re-exportado directo de la API de n8n después de correr las 3 pruebas (`versionCounter` 16 → 22). Diff estructural confirmó que nodos/parámetros/conexiones son idénticos salvo que n8n dejó de serializar 2 claves con valor por defecto (`mode:manual`, `duplicateItem:false`) en los 2 nodos Set del Fix 7 — normalización propia de n8n entre saves, no un cambio funcional. `_nota` del archivo actualizada con el detalle de Fixes 5/6/7 y de las 3 pruebas.
+
+**Discrepancia encontrada vs. lo esperado al abrir esta sesión:** la orden asumía "8+ commits adelante de `origin/master`"; al verificar, eran 6 (`2236389`, `6ee32e9`, `2007964`, `d5abeac`, `d1a707e`, + el commit de esta sesión). No bloquea nada, se deja registrado por transparencia.
+
+**Archivos con cambios preexistentes sin commitear, revisados en esta sesión:** `interface/app.js` / `interface/index.html` (251+70 líneas — trabajo de UI de la Sección I, visibilidad de campos eco/EKG e índices ampliados, coherente con el resto del repo) y `supabase/schema.sql` (solo un comentario ampliado documentando las fórmulas de las columnas `*_indexado`/`*_indexada`, sin cambios de DDL). No se commitearon en esta sesión — Marcelo decide si van en un commit aparte o junto con Sprint 6.
+
+**PENDIENTES de Fase 2 (sin cambios de alcance, reordenados):**
+1.  Fix 8 — validación de campos obligatorios (aún no diseñado).
+2.  Sección ECG en el PDF (bloque ya preparado y comentado en `Preparar Datos para PDF`, falta descomentar + agregar sección al `doc_content`).
+3.  SPA de búsqueda (no iniciado, sin definir en ninguna sesión previa).
+4.  Warning en la respuesta del webhook cuando falla la persistencia (hoy el SPA no distingue "informe enviado OK" de "informe enviado pero no se guardó en Supabase" — la alerta solo llega por mail interno).
+5.  Botón "Abrir en pestaña" para el PDF/Doc generado (no iniciado).
+6.  Persistencia de medicación + EKG (los 4 campos de `bloque_ekg` siguen sin columna en `datos_ecocardiografia` y sin sección en el PDF — ver punto 2).
+7.  Reconfirmar Fix 3 (credencial Gmail INFOACIVET) en la UI de n8n — no verificable por API.
+8.  Publicar workflow B como producción, validar 3-7 días en real, recién entonces borrar workflow CORE (`5gGWXOjY2BBOAfuw`).
+
+**Lecciones de esta sesión:** (1) la causa raíz del bug de Fix 6/7 — n8n evalúa la referencia a un nodo (`$('Nodo')`) y lanza si no ejecutó, *antes* de aplicar cualquier operador que la rodee (`??`, `?.`, incluso dentro de `$items()`) — vale como patrón general para cualquier expresión n8n que dependa de una rama condicional aguas arriba: la única solución robusta es un nodo Set/Edit Fields que unifique el valor en cada rama antes del nodo que lo consume, no una expresión más "defensiva". (2) Verificar acceso real (Drive/Sheets) al principio de una tarea de limpieza, no al final — hubiera evitado planificar pasos que terminaron bloqueados.
+
+**Archivos tocados en esta sesión:** `n8n/workflow_v6_pdf_mail.STAGING.json` (re-exportado), `STATUS.md` (esta subsección), `TRASPASO-2026-09-13.md` (nuevo, resumen de traspaso). **No se tocó producción, no se publicó ni activó ningún workflow, no se pusheó a `origin`.**
+
+---
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
-**Sprint 6 — Informe PDF + envío por mail + persistencia Drive/Sheets + alerta (ver Secciones J, J.2, J.3).** Armado en el workflow candidato a producción `lkOwTFmVTZu7EMoU` (24 nodos, `active: false`). `FOLDER_ID`/`SHEET_ID` ya resueltos, Fix 1 (credencial Drive) completo. Falta: Fix 2 (mapeo "Registrar en Índice"), Fix 3 (reconectar Gmail INFOACIVET), Fix 4 (limpieza residuos Prueba A) → Prueba A → Prueba B → publicar como producción → validar 3-7 días en real → borrar workflow CORE (`5gGWXOjY2BBOAfuw`). Ningún workflow está publicado hoy.
+**Sprint 6 — Informe PDF + envío por mail + persistencia Drive/Sheets + alerta (ver Secciones J, J.2, J.3, J.4).** Armado en el workflow candidato a producción `lkOwTFmVTZu7EMoU` (26 nodos, `active: false`). Fixes 1, 2, 5, 6→7 completos; Pruebas E2E A, B1, B2 **todas exitosas**; residuos de Supabase limpiados (Drive/Sheets pendiente de Marcelo, ver J.4). Falta: Fix 3 (confirmar Gmail INFOACIVET), Fix 8 (validación de obligatorios), sección ECG, publicar como producción → validar 3-7 días en real → borrar workflow CORE (`5gGWXOjY2BBOAfuw`). Ningún workflow está publicado hoy.
 
 ---
 

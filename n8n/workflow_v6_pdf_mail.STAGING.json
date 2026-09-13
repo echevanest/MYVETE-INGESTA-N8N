@@ -1,15 +1,15 @@
 {
-  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. Cambios v2 sobre v1: (1) onError:continueRegularOutput en Upsert Tutor / Upsert Mascota / Insert Atencion Cardiologia; (2) Archivar Google Doc -> Eliminar Google Doc (DELETE en vez de PATCH trashed:true), rama de Exportar PDF; (3) Exportar PDF hace fan-out a 3 ramas EN ESTE ORDEN: Guardar PDF en Drive (subir) -> Eliminar Google Doc -> IF - Tutor con email? (Drive primero para que executionOrder v1 lo complete antes de la rama de alerta y el link del PDF entre en el mail de alerta); (4) rama Drive: Guardar PDF en Drive (subir, uploadType=media) -> Nombrar y mover PDF (PATCH addParents=FOLDER_ID, name=nombrePdfBase) -> Buscar colisiones PDF -> IF colision (files>1) -> [true] Renombrar PDF (colision) a nombrePdfDesambiguado -> Registrar en Indice (Google Sheets append, documentId=SHEET_ID, cred Google Sheets account 8UcIjrUyUocK69km); (5) IF - Persistio en Supabase? (keystone: Insert Atencion devolvio id) sobre ambas ramas del IF de email -> [false] Preparar alerta (Code, detalle por paso + link PDF) -> Alertar fallo persistencia (Gmail rz2DSV3KtfiLr5fV, To echevanest@gmail.com + infoacivet@gmail.com); (6) Preparar Datos para PDF: + parseo apellido/nombre tutor desde APELLIDO-COMA-NOMBRE, + nombrePdfBase / nombrePdfDesambiguado / mesAnio. FOLDER_ID y SHEET_ID YA RESUELTOS en n8n vivo (verificado 2026-09-12): FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - CONFIRMADO. FIX 1 (2026-09-12): migrada credencial Google Drive de k2oarx2fLAT9LgPw (ARES, Google Drive Docs Slides) a 4ugwVBPjLZ0Me9JS (Google Drive - infoacivet MYVETE) en los 7 nodos: Crear Google Doc, Insertar contenido en Doc, Exportar PDF (autenticado), Eliminar Google Doc, Guardar PDF en Drive (subir), Buscar colisiones PDF, Renombrar PDF (colision). Nombrar y mover PDF ya tenia infoacivet de antes. Webhook path ingesta-filiacion-v6-test. Estado en n8n: lkOwTFmVTZu7EMoU, active:false, SIN validar E2E. Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n. Ver STATUS.md Seccion J / J.2. FIX 2 + FIX 5 (2026-09-13, commit unico): (a) Preparar Datos para PDF: _norm corregido para preservar la Ñ (antes el NFD + strip de diacriticos borraba la Ñ tambien) - ahora reemplaza vocales acentuadas explicitamente (AEIOU con variantes ÁÀÄÂ etc.) y el filtro final es [^A-ZÑ0-9]; (b) Registrar en Indice: columnas migradas del esquema viejo (Nombre Paciente | Nombre Tutor | Apellido Tutor | ID MyVete | ID Supabase | Link PDF | Fecha) al esquema nuevo confirmado en la planilla real: fecha | paciente | tutor | veterinario_derivante | nombre_pdf | link_pdf | estado_persistencia | observaciones. veterinario_derivante y observaciones van vacios por ahora (Fase 1 los completa). nombre_pdf usa ?? entre Renombrar PDF (colision) y Nombrar y mover PDF (cubre ambos casos). estado_persistencia = 'OK'/'FALLO' segun si Insert Atencion Cardiologia devolvio id. documentId/sheetName/operation/credencial de Sheets (8UcIjrUyUocK69km) sin tocar. Verificado con diff estructural pre/post PUT: SOLO estos 2 nodos cambiaron, connections identicas, active:false conservado. Commit local pendiente de push (ver STATUS.md Seccion J.3/J.4). FIX 6 (2026-09-13): Registrar en Indice, columna nombre_pdf: la expresion `$('Renombrar PDF (colision)').item.json.name ?? ...` lanzaba excepcion 'hasn't been executed' cuando ese nodo no corria (caso sin colision de nombre), rompiendo el nodo silenciosamente (onError:continueRegularOutput lo dejaba en verde sin escribir la fila). Reemplazada por `$items('Renombrar PDF (colision)')[0]?.json?.name ?? $('Nombrar y mover PDF').item.json.name` - $items() devuelve [] en vez de lanzar cuando el nodo no ejecuto, permitiendo que el ?? funcione. Unico cambio: esa columna. Verificado con diff estructural pre/post PUT: SOLO nombre_pdf cambio, resto de columnas/schema/documentId/credencial identicos, active:false conservado. FIX 7 (2026-09-13): el error 'Node Renombrar PDF (colision) hasnt been executed' persistia pese a $items() (Fix 6) porque n8n lanza la excepcion al parsear la referencia al nodo no ejecutado antes de aplicar el ?? o la logica de $items(). Solucion de raiz: se agregaron 2 nodos Set (Edit Fields) que unifican el resultado en variables comunes antes de Registrar en Indice - 'Set - Nombre con colision' (tras Renombrar PDF (colision): nombre_pdf_final=$json.name, link_pdf_final=$json.webViewLink) y 'Set - Nombre sin colision' (rama false del IF de colision: nombre_pdf_final=$('Nombrar y mover PDF').item.json.name, link_pdf_final=$('Nombrar y mover PDF').item.json.webViewLink), ambos con Include Other Fields. Registrar en Indice ahora lee nombre_pdf=$json.nombre_pdf_final y link_pdf=$json.link_pdf_final, sin ninguna expresion condicional. Verificado con diff estructural pre/post PUT: 24->26 nodos (los 2 Set nuevos), connections modificadas solo en los 4 puntos indicados (Renombrar PDF (colision) apunta al Set con colision, IF colision rama false apunta al Set sin colision, ambos Set apuntan a Registrar en Indice), Registrar en Indice solo cambio nombre_pdf/link_pdf, resto de nodos intactos, active:false conservado.",
+  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU (resueltos). Fix 1 (2026-09-12): credencial Drive migrada ARES->infoacivet (4ugwVBPjLZ0Me9JS) en 7 nodos. Fix 2 (2026-09-13): esquema de Registrar en Indice migrado a fecha|paciente|tutor|veterinario_derivante|nombre_pdf|link_pdf|estado_persistencia|observaciones. Fix 5 (2026-09-13): normalizacion de nombre de archivo preserva la Ñ. Fix 6 (2026-09-13, insuficiente): intento de arreglar la excepcion 'hasnt been executed' con () en la expresion de nombre_pdf - no alcanzo, n8n lanza la excepcion al parsear la referencia al nodo no ejecutado antes de evaluar ()/??. Fix 7 (2026-09-13, solucion de raiz): 2 nodos Set nuevos (Edit Fields) - 'Set - Nombre con colision' y 'Set - Nombre sin colision' - unifican nombre_pdf_final/link_pdf_final antes de Registrar en Indice, que ahora lee esas 2 variables sin ninguna expresion condicional sobre nodos no garantizados. PRUEBAS E2E EN STAGING (2026-09-13) - LAS 3 EXITOSAS: Prueba A (flujo limpio, sin colision) OK; Prueba B1 (upsert-update de tutor existente + colision de nombre de PDF, dispara rama Renombrar PDF) OK; Prueba B2 (fallo forzado de persistencia en Supabase -> alerta a echevanest@gmail.com + infoacivet@gmail.com) OK. Residuos de las 3 pruebas limpiados en Supabase en la sesion de limpieza del 2026-09-13 (ver STATUS.md); limpieza de Drive/Sheets quedo pendiente para Marcelo (la cuenta de Google conectada a esa sesion de Claude no tenia acceso a la carpeta 1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn ni a la planilla 1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU). Este export (2026-09-13, versionCounter 22) se tomo DESPUES de correr las pruebas E2E: diff estructural contra el export anterior (versionCounter 16, commit d1a707e) confirma que node/params/connections son identicos salvo que n8n dejo de serializar 2 claves con valor por defecto (mode:manual, duplicateItem:false) en los 2 nodos Set del Fix 7 - no es un cambio funcional, es normalizacion propia de n8n entre saves. PENDIENTE (Fase 2, ver STATUS.md): Fix 8 (validacion de campos obligatorios), seccion ECG en el PDF (bloque comentado en Preparar Datos para PDF), publicar este workflow como produccion, validar 3-7 dias en real, recien despues borrar el workflow CORE 5gGWXOjY2BBOAfuw. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - confirmar que sigue conectada (Fix 3 del 2026-09-12 senalaba que estaba desconectada; accion de Marcelo, no verificable por API). Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n.",
   "id": "lkOwTFmVTZu7EMoU",
   "name": "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]",
   "description": null,
   "active": false,
   "activeVersionId": null,
   "createdAt": "2026-09-09T16:50:01.964Z",
-  "updatedAt": "2026-09-13T15:14:40.997Z",
+  "updatedAt": "2026-09-13T16:17:15.315Z",
   "isArchived": false,
-  "versionId": "c05b737b-ab11-48e4-ab74-409acf46c9b2",
-  "versionCounter": 16,
+  "versionId": "780ec044-28ec-4889-8d48-dcdfe6d45e75",
+  "versionCounter": 22,
   "sourceWorkflowId": null,
   "triggerCount": 1,
   "nodes": [
@@ -833,7 +833,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.7,
       "position": [
-        3408,
+        3568,
         432
       ],
       "credentials": {
@@ -887,8 +887,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2960,
-        704
+        2976,
+        720
       ]
     },
     {
@@ -906,8 +906,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        3184,
-        704
+        3200,
+        720
       ],
       "webhookId": "s6v2-alert-2wpvur17",
       "credentials": {
@@ -920,8 +920,6 @@
     },
     {
       "parameters": {
-        "mode": "manual",
-        "duplicateItem": false,
         "assignments": {
           "assignments": [
             {
@@ -946,14 +944,12 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        3300,
+        3328,
         336
       ]
     },
     {
       "parameters": {
-        "mode": "manual",
-        "duplicateItem": false,
         "assignments": {
           "assignments": [
             {
@@ -978,8 +974,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        3200,
-        560
+        3264,
+        544
       ]
     }
   ],
