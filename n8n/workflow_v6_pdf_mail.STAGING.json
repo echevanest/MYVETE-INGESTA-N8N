@@ -1,15 +1,15 @@
 {
-  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. Cambios v2 sobre v1: (1) onError:continueRegularOutput en Upsert Tutor / Upsert Mascota / Insert Atencion Cardiologia; (2) Archivar Google Doc -> Eliminar Google Doc (DELETE en vez de PATCH trashed:true), rama de Exportar PDF; (3) Exportar PDF hace fan-out a 3 ramas EN ESTE ORDEN: Guardar PDF en Drive (subir) -> Eliminar Google Doc -> IF - Tutor con email? (Drive primero para que executionOrder v1 lo complete antes de la rama de alerta y el link del PDF entre en el mail de alerta); (4) rama Drive: Guardar PDF en Drive (subir, uploadType=media) -> Nombrar y mover PDF (PATCH addParents=FOLDER_ID, name=nombrePdfBase) -> Buscar colisiones PDF -> IF colision (files>1) -> [true] Renombrar PDF (colision) a nombrePdfDesambiguado -> Registrar en Indice (Google Sheets append, documentId=SHEET_ID, cred Google Sheets account 8UcIjrUyUocK69km); (5) IF - Persistio en Supabase? (keystone: Insert Atencion devolvio id) sobre ambas ramas del IF de email -> [false] Preparar alerta (Code, detalle por paso + link PDF) -> Alertar fallo persistencia (Gmail rz2DSV3KtfiLr5fV, To echevanest@gmail.com + infoacivet@gmail.com); (6) Preparar Datos para PDF: + parseo apellido/nombre tutor desde APELLIDO-COMA-NOMBRE, + nombrePdfBase / nombrePdfDesambiguado / mesAnio. FOLDER_ID y SHEET_ID YA RESUELTOS en n8n vivo (verificado 2026-09-12): FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - CONFIRMADO. FIX 1 (2026-09-12): migrada credencial Google Drive de k2oarx2fLAT9LgPw (ARES, Google Drive Docs Slides) a 4ugwVBPjLZ0Me9JS (Google Drive - infoacivet MYVETE) en los 7 nodos: Crear Google Doc, Insertar contenido en Doc, Exportar PDF (autenticado), Eliminar Google Doc, Guardar PDF en Drive (subir), Buscar colisiones PDF, Renombrar PDF (colision). Nombrar y mover PDF ya tenia infoacivet de antes. Webhook path ingesta-filiacion-v6-test. Estado en n8n: lkOwTFmVTZu7EMoU, active:false, SIN validar E2E. Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n. Ver STATUS.md Seccion J / J.2. FIX 2 + FIX 5 (2026-09-13, commit unico): (a) Preparar Datos para PDF: _norm corregido para preservar la Ñ (antes el NFD + strip de diacriticos borraba la Ñ tambien) - ahora reemplaza vocales acentuadas explicitamente (AEIOU con variantes ÁÀÄÂ etc.) y el filtro final es [^A-ZÑ0-9]; (b) Registrar en Indice: columnas migradas del esquema viejo (Nombre Paciente | Nombre Tutor | Apellido Tutor | ID MyVete | ID Supabase | Link PDF | Fecha) al esquema nuevo confirmado en la planilla real: fecha | paciente | tutor | veterinario_derivante | nombre_pdf | link_pdf | estado_persistencia | observaciones. veterinario_derivante y observaciones van vacios por ahora (Fase 1 los completa). nombre_pdf usa ?? entre Renombrar PDF (colision) y Nombrar y mover PDF (cubre ambos casos). estado_persistencia = 'OK'/'FALLO' segun si Insert Atencion Cardiologia devolvio id. documentId/sheetName/operation/credencial de Sheets (8UcIjrUyUocK69km) sin tocar. Verificado con diff estructural pre/post PUT: SOLO estos 2 nodos cambiaron, connections identicas, active:false conservado. Commit local pendiente de push (ver STATUS.md Seccion J.3/J.4). FIX 6 (2026-09-13): Registrar en Indice, columna nombre_pdf: la expresion `$('Renombrar PDF (colision)').item.json.name ?? ...` lanzaba excepcion 'hasn't been executed' cuando ese nodo no corria (caso sin colision de nombre), rompiendo el nodo silenciosamente (onError:continueRegularOutput lo dejaba en verde sin escribir la fila). Reemplazada por `$items('Renombrar PDF (colision)')[0]?.json?.name ?? $('Nombrar y mover PDF').item.json.name` - $items() devuelve [] en vez de lanzar cuando el nodo no ejecuto, permitiendo que el ?? funcione. Unico cambio: esa columna. Verificado con diff estructural pre/post PUT: SOLO nombre_pdf cambio, resto de columnas/schema/documentId/credencial identicos, active:false conservado.",
+  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. Cambios v2 sobre v1: (1) onError:continueRegularOutput en Upsert Tutor / Upsert Mascota / Insert Atencion Cardiologia; (2) Archivar Google Doc -> Eliminar Google Doc (DELETE en vez de PATCH trashed:true), rama de Exportar PDF; (3) Exportar PDF hace fan-out a 3 ramas EN ESTE ORDEN: Guardar PDF en Drive (subir) -> Eliminar Google Doc -> IF - Tutor con email? (Drive primero para que executionOrder v1 lo complete antes de la rama de alerta y el link del PDF entre en el mail de alerta); (4) rama Drive: Guardar PDF en Drive (subir, uploadType=media) -> Nombrar y mover PDF (PATCH addParents=FOLDER_ID, name=nombrePdfBase) -> Buscar colisiones PDF -> IF colision (files>1) -> [true] Renombrar PDF (colision) a nombrePdfDesambiguado -> Registrar en Indice (Google Sheets append, documentId=SHEET_ID, cred Google Sheets account 8UcIjrUyUocK69km); (5) IF - Persistio en Supabase? (keystone: Insert Atencion devolvio id) sobre ambas ramas del IF de email -> [false] Preparar alerta (Code, detalle por paso + link PDF) -> Alertar fallo persistencia (Gmail rz2DSV3KtfiLr5fV, To echevanest@gmail.com + infoacivet@gmail.com); (6) Preparar Datos para PDF: + parseo apellido/nombre tutor desde APELLIDO-COMA-NOMBRE, + nombrePdfBase / nombrePdfDesambiguado / mesAnio. FOLDER_ID y SHEET_ID YA RESUELTOS en n8n vivo (verificado 2026-09-12): FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - CONFIRMADO. FIX 1 (2026-09-12): migrada credencial Google Drive de k2oarx2fLAT9LgPw (ARES, Google Drive Docs Slides) a 4ugwVBPjLZ0Me9JS (Google Drive - infoacivet MYVETE) en los 7 nodos: Crear Google Doc, Insertar contenido en Doc, Exportar PDF (autenticado), Eliminar Google Doc, Guardar PDF en Drive (subir), Buscar colisiones PDF, Renombrar PDF (colision). Nombrar y mover PDF ya tenia infoacivet de antes. Webhook path ingesta-filiacion-v6-test. Estado en n8n: lkOwTFmVTZu7EMoU, active:false, SIN validar E2E. Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n. Ver STATUS.md Seccion J / J.2. FIX 2 + FIX 5 (2026-09-13, commit unico): (a) Preparar Datos para PDF: _norm corregido para preservar la Ñ (antes el NFD + strip de diacriticos borraba la Ñ tambien) - ahora reemplaza vocales acentuadas explicitamente (AEIOU con variantes ÁÀÄÂ etc.) y el filtro final es [^A-ZÑ0-9]; (b) Registrar en Indice: columnas migradas del esquema viejo (Nombre Paciente | Nombre Tutor | Apellido Tutor | ID MyVete | ID Supabase | Link PDF | Fecha) al esquema nuevo confirmado en la planilla real: fecha | paciente | tutor | veterinario_derivante | nombre_pdf | link_pdf | estado_persistencia | observaciones. veterinario_derivante y observaciones van vacios por ahora (Fase 1 los completa). nombre_pdf usa ?? entre Renombrar PDF (colision) y Nombrar y mover PDF (cubre ambos casos). estado_persistencia = 'OK'/'FALLO' segun si Insert Atencion Cardiologia devolvio id. documentId/sheetName/operation/credencial de Sheets (8UcIjrUyUocK69km) sin tocar. Verificado con diff estructural pre/post PUT: SOLO estos 2 nodos cambiaron, connections identicas, active:false conservado. Commit local pendiente de push (ver STATUS.md Seccion J.3/J.4). FIX 6 (2026-09-13): Registrar en Indice, columna nombre_pdf: la expresion `$('Renombrar PDF (colision)').item.json.name ?? ...` lanzaba excepcion 'hasn't been executed' cuando ese nodo no corria (caso sin colision de nombre), rompiendo el nodo silenciosamente (onError:continueRegularOutput lo dejaba en verde sin escribir la fila). Reemplazada por `$items('Renombrar PDF (colision)')[0]?.json?.name ?? $('Nombrar y mover PDF').item.json.name` - $items() devuelve [] en vez de lanzar cuando el nodo no ejecuto, permitiendo que el ?? funcione. Unico cambio: esa columna. Verificado con diff estructural pre/post PUT: SOLO nombre_pdf cambio, resto de columnas/schema/documentId/credencial identicos, active:false conservado. FIX 7 (2026-09-13): el error 'Node Renombrar PDF (colision) hasnt been executed' persistia pese a $items() (Fix 6) porque n8n lanza la excepcion al parsear la referencia al nodo no ejecutado antes de aplicar el ?? o la logica de $items(). Solucion de raiz: se agregaron 2 nodos Set (Edit Fields) que unifican el resultado en variables comunes antes de Registrar en Indice - 'Set - Nombre con colision' (tras Renombrar PDF (colision): nombre_pdf_final=$json.name, link_pdf_final=$json.webViewLink) y 'Set - Nombre sin colision' (rama false del IF de colision: nombre_pdf_final=$('Nombrar y mover PDF').item.json.name, link_pdf_final=$('Nombrar y mover PDF').item.json.webViewLink), ambos con Include Other Fields. Registrar en Indice ahora lee nombre_pdf=$json.nombre_pdf_final y link_pdf=$json.link_pdf_final, sin ninguna expresion condicional. Verificado con diff estructural pre/post PUT: 24->26 nodos (los 2 Set nuevos), connections modificadas solo en los 4 puntos indicados (Renombrar PDF (colision) apunta al Set con colision, IF colision rama false apunta al Set sin colision, ambos Set apuntan a Registrar en Indice), Registrar en Indice solo cambio nombre_pdf/link_pdf, resto de nodos intactos, active:false conservado.",
   "id": "lkOwTFmVTZu7EMoU",
   "name": "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]",
   "description": null,
   "active": false,
   "activeVersionId": null,
   "createdAt": "2026-09-09T16:50:01.964Z",
-  "updatedAt": "2026-09-13T11:50:53.829Z",
+  "updatedAt": "2026-09-13T15:14:40.997Z",
   "isArchived": false,
-  "versionId": "1e6fcdf3-2ecd-4763-b187-892590fd5080",
-  "versionCounter": 15,
+  "versionId": "c05b737b-ab11-48e4-ab74-409acf46c9b2",
+  "versionCounter": 16,
   "sourceWorkflowId": null,
   "triggerCount": 1,
   "nodes": [
@@ -743,8 +743,8 @@
             "paciente": "={{ $('Preparar Datos para PDF').item.json.paciente }}",
             "tutor": "={{ $('Preparar Datos para PDF').item.json.tutor }}",
             "veterinario_derivante": "",
-            "nombre_pdf": "={{ $items('Renombrar PDF (colisión)')[0]?.json?.name ?? $('Nombrar y mover PDF').item.json.name }}",
-            "link_pdf": "={{ $('Nombrar y mover PDF').item.json.webViewLink }}",
+            "nombre_pdf": "={{ $json.nombre_pdf_final }}",
+            "link_pdf": "={{ $json.link_pdf_final }}",
             "estado_persistencia": "={{ $('Insert Atención Cardiología').item.json.id ? 'OK' : 'FALLO' }}",
             "observaciones": ""
           },
@@ -917,6 +917,70 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s6v2-set-con-colision-1",
+              "name": "nombre_pdf_final",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "s6v2-set-con-colision-2",
+              "name": "link_pdf_final",
+              "value": "={{ $json.webViewLink }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "s6v2-07-set-con-colision",
+      "name": "Set - Nombre con colisión",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3300,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s6v2-set-sin-colision-1",
+              "name": "nombre_pdf_final",
+              "value": "={{ $('Nombrar y mover PDF').item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "s6v2-set-sin-colision-2",
+              "name": "link_pdf_final",
+              "value": "={{ $('Nombrar y mover PDF').item.json.webViewLink }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "s6v2-08-set-sin-colision",
+      "name": "Set - Nombre sin colisión",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3200,
+        560
+      ]
     }
   ],
   "connections": {
@@ -1147,7 +1211,7 @@
         ],
         [
           {
-            "node": "Registrar en Índice",
+            "node": "Set - Nombre sin colisión",
             "type": "main",
             "index": 0
           }
@@ -1155,6 +1219,28 @@
       ]
     },
     "Renombrar PDF (colisión)": {
+      "main": [
+        [
+          {
+            "node": "Set - Nombre con colisión",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Nombre con colisión": {
+      "main": [
+        [
+          {
+            "node": "Registrar en Índice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Nombre sin colisión": {
       "main": [
         [
           {
