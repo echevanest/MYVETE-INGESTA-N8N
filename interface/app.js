@@ -738,7 +738,7 @@ if (btnSubmitFormulario) {
       const datos = await respuesta.json();
       mostrarBorradorMedico(datos.borrador_medico);
 
-      btnSubmitFormulario.textContent = 'Reporte generado';
+      btnSubmitFormulario.textContent = 'Informe enviado';
       const destinoRetorno = destinoBookmarklet();
       if (destinoRetorno) {
         destinoRetorno.postMessage({ type: 'MYVETE_SUBMIT_OK' }, '*');
@@ -871,7 +871,7 @@ const COLUMNAS_DATOS_ECO = [
   'sivd', 'sivs', 'dvid', 'dvs', 'ppvid', 'ppvis',
   'fe_modom', 'fs_modom',
   'volumen_fdi_modom', 'volumen_fsi_modom', 'volumen_si_modom', 'gasto_cardiaco_modom',
-  'masa_vi', 'indice_masa_vi', 'mvcf',
+  'masa_vi', 'indice_masa_vi', 'mvcf', 'epr', 'tiempo_eyectivo',
   'fe_simpson',
   'volumen_ai_esv_simpson', 'volumen_ai_simp_simpson',
   'volumen_vi_fd_simpson', 'volumen_vi_fs_simpson',
@@ -1092,17 +1092,47 @@ function leerBloqueEKG() {
   return algunDato ? obj : null;
 }
 
-// --- Índices calculados a partir del peso -----------------------------------
-// Se derivan 3 columnas `*_indexado/a` cuando están su valor crudo y el peso:
-//   dvid_indexado       = dvid / peso^0.294            (Cornell — LVIDDn, dvid en cm)
-//   volumen_ai_indexado = volumen_ai_simp_simpson / peso   (LAVI en mL/kg)
-//   masa_vi_indexada    = masa_vi / BSA                (g/m²), BSA = 0.1017·peso^0.6667 (Meeh-Rubner)
-// Reglas (confirmadas 2026-09-08): si falta el valor crudo, ese índice no se
-// calcula (la clave no aparece en el objeto devuelto y el campo del form no se
-// toca); si el peso es 0/negativo/no numérico, no se calcula ninguno.
+// --- Índices calculados a partir de las medidas y el peso ------------------
+// Ampliado 2026-09-08 (antes solo dvid_indexado / volumen_ai_indexado /
+// masa_vi_indexada). Cuando están los valores crudos necesarios se derivan:
+//
+//  · Índices por peso (Cornell 2004, crudo / peso^exp con EXPONENTE PROPIO de
+//    cada parámetro — ver CORNELL_EXP): dvid_indexado, dvs_indexado,
+//    sivd_indexado, sivs_indexado, ppvid_indexado, ppvis_indexado, ai_indexado,
+//    ao_indexado.
+//  · volumen_ai_indexado = volumen_ai_simp_simpson / peso   (LAVI, mL/kg).
+//  · masa_vi (Devereux modif.) = 1.04·((dvid+sivd+ppvid)^3 − dvid^3) + 0.6
+//    — solo con dvid, sivd y ppvid; pisa el campo (no hay extracción de masa_vi
+//    del PDF). Si faltan los 3 linelares, el campo queda para carga manual.
+//  · masa_vi_indexada = indice_masa_vi = masa_vi / BSA (g/m²),
+//    BSA = 0.1017·peso^0.6667 (Meeh-Rubner). El schema tiene las dos columnas,
+//    se llenan con el mismo valor.
+//  · mvcf = (dvid − dvs) / (dvid · tiempo_eyectivo)  — solo con dvid, dvs y
+//    tiempo_eyectivo (LVET en segundos, > 0). Si falta LVET → no se calcula.
+//  · epr = (sivd + ppvid) / dvid  — solo con sivd, ppvid y dvid. OJO: NO hay
+//    columna `epr` en datos_ecocardiografia; se muestra en la UI pero NO viaja
+//    en el payload.
+//
+// Regla general: si falta un crudo, esa clave no aparece en el objeto devuelto
+// (recalcular… no toca el campo). Si el peso es 0/negativo/no numérico no se
+// calcula ningún índice por peso; masa_vi y epr sí, que no dependen del peso.
 const BSA_K = 0.1017;
 const BSA_EXP = 0.6667;
-const CORNELL_EXP = 0.294;
+
+// Exponentes alométricos de Cornell (2004), uno por parámetro lineal:
+// índice = medida (cm) / peso(kg)^exp. Hasta 2026-09-08 se usaba 0.294 para
+// todos (aproximación); ahora cada parámetro lleva el suyo. La clave es el
+// nombre de la columna de salida.
+const CORNELL_EXP = {
+  dvid_indexado: 0.294,  // LVIDd
+  dvs_indexado: 0.315,   // LVIDs
+  sivd_indexado: 0.241,  // IVSd
+  sivs_indexado: 0.228,  // IVSs
+  ppvid_indexado: 0.232, // LVFWd
+  ppvis_indexado: 0.224, // LVFWs
+  ai_indexado: 0.273,    // LA
+  ao_indexado: 0.309,    // Ao
+};
 
 function redondear3(x) {
   return Math.round(x * 1000) / 1000;
@@ -1110,45 +1140,103 @@ function redondear3(x) {
 
 function calcularIndicesEco(datos, peso) {
   const p = ecoANumero(peso);
-  if (!Number.isFinite(p) || p <= 0) return {};
+  const pesoValido = Number.isFinite(p) && p > 0;
+  const n = (clave) => ecoANumero(datos[clave]);
+
+  const dvid = n('dvid');
+  const dvs = n('dvs');
+  const sivd = n('sivd');
+  const sivs = n('sivs');
+  const ppvid = n('ppvid');
+  const ppvis = n('ppvis');
+  const aiLineal = n('ai_lineal');
+  const aoLineal = n('ao_lineal');
+  const volAi = n('volumen_ai_simp_simpson');
+  const lvet = n('tiempo_eyectivo');
 
   const indices = {};
-  const dvid = ecoANumero(datos.dvid);
-  const volAi = ecoANumero(datos.volumen_ai_simp_simpson);
-  const masaVi = ecoANumero(datos.masa_vi);
 
-  if (Number.isFinite(dvid)) {
-    indices.dvid_indexado = redondear3(dvid / Math.pow(p, CORNELL_EXP));
+  // Índices lineales por peso (Cornell 2004: medida / peso^exp, con el exponente
+  // propio de cada parámetro — ver CORNELL_EXP).
+  if (pesoValido) {
+    const idx = (v, columna) => redondear3(v / Math.pow(p, CORNELL_EXP[columna]));
+    if (Number.isFinite(dvid)) indices.dvid_indexado = idx(dvid, 'dvid_indexado');
+    if (Number.isFinite(dvs)) indices.dvs_indexado = idx(dvs, 'dvs_indexado');
+    if (Number.isFinite(sivd)) indices.sivd_indexado = idx(sivd, 'sivd_indexado');
+    if (Number.isFinite(sivs)) indices.sivs_indexado = idx(sivs, 'sivs_indexado');
+    if (Number.isFinite(ppvid)) indices.ppvid_indexado = idx(ppvid, 'ppvid_indexado');
+    if (Number.isFinite(ppvis)) indices.ppvis_indexado = idx(ppvis, 'ppvis_indexado');
+    if (Number.isFinite(aiLineal)) indices.ai_indexado = idx(aiLineal, 'ai_indexado');
+    if (Number.isFinite(aoLineal)) indices.ao_indexado = idx(aoLineal, 'ao_indexado');
+    if (Number.isFinite(volAi)) indices.volumen_ai_indexado = redondear3(volAi / p);
   }
-  if (Number.isFinite(volAi)) {
-    indices.volumen_ai_indexado = redondear3(volAi / p);
+
+  // Masa VI (Devereux modificada) — requiere dvid, sivd y ppvid.
+  let masaVi = n('masa_vi');
+  if (Number.isFinite(dvid) && Number.isFinite(sivd) && Number.isFinite(ppvid)) {
+    masaVi = redondear3(
+      1.04 * (Math.pow(dvid + sivd + ppvid, 3) - Math.pow(dvid, 3)) + 0.6,
+    );
+    indices.masa_vi = masaVi;
   }
-  if (Number.isFinite(masaVi)) {
+
+  // Índice de masa VI = masa_vi / BSA (se llenan las dos columnas del schema).
+  if (Number.isFinite(masaVi) && pesoValido) {
     const bsa = BSA_K * Math.pow(p, BSA_EXP);
-    indices.masa_vi_indexada = redondear3(masaVi / bsa);
+    const indiceMasa = redondear3(masaVi / bsa);
+    indices.masa_vi_indexada = indiceMasa;
+    indices.indice_masa_vi = indiceMasa;
   }
+
+  // MVCF — requiere dvid, dvs y tiempo_eyectivo (LVET en s, > 0).
+  if (Number.isFinite(dvid) && dvid > 0 && Number.isFinite(dvs)
+      && Number.isFinite(lvet) && lvet > 0) {
+    indices.mvcf = redondear3((dvid - dvs) / (dvid * lvet));
+  }
+
+  // EPR — requiere sivd, ppvid y dvid (> 0). Sin columna en la tabla: solo UI.
+  if (Number.isFinite(sivd) && Number.isFinite(ppvid) && Number.isFinite(dvid) && dvid > 0) {
+    indices.epr = redondear3((sivd + ppvid) / dvid);
+  }
+
   return indices;
 }
 
-// Lee dvid / volumen_ai_simp_simpson / masa_vi y #paciente-peso del formulario,
-// calcula los índices y los escribe en sus campos #eco-*. Sólo pisa los campos
-// de índices que se pudieron calcular — no borra un valor cargado a mano cuando
-// falta su crudo. Se llama tras autollenar desde el PDF y al cambiar el peso.
+// Estado de "Editar campos" del bloque eco (lo alterna btnEditarEco, más abajo).
+// En true, actualizarVisibilidadTodosEco() muestra todos los campos aunque estén
+// vacíos, para poder cargarlos a mano.
+let ecoModoEdicion = false;
+
+// Ids de los inputs con el valor CRUDO que alimenta algún índice. Escribir en
+// cualquiera de ellos dispara un recálculo (listener delegado en §8.bis).
+const CAMPOS_CRUDOS_INDICES_ECO = [
+  'eco-dvid', 'eco-dvs', 'eco-sivd', 'eco-sivs', 'eco-ppvid', 'eco-ppvis',
+  'eco-ai_lineal', 'eco-ao_lineal', 'eco-volumen_ai_simp_simpson',
+  'eco-masa_vi', 'eco-tiempo_eyectivo',
+];
+
+// Lee los valores crudos + #paciente-peso, calcula los índices y los vuelca en
+// los campos #eco-*. Solo pisa los índices que se pudieron calcular — no borra
+// un valor (del PDF o a mano) cuando falta su crudo. Refresca la visibilidad de
+// los campos al terminar. Se llama tras autollenar el PDF, al cambiar el peso y
+// al editar cualquier crudo.
 function recalcularIndicesEcoDesdeFormulario() {
   const leerCampo = (id) => {
     const el = document.getElementById(id);
     return el ? el.value : '';
   };
-  const datos = {
-    dvid: leerCampo('eco-dvid'),
-    volumen_ai_simp_simpson: leerCampo('eco-volumen_ai_simp_simpson'),
-    masa_vi: leerCampo('eco-masa_vi'),
-  };
+  const datos = {};
+  CAMPOS_CRUDOS_INDICES_ECO.forEach((id) => {
+    datos[id.replace(/^eco-/, '')] = leerCampo(id);
+  });
+
   const indices = calcularIndicesEco(datos, leerCampo('paciente-peso'));
   for (const [columna, valor] of Object.entries(indices)) {
     const campo = document.getElementById(`eco-${columna}`);
     if (campo) campo.value = valor;
   }
+
+  actualizarVisibilidadTodosEco();
   return indices;
 }
 
@@ -1160,14 +1248,82 @@ if (campoPesoPaciente) {
 const btnEditarEco = document.getElementById('btn-editar-eco');
 if (btnEditarEco) {
   btnEditarEco.addEventListener('click', () => {
-    const campos = document.querySelectorAll('.campo-eco');
-    // Si alguno sigue bloqueado, este clic desbloquea todos; si están todos
-    // habilitados, los vuelve a bloquear.
-    const habilitar = Array.from(campos).some((c) => c.disabled);
-    campos.forEach((c) => { c.disabled = !habilitar; });
-    btnEditarEco.textContent = habilitar ? '🔒 Bloquear campos' : '✏️ Editar campos';
+    ecoModoEdicion = !ecoModoEdicion;
+    document.querySelectorAll('.campo-eco').forEach((c) => { c.disabled = !ecoModoEdicion; });
+    btnEditarEco.textContent = ecoModoEdicion ? '🔒 Bloquear campos' : '✏️ Editar campos';
+    // Al entrar en edición se muestran todos los campos (también los vacíos);
+    // al bloquear se re-ocultan los que quedaron sin valor.
+    actualizarVisibilidadTodosEco();
   });
 }
+
+// ---------------------------------------------------------------------------
+// 8.bis. Visibilidad — ocultar los campos del bloque eco que no tienen valor
+// ---------------------------------------------------------------------------
+// Pedido 2026-09-08: tras autollenar el PDF y calcular los índices, el bloque de
+// estudios complementarios muestra decenas de campos vacíos que ensucian la
+// lectura. Reglas:
+//   · modo lectura (campos bloqueados): se oculta el <label> de cada input
+//     .campo-eco sin valor, y el <fieldset> que quedó entero vacío;
+//   · modo edición ("Editar campos", ecoModoEdicion=true): se muestran TODOS,
+//     también los vacíos, para poder cargar a mano; al bloquear se re-ocultan
+//     los que quedaron sin valor;
+//   · en vivo: escribir un valor lo muestra; borrarlo lo vuelve a ocultar al
+//     salir de edición.
+//
+// Se usa element.style.display y NO el atributo `hidden` porque
+// .campo-label { display: flex } (assets/styles.css) le gana a la regla de
+// user-agent de `hidden` y el campo seguiría visible.
+function contenedorCampoEco(campo) {
+  return campo.closest('label') || campo.parentElement;
+}
+
+function campoEcoTieneValor(campo) {
+  const crudo = String(campo.value == null ? '' : campo.value).trim();
+  if (crudo === '') return false;
+  if (campo.type === 'number') return Number.isFinite(Number(crudo.replace(',', '.')));
+  return true;
+}
+
+function actualizarVisibilidadTodosEco() {
+  const bloque = document.getElementById('bloque-ecocardiografia');
+  if (!bloque) return;
+
+  bloque.querySelectorAll('.campo-eco').forEach((campo) => {
+    const cont = contenedorCampoEco(campo);
+    if (!cont) return;
+    const visible = ecoModoEdicion || campoEcoTieneValor(campo);
+    cont.style.display = visible ? '' : 'none';
+  });
+
+  // Un <fieldset> con todos sus campos ocultos también se oculta (salvo edición).
+  bloque.querySelectorAll('fieldset.grid-metricas').forEach((fs) => {
+    const campos = fs.querySelectorAll('.campo-eco');
+    if (!campos.length) return;
+    const algunoVisible = Array.from(campos)
+      .some((c) => contenedorCampoEco(c).style.display !== 'none');
+    fs.style.display = (ecoModoEdicion || algunoVisible) ? '' : 'none';
+  });
+}
+
+// Listener delegado único: si el campo tocado es un crudo, recalcula los índices
+// (que ya refresca la visibilidad); si no, solo refresca la visibilidad.
+const bloqueEcoInteractivo = document.getElementById('bloque-ecocardiografia');
+if (bloqueEcoInteractivo) {
+  bloqueEcoInteractivo.addEventListener('input', (evento) => {
+    const campo = evento.target;
+    if (!campo.classList || !campo.classList.contains('campo-eco')) return;
+    if (CAMPOS_CRUDOS_INDICES_ECO.includes(campo.id)) {
+      recalcularIndicesEcoDesdeFormulario();
+    } else {
+      actualizarVisibilidadTodosEco();
+    }
+  });
+}
+
+// Estado inicial: bloque colapsado y sin datos → todos los campos ocultos. Se
+// revelan al pulsar "Editar campos" o al extraer el PDF.
+actualizarVisibilidadTodosEco();
 
 const btnExtraerEcoPdf = document.getElementById('btn-extraer-eco-pdf');
 if (btnExtraerEcoPdf) {
@@ -1201,18 +1357,22 @@ if (btnExtraerEcoPdf) {
       const llenos = autollenarCamposEco(datos);
       const indices = recalcularIndicesEcoDesdeFormulario();
 
-      let resumen = `📊 ${llenos} campo(s) autollenado(s). Revisá y usá "Editar campos" si hay que corregir.\n\n`;
-      for (const [columna, valor] of Object.entries(datos)) {
-        resumen += `${columna}: ${valor != null ? valor : '—'}\n`;
-      }
-      const clavesIndices = Object.keys(indices);
-      if (clavesIndices.length) {
-        resumen += `\nÍndices calculados (peso ${document.getElementById('paciente-peso')?.value || '?'} kg):\n`;
-        for (const [columna, valor] of Object.entries(indices)) {
-          resumen += `${columna}: ${valor}\n`;
-        }
+      // El log lista SOLO lo que se pudo autollenar / calcular (2026-09-08): los
+      // campos que el PDF no trae ya no aparecen como ruido.
+      let resumen = `📊 ${llenos} campo(s) autollenado(s) desde el PDF. Revisá y usá "Editar campos" si hay que corregir.\n\n`;
+      const extraidos = Object.entries(datos).filter(([, valor]) => valor != null);
+      if (extraidos.length) {
+        resumen += 'Campos extraídos del PDF:\n';
+        for (const [columna, valor] of extraidos) resumen += `  ${columna}: ${valor}\n`;
       } else {
-        resumen += '\nÍndices calculados: — (falta peso o los valores crudos)\n';
+        resumen += 'No se reconoció ningún campo del PDF.\n';
+      }
+      const entradasIndices = Object.entries(indices);
+      if (entradasIndices.length) {
+        resumen += `\nÍndices calculados (peso ${document.getElementById('paciente-peso')?.value || '?'} kg):\n`;
+        for (const [columna, valor] of entradasIndices) resumen += `  ${columna}: ${valor}\n`;
+      } else {
+        resumen += '\nÍndices calculados: — (falta el peso o los valores crudos).\n';
       }
       escribirLog(resumen);
     } catch (error) {

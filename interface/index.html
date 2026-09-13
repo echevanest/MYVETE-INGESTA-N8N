@@ -192,11 +192,18 @@
            así que viajan aparte en `payload.bloque_ekg` (leerBloqueEKG), que n8n
            ignora por ahora — igual que hacía con el difunto `bloque_metrico`.
 
-           Flujo (decidido 2026-09-08):
-           1) cargar PDF + "Extraer datos del PDF" → autollena los campos;
-           2) los campos quedan bloqueados; "Editar campos" los habilita (eco y EKG);
-           3) al enviar, app.js arma `datos_ecocardiografia` con las 72 columnas
+           Flujo (decidido 2026-09-08, ampliado ese mismo día):
+           1) cargar PDF + "Extraer datos del PDF" → autollena los campos y
+              app.js (§8) calcula los índices derivados (por peso, con el
+              exponente de Cornell 2004 propio de cada lineal de Modo M; masa VI
+              Devereux; índice de masa VI; MVCF; EPR);
+           2) los campos SIN valor se ocultan solos para dejar la UI limpia;
+              "Editar campos" vuelve a mostrarlos todos y los habilita (eco y
+              EKG), y al bloquear se re-ocultan los que quedaron vacíos;
+           3) al enviar, app.js arma `datos_ecocardiografia` con las 74 columnas
               (null las vacías o sin campo) y `bloque_ekg` con los 4 campos EKG.
+              `eco-epr` y `eco-tiempo_eyectivo` tienen columna propia desde el
+              2026-09-13 y viajan igual que el resto.
            Unidades (la tabla es `numeric` sin unidad): lineales en cm, fracciones
            en %, velocidades en m/s — misma convención que el extractor de app.js. -->
       <details id="bloque-ecocardiografia" class="bloque-metrico">
@@ -267,6 +274,16 @@
             FE — Simpson (%)
             <input type="number" step="0.1" id="eco-fe_simpson" class="input-control campo-eco" disabled />
           </label>
+          <!-- Tiempo eyectivo del VI (LVET) EN SEGUNDOS. NO tiene columna en
+               datos_ecocardiografia: es dato de apoyo para que app.js (§8)
+               calcule MVCF. No viaja en el payload. -->
+          <label class="campo-label">
+            Tiempo eyectivo VI — LVET (s)
+            <input type="number" step="0.001" id="eco-tiempo_eyectivo" class="input-control campo-eco" disabled />
+          </label>
+          <!-- Masa VI: si están DVID, SIVd y PPVId, app.js (§8) la calcula sola
+               por Devereux y pisa este campo; si falta alguno, queda para carga
+               manual. -->
           <label class="campo-label">
             Masa VI (g)
             <input type="number" step="0.01" id="eco-masa_vi" class="input-control campo-eco" disabled />
@@ -301,15 +318,45 @@
           </label>
         </fieldset>
 
+        <!-- Todos estos campos los calcula solo app.js (§8) a partir de las
+             medidas de arriba y del peso del paciente. -->
         <fieldset class="grid-metricas">
-          <legend>Índices / normalizados</legend>
+          <legend>Índices / normalizados (cálculo automático)</legend>
           <label class="campo-label">
             Relación AI/Ao (área, planimetría 2D)
             <input type="number" step="0.01" id="eco-ai_ao_area" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
-            LVIDDn (DVID normalizado)
+            LVIDDn — DVID indexado (/ peso^0.294)
             <input type="number" step="0.01" id="eco-dvid_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            DVS indexado (/ peso^0.315)
+            <input type="number" step="0.01" id="eco-dvs_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            SIVd indexado (/ peso^0.241)
+            <input type="number" step="0.01" id="eco-sivd_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            SIVs indexado (/ peso^0.228)
+            <input type="number" step="0.01" id="eco-sivs_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            PPVId indexado (/ peso^0.232)
+            <input type="number" step="0.01" id="eco-ppvid_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            PPVIs indexado (/ peso^0.224)
+            <input type="number" step="0.01" id="eco-ppvis_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            AI indexado (/ peso^0.273)
+            <input type="number" step="0.01" id="eco-ai_indexado" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Ao indexado (/ peso^0.309)
+            <input type="number" step="0.01" id="eco-ao_indexado" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
             LAVI (Vol. AI indexado, mL/kg)
@@ -318,6 +365,18 @@
           <label class="campo-label">
             Masa VI indexada (g/m²)
             <input type="number" step="0.01" id="eco-masa_vi_indexada" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Índice de Masa VI (g/m²)
+            <input type="number" step="0.01" id="eco-indice_masa_vi" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            MVCF (circ/s)
+            <input type="number" step="0.001" id="eco-mvcf" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            EPR — engrosamiento relativo de pared
+            <input type="number" step="0.01" id="eco-epr" class="input-control campo-eco" disabled />
           </label>
         </fieldset>
 

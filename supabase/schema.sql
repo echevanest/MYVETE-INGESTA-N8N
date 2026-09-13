@@ -129,7 +129,7 @@ create table public.datos_ecocardiografia (
   fe_modom numeric, fs_modom numeric,
   volumen_fdi_modom numeric, volumen_fsi_modom numeric, volumen_si_modom numeric,
   gasto_cardiaco_modom numeric,
-  masa_vi numeric, indice_masa_vi numeric, mvcf numeric,
+  masa_vi numeric, indice_masa_vi numeric, mvcf numeric, epr numeric, tiempo_eyectivo numeric,
   -- Simpson
   fe_simpson numeric,
   volumen_ai_esv_simpson numeric, volumen_ai_simp_simpson numeric,
@@ -171,10 +171,17 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 -- a la UI. Nodo n8n que la puebla: "Insert Datos Ecocardiografía" (ver
 -- n8n/README.md).
 --
--- 3 columnas *_indexado/a las calcula el SPA desde #paciente-peso, no se cargan
--- a mano: dvid_indexado = dvid/peso^0.294 (Cornell); volumen_ai_indexado =
--- volumen_ai_simp_simpson/peso (mL/kg); masa_vi_indexada = masa_vi/BSA (g/m²),
--- BSA = 0.1017·peso^0.6667.
+-- Las columnas derivadas las calcula el SPA (interface/app.js §8), no se cargan
+-- a mano (ampliado 2026-09-08): *_indexado = crudo / peso^exp (Cornell 2004,
+-- exponente propio de cada parámetro: dvid .294, dvs .315, sivd .241, sivs .228,
+-- ppvid .232, ppvis .224, ai .273, ao .309); volumen_ai_indexado =
+-- volumen_ai_simp_simpson / peso (mL/kg); masa_vi (Devereux) =
+-- 1.04·((dvid+sivd+ppvid)^3 − dvid^3) + 0.6; masa_vi_indexada = indice_masa_vi =
+-- masa_vi / BSA (g/m²), BSA = 0.1017·peso^0.6667; mvcf =
+-- (dvid − dvs) / (dvid · tiempo_eyectivo); epr = (sivd+ppvid)/dvid.
+-- `tiempo_eyectivo` (LVET, s) y `epr` se agregaron como columnas propias
+-- (migración `add_epr_tiempo_eyectivo_to_datos_ecocardiografia`, 2026-09-13)
+-- para persistir la comparación histórica — antes viajaban solo en la UI.
 --
 -- El SPA también tiene 4 campos de electrocardiograma (FC/ritmo/eje/duración P)
 -- en el mismo bloque visual, pero NO hay columnas EKG en esta tabla: viajan
