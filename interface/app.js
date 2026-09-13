@@ -680,7 +680,7 @@ window.consolidarPayloadFinal = consolidarPayloadFinal;
 // publicado y activo en n8n Cloud el 28/07/2026 — ver n8n/README.md. El nodo
 // "IA - Estructurar Anamnesis" (31/07/2026) devuelve el borrador en la clave
 // `borrador_medico` de la respuesta del webhook.
-const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion-v4';
+const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion';
 
 const btnSubmitFormulario = document.getElementById('btn-submit-formulario');
 const avisoFormulario = document.getElementById('aviso-formulario');
