@@ -1,15 +1,15 @@
 {
-  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU (resueltos). Fix 1 (2026-09-12): credencial Drive migrada ARES->infoacivet (4ugwVBPjLZ0Me9JS) en 7 nodos. Fix 2 (2026-09-13): esquema de Registrar en Indice migrado a fecha|paciente|tutor|veterinario_derivante|nombre_pdf|link_pdf|estado_persistencia|observaciones. Fix 5 (2026-09-13): normalizacion de nombre de archivo preserva la Ñ. Fix 6 (2026-09-13, insuficiente): intento de arreglar la excepcion 'hasnt been executed' con () en la expresion de nombre_pdf - no alcanzo, n8n lanza la excepcion al parsear la referencia al nodo no ejecutado antes de evaluar ()/??. Fix 7 (2026-09-13, solucion de raiz): 2 nodos Set nuevos (Edit Fields) - 'Set - Nombre con colision' y 'Set - Nombre sin colision' - unifican nombre_pdf_final/link_pdf_final antes de Registrar en Indice, que ahora lee esas 2 variables sin ninguna expresion condicional sobre nodos no garantizados. PRUEBAS E2E EN STAGING (2026-09-13) - LAS 3 EXITOSAS: Prueba A (flujo limpio, sin colision) OK; Prueba B1 (upsert-update de tutor existente + colision de nombre de PDF, dispara rama Renombrar PDF) OK; Prueba B2 (fallo forzado de persistencia en Supabase -> alerta a echevanest@gmail.com + infoacivet@gmail.com) OK. Residuos de las 3 pruebas limpiados en Supabase en la sesion de limpieza del 2026-09-13 (ver STATUS.md); limpieza de Drive/Sheets quedo pendiente para Marcelo (la cuenta de Google conectada a esa sesion de Claude no tenia acceso a la carpeta 1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn ni a la planilla 1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU). Este export (2026-09-13, versionCounter 22) se tomo DESPUES de correr las pruebas E2E: diff estructural contra el export anterior (versionCounter 16, commit d1a707e) confirma que node/params/connections son identicos salvo que n8n dejo de serializar 2 claves con valor por defecto (mode:manual, duplicateItem:false) en los 2 nodos Set del Fix 7 - no es un cambio funcional, es normalizacion propia de n8n entre saves. PENDIENTE (Fase 2, ver STATUS.md): Fix 8 (validacion de campos obligatorios), seccion ECG en el PDF (bloque comentado en Preparar Datos para PDF), publicar este workflow como produccion, validar 3-7 dias en real, recien despues borrar el workflow CORE 5gGWXOjY2BBOAfuw. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - confirmar que sigue conectada (Fix 3 del 2026-09-12 senalaba que estaba desconectada; accion de Marcelo, no verificable por API). Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n. | ACTUALIZADO 2026-09-13 (transicion a produccion): republicado en path \"ingesta-filiacion\" (antes \"ingesta-filiacion-v6-test\"), active: true. Ahora es el workflow que recibe el trafico real del SPA. CORE (5gGWXOjY2BBOAfuw) pasa a backup, no se borra hasta validar 3-7 dias en real (ver STATUS.md / TRASPASO-2026-09-13.md).",
+  "_nota": "COPIA STAGING (no produccion) - Sprint 6 v2: informe PDF + envio por mail + persistencia en Drive + indice en Sheets + alerta de fallo. Base = workflow prod 5gGWXOjY2BBOAfuw. FOLDER_ID=1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn, SHEET_ID=1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU (resueltos). Fix 1 (2026-09-12): credencial Drive migrada ARES->infoacivet (4ugwVBPjLZ0Me9JS) en 7 nodos. Fix 2 (2026-09-13): esquema de Registrar en Indice migrado a fecha|paciente|tutor|veterinario_derivante|nombre_pdf|link_pdf|estado_persistencia|observaciones. Fix 5 (2026-09-13): normalizacion de nombre de archivo preserva la Ñ. Fix 6 (2026-09-13, insuficiente): intento de arreglar la excepcion 'hasnt been executed' con () en la expresion de nombre_pdf - no alcanzo, n8n lanza la excepcion al parsear la referencia al nodo no ejecutado antes de evaluar ()/??. Fix 7 (2026-09-13, solucion de raiz): 2 nodos Set nuevos (Edit Fields) - 'Set - Nombre con colision' y 'Set - Nombre sin colision' - unifican nombre_pdf_final/link_pdf_final antes de Registrar en Indice, que ahora lee esas 2 variables sin ninguna expresion condicional sobre nodos no garantizados. PRUEBAS E2E EN STAGING (2026-09-13) - LAS 3 EXITOSAS: Prueba A (flujo limpio, sin colision) OK; Prueba B1 (upsert-update de tutor existente + colision de nombre de PDF, dispara rama Renombrar PDF) OK; Prueba B2 (fallo forzado de persistencia en Supabase -> alerta a echevanest@gmail.com + infoacivet@gmail.com) OK. Residuos de las 3 pruebas limpiados en Supabase en la sesion de limpieza del 2026-09-13 (ver STATUS.md); limpieza de Drive/Sheets quedo pendiente para Marcelo (la cuenta de Google conectada a esa sesion de Claude no tenia acceso a la carpeta 1_lcbkiJK5ql_1sCNB3kkhDOES7Xgv7Vn ni a la planilla 1Zxn38DFlpGBlIKSsh_94ZfdnWHC5D3j9y9eiOTGwCxU). Este export (2026-09-13, versionCounter 22) se tomo DESPUES de correr las pruebas E2E: diff estructural contra el export anterior (versionCounter 16, commit d1a707e) confirma que node/params/connections son identicos salvo que n8n dejo de serializar 2 claves con valor por defecto (mode:manual, duplicateItem:false) en los 2 nodos Set del Fix 7 - no es un cambio funcional, es normalizacion propia de n8n entre saves. PENDIENTE (Fase 2, ver STATUS.md): Fix 8 (validacion de campos obligatorios), seccion ECG en el PDF (bloque comentado en Preparar Datos para PDF), publicar este workflow como produccion, validar 3-7 dias en real, recien despues borrar el workflow CORE 5gGWXOjY2BBOAfuw. Mail al tutor: cred Gmail account INFOACIVET (eMVAugCGSCpQrcEj) - confirmar que sigue conectada (Fix 3 del 2026-09-12 senalaba que estaba desconectada; accion de Marcelo, no verificable por API). Este archivo es un export periodico del workflow vivo en n8n (fuente de verdad = n8n); re-exportar despues de cada cambio en n8n. | ACTUALIZADO 2026-09-13 (transicion a produccion): republicado en path \"ingesta-filiacion\" (antes \"ingesta-filiacion-v6-test\"), active: true. Ahora es el workflow que recibe el trafico real del SPA. CORE (5gGWXOjY2BBOAfuw) pasa a backup, no se borra hasta validar 3-7 dias en real (ver STATUS.md / TRASPASO-2026-09-13.md). | ACTUALIZADO 2026-09-13 (gap H7): agregados 3 nodos tras \"Insert Datos Ecocardiografía\" -\"IF - ¿Persistió Eco?\" (chequea atencion_id/error), \"Preparar alerta eco\" (Code) y \"Alertar fallo eco\" (Gmail, misma credencial rz2DSV3KtfiLr5fV, a echevanest@gmail.com + infoacivet@gmail.com)- para que un fallo del INSERT de eco (antes invisible: el IF de persistencia solo miraba la Atencion, \"KEYSTONE\") dispare alerta propia. No se toco ningun nodo preexistente ni la logica de \"IF - ¿Persistió en Supabase?\" (sigue evaluando solo la Atencion). Verificado por diff nodo-por-nodo contra el pre-gapH7: unico cambio son estos 3 nodos + sus 3 conexiones.",
   "id": "lkOwTFmVTZu7EMoU",
   "name": "MYVETE - Ingesta (COPIA Sprint 6 - PDF+Mail) [STAGING]",
   "description": null,
   "active": true,
-  "activeVersionId": "4c5078cf-f785-4a1c-8dce-41a2458203db",
+  "activeVersionId": "79843932-5096-461c-886b-942cd62240f7",
   "createdAt": "2026-09-09T16:50:01.964Z",
-  "updatedAt": "2026-09-13T21:13:55.416Z",
+  "updatedAt": "2026-09-13T23:02:57.880Z",
   "isArchived": false,
-  "versionId": "4c5078cf-f785-4a1c-8dce-41a2458203db",
-  "versionCounter": 23,
+  "versionId": "79843932-5096-461c-886b-942cd62240f7",
+  "versionCounter": 24,
   "sourceWorkflowId": null,
   "triggerCount": 1,
   "nodes": [
@@ -977,6 +977,80 @@
         3264,
         544
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "eco-cond-h7-01",
+              "leftValue": "={{ !$('Insert Datos Ecocardiografía').item.json.error && Boolean($('Insert Datos Ecocardiografía').item.json.atencion_id || ($('Insert Datos Ecocardiografía').item.json[0] && $('Insert Datos Ecocardiografía').item.json[0].atencion_id)) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0eco0if1-3333-4a2b-9c3d-0000000000a3",
+      "name": "IF - ¿Persistió Eco?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1840,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SPRINT 6 v2 (gap H7, 2026-09-13) - arma asunto/cuerpo de la alerta de\n// fallo del INSERT de datos_ecocardiografia. Se ejecuta SOLO por la rama\n// false de 'IF - ¿Persistió Eco?' (o sea, el eco vino en el payload pero\n// el insert no devolvió atencion_id / vino con error).\nconst safe = (fn) => { try { return fn(); } catch (e) { return undefined; } };\nconst j = (nm) => safe(() => $(nm).item.json);\n\nconst body = safe(() => $('Webhook').item.json.body) || {};\nconst filiacion = body.filiacion || {};\nconst paciente = (filiacion.mascota && filiacion.mascota.nombre) || 'paciente s/d';\nconst especie = (filiacion.mascota && filiacion.mascota.especie) || '';\nconst tutorNombre = (filiacion.tutor && filiacion.tutor.nombre) || '';\nconst tutorApellido = (filiacion.tutor && filiacion.tutor.apellido) || '';\nconst idMyvete = (filiacion.tutor && filiacion.tutor.id_myvete) || 's/d';\nconst fecha = new Date().toISOString().slice(0, 10);\n\nconst atn = j('Insert Atención Cardiología');\nconst atencionId = atn && (atn.id || (Array.isArray(atn) && atn[0] && atn[0].id));\n\nconst eco = j('Insert Datos Ecocardiografía');\nconst errorCrudo = JSON.stringify((eco && eco.error) || eco || null).slice(0, 900);\n\nconst asunto = '[MYVETE][ALERTA] Persistencia ECO FALLÓ - ' + paciente + ' - ' + fecha;\nconst cuerpo = [\n  'El INSERT de datos_ecocardiografia NO se guardó correctamente en Supabase.',\n  'La atención principal (tutor/mascota/atención) SÍ se guardó bien — este fallo es solo del bloque de ecocardiografía. El informe PDF puede haberse generado igual.',\n  '',\n  'Paciente:    ' + paciente + (especie ? ' (' + especie + ')' : ''),\n  'Tutor:       ' + tutorApellido + ', ' + tutorNombre,\n  'ID MyVete:   ' + idMyvete,\n  'Atención ID: ' + (atencionId || 's/d'),\n  'Fecha:       ' + fecha,\n  '',\n  'Error crudo del insert de eco:',\n  errorCrudo,\n].join('\\n');\n\nreturn [{ json: { alerta_asunto: asunto, alerta_cuerpo: cuerpo } }];"
+      },
+      "id": "0eco0cod-4444-4a2b-9c3d-0000000000a4",
+      "name": "Preparar alerta eco",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "echevanest@gmail.com, infoacivet@gmail.com",
+        "subject": "={{ $json.alerta_asunto }}",
+        "emailType": "text",
+        "message": "={{ $json.alerta_cuerpo }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0eco0gml-5555-4a2b-9c3d-0000000000a5",
+      "name": "Alertar fallo eco",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2288,
+        560
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rz2DSV3KtfiLr5fV",
+          "name": "Gmail - echevanest@gmail.com"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "9e3d08b0-16d6-482f-a861-ec3664075bee"
     }
   ],
   "connections": {
@@ -1246,6 +1320,40 @@
           }
         ]
       ]
+    },
+    "Insert Datos Ecocardiografía": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿Persistió Eco?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿Persistió Eco?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Preparar alerta eco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar alerta eco": {
+      "main": [
+        [
+          {
+            "node": "Alertar fallo eco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "nodeGroups": [],
@@ -1278,7 +1386,7 @@
     }
   ],
   "activeVersion": {
-    "versionId": "4c5078cf-f785-4a1c-8dce-41a2458203db",
+    "versionId": "79843932-5096-461c-886b-942cd62240f7",
     "workflowId": "lkOwTFmVTZu7EMoU",
     "nodes": [
       {
@@ -2245,6 +2353,80 @@
           3264,
           544
         ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "eco-cond-h7-01",
+                "leftValue": "={{ !$('Insert Datos Ecocardiografía').item.json.error && Boolean($('Insert Datos Ecocardiografía').item.json.atencion_id || ($('Insert Datos Ecocardiografía').item.json[0] && $('Insert Datos Ecocardiografía').item.json[0].atencion_id)) }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "0eco0if1-3333-4a2b-9c3d-0000000000a3",
+        "name": "IF - ¿Persistió Eco?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1840,
+          448
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// SPRINT 6 v2 (gap H7, 2026-09-13) - arma asunto/cuerpo de la alerta de\n// fallo del INSERT de datos_ecocardiografia. Se ejecuta SOLO por la rama\n// false de 'IF - ¿Persistió Eco?' (o sea, el eco vino en el payload pero\n// el insert no devolvió atencion_id / vino con error).\nconst safe = (fn) => { try { return fn(); } catch (e) { return undefined; } };\nconst j = (nm) => safe(() => $(nm).item.json);\n\nconst body = safe(() => $('Webhook').item.json.body) || {};\nconst filiacion = body.filiacion || {};\nconst paciente = (filiacion.mascota && filiacion.mascota.nombre) || 'paciente s/d';\nconst especie = (filiacion.mascota && filiacion.mascota.especie) || '';\nconst tutorNombre = (filiacion.tutor && filiacion.tutor.nombre) || '';\nconst tutorApellido = (filiacion.tutor && filiacion.tutor.apellido) || '';\nconst idMyvete = (filiacion.tutor && filiacion.tutor.id_myvete) || 's/d';\nconst fecha = new Date().toISOString().slice(0, 10);\n\nconst atn = j('Insert Atención Cardiología');\nconst atencionId = atn && (atn.id || (Array.isArray(atn) && atn[0] && atn[0].id));\n\nconst eco = j('Insert Datos Ecocardiografía');\nconst errorCrudo = JSON.stringify((eco && eco.error) || eco || null).slice(0, 900);\n\nconst asunto = '[MYVETE][ALERTA] Persistencia ECO FALLÓ - ' + paciente + ' - ' + fecha;\nconst cuerpo = [\n  'El INSERT de datos_ecocardiografia NO se guardó correctamente en Supabase.',\n  'La atención principal (tutor/mascota/atención) SÍ se guardó bien — este fallo es solo del bloque de ecocardiografía. El informe PDF puede haberse generado igual.',\n  '',\n  'Paciente:    ' + paciente + (especie ? ' (' + especie + ')' : ''),\n  'Tutor:       ' + tutorApellido + ', ' + tutorNombre,\n  'ID MyVete:   ' + idMyvete,\n  'Atención ID: ' + (atencionId || 's/d'),\n  'Fecha:       ' + fecha,\n  '',\n  'Error crudo del insert de eco:',\n  errorCrudo,\n].join('\\n');\n\nreturn [{ json: { alerta_asunto: asunto, alerta_cuerpo: cuerpo } }];"
+        },
+        "id": "0eco0cod-4444-4a2b-9c3d-0000000000a4",
+        "name": "Preparar alerta eco",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2064,
+          560
+        ]
+      },
+      {
+        "parameters": {
+          "sendTo": "echevanest@gmail.com, infoacivet@gmail.com",
+          "subject": "={{ $json.alerta_asunto }}",
+          "emailType": "text",
+          "message": "={{ $json.alerta_cuerpo }}",
+          "options": {
+            "appendAttribution": false
+          }
+        },
+        "id": "0eco0gml-5555-4a2b-9c3d-0000000000a5",
+        "name": "Alertar fallo eco",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          2288,
+          560
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "rz2DSV3KtfiLr5fV",
+            "name": "Gmail - echevanest@gmail.com"
+          }
+        },
+        "onError": "continueRegularOutput",
+        "webhookId": "9e3d08b0-16d6-482f-a861-ec3664075bee"
       }
     ],
     "connections": {
@@ -2514,6 +2696,40 @@
             }
           ]
         ]
+      },
+      "Insert Datos Ecocardiografía": {
+        "main": [
+          [
+            {
+              "node": "IF - ¿Persistió Eco?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF - ¿Persistió Eco?": {
+        "main": [
+          [],
+          [
+            {
+              "node": "Preparar alerta eco",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Preparar alerta eco": {
+        "main": [
+          [
+            {
+              "node": "Alertar fallo eco",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       }
     },
     "nodeGroups": [],
@@ -2521,16 +2737,16 @@
     "name": null,
     "description": null,
     "autosaved": false,
-    "createdAt": "2026-09-13T21:13:55.418Z",
-    "updatedAt": "2026-09-13T21:13:55.418Z",
+    "createdAt": "2026-09-13T23:02:57.882Z",
+    "updatedAt": "2026-09-13T23:02:57.882Z",
     "workflowPublishHistory": [
       {
-        "id": 529,
+        "id": 531,
         "workflowId": "lkOwTFmVTZu7EMoU",
-        "versionId": "4c5078cf-f785-4a1c-8dce-41a2458203db",
+        "versionId": "79843932-5096-461c-886b-942cd62240f7",
         "event": "activated",
         "userId": "3681f54f-c910-4634-a36b-31064680e25f",
-        "createdAt": "2026-09-13T21:14:00.734Z"
+        "createdAt": "2026-09-13T23:02:58.005Z"
       }
     ]
   }
