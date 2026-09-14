@@ -288,9 +288,46 @@ Verificación post-borrado: 0 filas `ZZ_TEST%` en `tutores`/`mascotas`, 0 filas 
 
 ---
 
+### J.6 — Persistencia epr/tiempo_eyectivo + alerta de fallo del eco (gap H7) + limpieza de índice redundante (2026-09-13)
+
+**Persistencia de `epr` y `tiempo_eyectivo`:** ambos índices se calculaban y mostraban en la UI del bloque eco pero no tenían columna en Supabase ni viajaban en el payload — quedaban huérfanos. Cerrado en esta sesión:
+*   Migración `add_epr_tiempo_eyectivo_to_datos_ecocardiografia`: `ALTER TABLE datos_ecocardiografia ADD COLUMN epr numeric, ADD COLUMN tiempo_eyectivo numeric;`.
+*   `interface/app.js`: `'epr'` y `'tiempo_eyectivo'` agregados a `COLUMNAS_DATOS_ECO`. No hizo falta tocar `leerBloqueEcocardiografia()` ni `calcularIndicesEco()` — ya calculaban/leían ambos valores, solo faltaba que la whitelist los reenviara.
+*   De paso, se sacó el `console.log` de debug que logueaba el payload completo (con PII de tutor/paciente) a la consola del navegador — tenía un `TODO` explícito para removerlo antes de producción.
+*   El resto de la Sección I (8 índices Cornell con exponente propio, masa VI/Devereux automática, ocultamiento de campos vacíos) ya estaba auditado en sesiones previas — se commiteó junto, no es trabajo nuevo de esta sub-sección.
+
+**Gap H7 cerrado — alerta de fallo del eco:** el nodo `Insert Datos Ecocardiografía` tiene `onError: continueRegularOutput`; el `IF - ¿Persistió en Supabase?` existente solo evalúa el insert de la Atención (comentado en el propio n8n como "KEYSTONE") — un fallo aislado del insert de eco no generaba ninguna alerta. Se agregaron 3 nodos nuevos, colgados como rama terminal de `Insert Datos Ecocardiografía` (que antes no tenía salida):
+*   `IF - ¿Persistió Eco?` — boolean: ausencia de `.error` + presencia de `atencion_id` (mismo patrón defensivo `item.json` / `item.json[0]` que ya usa el IF de la Atención, adaptado porque la tabla eco no tiene columna `id`, solo `atencion_id`).
+*   `Preparar alerta eco` (Code) — arma asunto/cuerpo con datos del paciente + error crudo del insert.
+*   `Alertar fallo eco` (Gmail, credencial `rz2DSV3KtfiLr5fV`, misma que la alerta existente) — a `echevanest@gmail.com` + `infoacivet@gmail.com`.
+
+No se tocó ningún nodo preexistente ni la lógica del `IF - ¿Persistió en Supabase?` (sigue evaluando solo la Atención).
+
+**Pruebas E2E (POST sintético directo al webhook de producción `ingesta-filiacion`):**
+*   **Limpia** (`id_myvete: TEST-EPR-20260913`): `epr=0.4`, `tiempo_eyectivo=0.2` y los 13 índices previos persistidos con valor real en `datos_ecocardiografia`. Sin alerta (no correspondía). OK.
+*   **Forzada, primer intento (`id_myvete: TEST-EPR-FAIL-20260913`) — CONTAMINADA:** reutilicé el mismo email de tutor (`echevanest@gmail.com`) que la prueba limpia. El `UNIQUE` de `tutores.email` (ver más abajo) rechazó el `Upsert Tutor` con `id_myvete` distinto → cascada de fallo en Mascota y Atención también, no solo en el eco. Sirvió igual para confirmar que `Alertar fallo eco` dispara correctamente, pero no aisló el caso pedido (contaminada también con la alerta vieja `Alertar fallo persistencia`, que sí correspondía disparar en ese escenario real de fallo del keystone).
+*   **Forzada, segundo intento (`id_myvete: TEST-EPR-FAIL2-20260913`, email `echevanest+epr2@gmail.com`) — AISLADA, la que pedía el instructivo:** `sivd` con string inválido → `Insert Datos Ecocardiografía` falla (`22P02 invalid input syntax for type numeric`), Tutor/Mascota/Atención se persisten bien. Verificado en la ejecución de n8n (API, solo lectura): **`Alertar fallo eco` se disparó** (mail real enviado), **`Preparar alerta`/`Alertar fallo persistencia` NO se ejecutaron**. Gap H7 confirmado cerrado y aislado correctamente.
+
+**`tutores.email` — analizado, NO es vestigio:** se evaluó eliminar el `UNIQUE` de `tutores.email` (motivado por el choque de la prueba contaminada) bajo la hipótesis de que `id_myvete` siempre está presente (todo tutor en MyVete lo tiene). Verificado por código que la hipótesis es falsa a nivel de este pipeline: `extraerIdTutor()` (`bookmarklet/launcher.js`) puede devolver `null` si ninguna de sus 3 estrategias de extracción matchea, y el propio bookmarklet tiene una rama de UX ya diseñada para ese caso ("tutor ausente y sin idTutor recuperable; no se puede auto-completar. Cargá el tutor a mano"). El nodo `Upsert Tutor` usa `on_conflict` condicional (`id_myvete` si viene, si no `email`) — el `UNIQUE` de `email` es lo que sostiene ese fallback. **Decisión de Marcelo: se mantiene `tutores_email_unique` sin rediseño — cada tutor tiene email único por invariante del dominio de negocio** (no es vestigio de una etapa anterior del Upsert; la pregunta abierta sobre tutores compartiendo email queda resuelta como "no aplica").
+
+**Limpieza — índice redundante:** se detectaron 2 estructuras UNIQUE sobre `tutores.email`: la constraint plana `tutores_email_unique` (la que usa el `on_conflict` de n8n) y el índice parcial `tutores_email_unq` (`WHERE email IS NOT NULL AND email <> ''`), ya marcado en `schema.sql` como "limpieza pendiente, no bloqueante" desde antes de esta sesión. Verificado sin dependencias (`pg_depend`) y eliminado: `DROP INDEX tutores_email_unq` (migración `drop_redundant_tutores_email_unq_index`). `tutores_email_unique` no se tocó.
+
+**Limpieza de residuos de las 3 pruebas E2E:**
+*   Supabase: `DELETE FROM tutores WHERE id IN (...)` para `TEST-EPR-20260913` y `TEST-EPR-FAIL2-20260913` (cascada `ON DELETE CASCADE` se llevó mascota/atención/eco). `TEST-EPR-FAIL-20260913` nunca dejó fila (todo el insert de esa prueba falló). Verificado post-borrado: 0 filas `ZZ_TEST_EPR%` en ninguna tabla.
+*   **Drive/Sheets — BLOQUEADO, mismo motivo que en la sesión de limpieza previa (J.4):** la cuenta de Google conectada a esta sesión de Claude no tiene acceso a la carpeta `Informes MYVETE` ni a la planilla "Índice de Informes MYVETE" (`get_file_metadata`/`search_files` no encuentran nada). **Queda pendiente que Marcelo, a mano, en la cuenta real de `infoacivet`:**
+    1.  Borre (papelera) en la carpeta `Informes MYVETE` los 3 PDF: `ZZTESTEPRLOLA SEPTIEMBRE 2026.pdf`, `ZZTESTEPRFALLOLOLA SEPTIEMBRE 2026.pdf`, `ZZTESTEPRFALLO2LOLA SEPTIEMBRE 2026.pdf`.
+    2.  Borre en la planilla "Índice de Informes MYVETE" (`Hoja 1`) las filas con paciente `ZZ_TEST_EPR_LOLA`, `ZZ_TEST_EPR_FALLO_LOLA`, `ZZ_TEST_EPR_FALLO2_LOLA`.
+    3.  Mails: no hace falta borrar nada (quedan en las casillas, incluidos los 2 mails de alerta reales y los 2 informes de prueba enviados a `echevanest@gmail.com`/`echevanest+epr2@gmail.com`).
+
+**Reglas del contrato API de n8n (reconfirmadas, ya documentadas en J.5):** `PUT /workflows/{id}` solo acepta `name`, `nodes`, `connections`, `settings`, `staticData` — `active` es read-only ahí, se cambia con `POST /workflows/{id}/activate` / `.../deactivate`.
+
+**Commits locales de esta sesión** (sin push a `origin`): persistencia epr/tiempo_eyectivo + remoción de debug log, alerta de fallo del eco en n8n, eliminación del índice redundante, esta documentación.
+
+---
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
-**Sprint 6 — publicado como producción (2026-09-13, ver Sección J.5).** El workflow `lkOwTFmVTZu7EMoU` (26 nodos) quedó `active: true` en el path `ingesta-filiacion`, recibiendo el tráfico del SPA. Fixes 1, 2, 5, 6→7 completos; Pruebas E2E A, B1, B2 **todas exitosas**; residuos de Supabase limpiados (Drive/Sheets pendiente de Marcelo, ver J.4). Workflow CORE (`5gGWXOjY2BBOAfuw`) queda como backup, sin tocar, hasta validar 3-7 días de tráfico real. Falta: Fix 3 (confirmar Gmail INFOACIVET), Fix 8 (validación de obligatorios), sección ECG, validación en real con tráfico real (con Marcelo) y recién entonces borrar CORE.
+**Sprint 6 — publicado como producción (2026-09-13, ver Secciones J.5 y J.6).** El workflow `lkOwTFmVTZu7EMoU` (29 nodos) quedó `active: true` en el path `ingesta-filiacion`, recibiendo el tráfico del SPA. Fixes 1, 2, 5, 6→7 completos; Pruebas E2E A, B1, B2 (Sprint 6) y limpia/forzada (epr + gap H7) **todas exitosas**; residuos de Supabase limpiados (Drive/Sheets pendiente de Marcelo, ver J.4 y J.6). `epr`/`tiempo_eyectivo` se persisten; fallo de insert del eco ahora genera alerta propia. Workflow CORE (`5gGWXOjY2BBOAfuw`) queda como backup, sin tocar, hasta validar 3-7 días de tráfico real. Falta: Fix 3 (confirmar Gmail INFOACIVET), Fix 8 (validación de obligatorios), sección ECG, validación en real con tráfico real (con Marcelo) y recién entonces borrar CORE.
 
 ---
 
