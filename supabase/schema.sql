@@ -37,10 +37,16 @@ create table public.tutores (
   created_at timestamptz not null default now()
 );
 
--- email: dos índices UNIQUE redundantes (limpieza pendiente, no bloqueante)
+-- email: UNIQUE (constraint plana, permite múltiples NULL). Invariante de
+-- negocio: cada tutor tiene un email único. Es además la clave de la que
+-- depende el fallback on_conflict=email del nodo n8n "Upsert Tutor" para
+-- cuando el bookmarklet no pudo recuperar id_myvete (ver n8n/README.md).
+-- El índice único parcial redundante `tutores_email_unq` (mismo alcance,
+-- distinta forma) se eliminó el 2026-09-13 (migración
+-- drop_redundant_tutores_email_unq_index) — no tenía dependencias y no era
+-- el que usaba el on_conflict (Postgres no toma un índice con predicado
+-- parcial como target de un ON CONFLICT (email) sin repetir el WHERE).
 create unique index tutores_email_unique on public.tutores (email);
-create unique index tutores_email_unq    on public.tutores (email)
-  where (email is not null and email <> '');
 
 -- id_myvete: UNIQUE simple (PG permite múltiples NULL, así que tutores sin
 -- id_myvete resuelto por el scraper no chocan entre sí). Agregada 2026-09-01
