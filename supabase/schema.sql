@@ -83,11 +83,119 @@ create index mascotas_tutor_id_idx on public.mascotas (tutor_id);
 -- lo envía — dato que hoy se descarta en el tramo Supabase.
 
 -- ---------------------------------------------------------------------------
+-- profesionales
+-- ---------------------------------------------------------------------------
+-- Sprint 7 (Identificación de Profesional), agregada 2026-09-17. Decisiones
+-- cerradas por Marcelo: email es la clave natural (UNIQUE, para
+-- on_conflict=email en el upsert); matricula_2 nullable (matrícula
+-- secundaria, algunos profesionales tienen más de una); índice en apellido
+-- para la deduplicación de capa 2; firma_url guarda la URL pública del
+-- archivo en el bucket Storage `firmas` (ver más abajo), nombrado
+-- `{profesional_id}.{ext}`, un archivo por profesional con sobreescritura
+-- bajo demanda.
+create table public.profesionales (
+  id           uuid primary key default gen_random_uuid(),
+  nombre       text not null,
+  apellido     text not null,
+  matricula    text not null,
+  matricula_2  text,
+  email        text not null,
+  telefono     text,
+  especialidad text,
+  firma_url    text not null,
+  activo       boolean not null default true,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create unique index profesionales_email_key on public.profesionales (email);
+create index profesionales_apellido_idx on public.profesionales (apellido);
+
+-- updated_at se mantiene solo por trigger (no hay UPDATE manual esperado del
+-- SPA/n8n que lo pise) — usa la función genérica public.set_updated_at(),
+-- creada para este trigger y reutilizable por futuras tablas.
+-- search_path fijo (public, pg_temp): hardening del security advisor, ya
+-- aplicado en la base.
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create trigger profesionales_set_updated_at
+  before update on public.profesionales
+  for each row
+  execute function public.set_updated_at();
+
+-- firma_url pasó a NOT NULL el 2026-09-19 (migración
+-- `profesionales_firma_url_not_null`, Sprint 7 Prompt 2A): un profesional sin
+-- firma no puede emitir informes, así que no hay estado válido con firma_url
+-- nula. La tabla estaba vacía (0 filas), la migración no tuvo que rellenar
+-- nada. Implicancia para el SPA: el alta de profesional debe subir la firma al
+-- bucket ANTES del insert, o el insert falla con 23502.
+--
+-- Storage: bucket `firmas` (creado 2026-09-17 vía insert directo a
+-- storage.buckets, sin acceso a la consola web en esta sesión) —
+-- file_size_limit = 5 MB, allowed_mime_types = image/png, image/jpeg.
+--
+-- 2026-09-19 (Sprint 7 Prompt 2A): el bucket pasó a público (decisión P4-a,
+-- Marcelo) con `update storage.buckets set public = true where id = 'firmas'`
+-- — las firmas se sirven por URL pública directa, sin signed URLs, para que
+-- n8n y el informe final puedan embeberlas sin renovar tokens. El límite de
+-- 5 MB y el whitelist de MIME acotan el abuso.
+--
+-- Policies de storage.objects para el bucket (mismas 4, todas para `anon`,
+-- todas acotadas por bucket_id = 'firmas'): el SPA sube/reemplaza/borra la
+-- firma con la key anon, por eso necesita INSERT/UPDATE/DELETE además de
+-- SELECT. DELETE hace falta porque reemplazar una firma .png por una .jpg
+-- cambia el nombre del archivo ({profesional_id}.{ext}) y deja huérfano el
+-- anterior. service_role sigue bypassando RLS.
+--
+-- Nota de alcance: estas policies NO están restringidas por profesional —
+-- cualquier portador de la key anon puede sobreescribir la firma de cualquier
+-- profesional. Es aceptable mientras la key anon no sea pública fuera del
+-- consultorio; si eso cambia, hay que mover la subida a n8n/service_role.
+drop policy if exists "firmas_insert_anon" on storage.objects;
+create policy "firmas_insert_anon"
+  on storage.objects
+  for insert
+  to anon
+  with check (bucket_id = 'firmas');
+
+drop policy if exists "firmas_update_anon" on storage.objects;
+create policy "firmas_update_anon"
+  on storage.objects
+  for update
+  to anon
+  using (bucket_id = 'firmas')
+  with check (bucket_id = 'firmas');
+
+drop policy if exists "firmas_delete_anon" on storage.objects;
+create policy "firmas_delete_anon"
+  on storage.objects
+  for delete
+  to anon
+  using (bucket_id = 'firmas');
+
+drop policy if exists "firmas_select_anon" on storage.objects;
+create policy "firmas_select_anon"
+  on storage.objects
+  for select
+  to anon
+  using (bucket_id = 'firmas');
+
+-- ---------------------------------------------------------------------------
 -- atenciones_cardiologia
 -- ---------------------------------------------------------------------------
 create table public.atenciones_cardiologia (
   id               uuid primary key default gen_random_uuid(),
   mascota_id       uuid not null references public.mascotas (id) on delete cascade,
+  profesional_id   uuid not null references public.profesionales (id) on delete restrict,
   fecha            timestamptz not null default now(),
   datos_filiacion  jsonb not null,
   metricas         jsonb,
@@ -99,6 +207,18 @@ create table public.atenciones_cardiologia (
 );
 
 create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (mascota_id, fecha desc);
+
+-- profesional_id agregada 2026-09-17 (Sprint 7) y endurecida 2026-09-19
+-- (migración `atenciones_profesional_id_not_null_restrict`): NOT NULL + ON
+-- DELETE RESTRICT. Los profesionales no se borran, se marcan activo = false;
+-- RESTRICT impide borrar uno que tenga atenciones asociadas, y NOT NULL
+-- garantiza que toda atención tenga profesional responsable. Antes de la
+-- migración se borraron las 6 atenciones de prueba del prototipo (2026-09-06 a
+-- 2026-09-14, confirmadas como descartables por Marcelo) que tenían
+-- profesional_id nulo; sus datos_ecocardiografia cayeron antes por id.
+-- Todavía no la llena ningún nodo n8n (falta editar "Insert Atención
+-- Cardiología"): hasta entonces, todo insert sin profesional_id falla con 23502.
+create index atenciones_cardiologia_profesional_id_idx on public.atenciones_cardiologia (profesional_id);
 
 -- anamnesis_raw/diagnostico_raw/indicaciones_raw agregadas 2026-09-03
 -- (migración add_raw_dictation_columns_atenciones_cardiologia) para conservar
@@ -206,3 +326,16 @@ alter table public.datos_ecocardiografia enable row level security;
 -- igual. Los nodos n8n escriben con la credencial service_role, que bypassa
 -- RLS — no hace falta política para `anon`. No se agregó ninguna en esta
 -- sesión.
+
+-- profesionales: única tabla con política de `anon` definida. Habilitada y
+-- con policy en la MISMA transacción (2026-09-17) para no dejar ventana de
+-- RLS-on-sin-políticas. INSERT/UPDATE/DELETE quedan denegados para
+-- anon/authenticated por default (sin política = deny); service_role sigue
+-- bypassando RLS como en las otras 4 tablas.
+alter table public.profesionales enable row level security;
+
+create policy "profesionales_select_anon"
+  on public.profesionales
+  for select
+  to anon
+  using (activo = true);
