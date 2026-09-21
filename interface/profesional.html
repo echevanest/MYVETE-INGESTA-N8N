@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MyVete — Alta de profesional</title>
+<style>
+  :root {
+    --color-fondo: #f4f5f7;
+    --color-tarjeta: #ffffff;
+    --color-texto: #1f2430;
+    --color-texto-suave: #5b6270;
+    --color-borde: #d7dae0;
+    --color-primario: #2b6cb0;
+    --color-primario-hover: #235a92;
+    --color-exito-fondo: #e6f4ea;
+    --color-exito-texto: #1e6b3a;
+    --color-error-fondo: #fbe9e7;
+    --color-error-texto: #a3312a;
+    --color-aviso-fondo: #fff6da;
+    --color-aviso-texto: #6b5300;
+    --color-aviso-borde: #e8cf6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 48px;
+    background: var(--color-fondo);
+    color: var(--color-texto);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4;
+  }
+  main {
+    max-width: 560px;
+    margin: 0 auto;
+    background: var(--color-tarjeta);
+    border: 1px solid var(--color-borde);
+    border-radius: 10px;
+    padding: 24px 20px;
+  }
+  h1 {
+    font-size: 1.3rem;
+    margin: 0 0 4px;
+  }
+  p.subtitulo {
+    margin: 0 0 20px;
+    color: var(--color-texto-suave);
+    font-size: 0.92rem;
+  }
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+  }
+  .campo label {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .campo .opcional {
+    font-weight: 400;
+    color: var(--color-texto-suave);
+  }
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="file"] {
+    padding: 10px 11px;
+    border: 1px solid var(--color-borde);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background: #fff;
+    color: var(--color-texto);
+    width: 100%;
+  }
+  input:focus {
+    outline: 2px solid var(--color-primario);
+    outline-offset: 1px;
+  }
+  .fila-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 6px 0 14px;
+    font-size: 0.88rem;
+  }
+  .fila-checkbox input[type="checkbox"] {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .fila-checkbox label {
+    color: var(--color-texto);
+  }
+  .fila-checkbox.deshabilitada label {
+    color: var(--color-texto-suave);
+  }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+  #btn-guardar {
+    width: 100%;
+    padding: 12px;
+    margin-top: 8px;
+    border: none;
+    border-radius: 7px;
+    background: var(--color-primario);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  #btn-guardar:disabled {
+    background: #a9b3c1;
+    cursor: not-allowed;
+  }
+  #btn-guardar:not(:disabled):hover {
+    background: var(--color-primario-hover);
+  }
+  .panel {
+    border-radius: 7px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 0.88rem;
+  }
+  .panel-aviso {
+    background: var(--color-aviso-fondo);
+    color: var(--color-aviso-texto);
+    border: 1px solid var(--color-aviso-borde);
+  }
+  .panel-aviso .acciones {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .panel-aviso button {
+    border: 1px solid var(--color-aviso-borde);
+    background: #fff;
+    color: var(--color-aviso-texto);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+  .panel-aviso button:hover {
+    background: var(--color-aviso-borde);
+  }
+  #mensaje {
+    display: none;
+    border-radius: 7px;
+    padding: 12px 14px;
+    margin-top: 16px;
+    font-size: 0.9rem;
+  }
+  #mensaje.exito {
+    display: block;
+    background: var(--color-exito-fondo);
+    color: var(--color-exito-texto);
+  }
+  #mensaje.error {
+    display: block;
+    background: var(--color-error-fondo);
+    color: var(--color-error-texto);
+  }
+  #panel-firma-existente {
+    display: none;
+  }
+  #panel-firma-existente img {
+    display: block;
+    max-width: 160px;
+    max-height: 90px;
+    margin: 8px 0;
+    border: 1px solid var(--color-borde);
+    border-radius: 4px;
+    background: #fff;
+    object-fit: contain;
+  }
+  #campo-firma-nueva[hidden] {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Alta de profesional</h1>
+  <p class="subtitulo">Completá tus datos y tu firma. Se usan para identificarte como profesional actuante en los informes de MyVete.</p>
+
+  <div id="panel-dedup" class="panel panel-aviso" hidden></div>
+
+  <form id="form-profesional" novalidate>
+    <div class="campo">
+      <label for="nombre">Nombre</label>
+      <input type="text" id="nombre" name="nombre" required autocomplete="given-name" />
+    </div>
+
+    <div class="campo">
+      <label for="apellido">Apellido</label>
+      <input type="text" id="apellido" name="apellido" required autocomplete="family-name" />
+    </div>
+
+    <div class="campo">
+      <label for="matricula">Matrícula</label>
+      <input type="text" id="matricula" name="matricula" required />
+    </div>
+    <div class="fila-checkbox">
+      <input type="checkbox" id="chk_matricula_1" required />
+      <label for="chk_matricula_1">Confirmo que la matrícula 1 es correcta</label>
+    </div>
+
+    <div class="campo">
+      <label for="matricula_2">Matrícula 2 <span class="opcional">(opcional)</span></label>
+      <input type="text" id="matricula_2" name="matricula_2" />
+    </div>
+    <div class="fila-checkbox deshabilitada" id="fila-chk-matricula-2">
+      <input type="checkbox" id="chk_matricula_2" disabled />
+      <label for="chk_matricula_2">Confirmo que la matrícula 2 es correcta</label>
+    </div>
+
+    <div class="campo">
+      <label for="email">E-mail</label>
+      <input type="email" id="email" name="email" required autocomplete="email" />
+    </div>
+
+    <div class="campo">
+      <label for="telefono">Teléfono <span class="opcional">(opcional)</span></label>
+      <input type="tel" id="telefono" name="telefono" autocomplete="tel" />
+    </div>
+
+    <div class="campo">
+      <label for="especialidad">Especialidad <span class="opcional">(opcional)</span></label>
+      <input type="text" id="especialidad" name="especialidad" />
+    </div>
+
+    <div id="panel-firma-existente" class="panel panel-aviso">
+      Ya tenés una firma registrada. No hace falta subir otra.
+      <img id="preview-firma-existente" alt="Firma registrada" />
+      <div class="acciones">
+        <button type="button" id="btn-nueva-firma">¿Querés subir una nueva firma a propósito?</button>
+      </div>
+    </div>
+
+    <div class="campo" id="campo-firma-nueva">
+      <label for="firma">Firma (PNG o JPG)</label>
+      <input type="file" id="firma" name="firma" accept="image/png,image/jpeg" />
+    </div>
+
+    <button type="submit" id="btn-guardar" disabled>Guardar</button>
+  </form>
+
+  <div id="mensaje" role="status"></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var SUPABASE_URL = "https://tuedigqvvkvgongpcnjx.supabase.co";
+  var SUPABASE_ANON_KEY = "sb_publishable_TQmn488CoLDoMoM0wKLzpw_N_nAa7fZ";
+  var N8N_WEBHOOK_URL = "https://echevanest.app.n8n.cloud/webhook/alta-profesional";
+  var STORAGE_KEY = "myvete_profesional";
+
+  var form = document.getElementById("form-profesional");
+  var campoNombre = document.getElementById("nombre");
+  var campoApellido = document.getElementById("apellido");
+  var campoMatricula = document.getElementById("matricula");
+  var campoMatricula2 = document.getElementById("matricula_2");
+  var chkMatricula1 = document.getElementById("chk_matricula_1");
+  var chkMatricula2 = document.getElementById("chk_matricula_2");
+  var filaChkMatricula2 = document.getElementById("fila-chk-matricula-2");
+  var campoEmail = document.getElementById("email");
+  var campoTelefono = document.getElementById("telefono");
+  var campoEspecialidad = document.getElementById("especialidad");
+  var campoFirma = document.getElementById("firma");
+  var bloqueFirmaNueva = document.getElementById("campo-firma-nueva");
+  var panelFirmaExistente = document.getElementById("panel-firma-existente");
+  var previewFirmaExistente = document.getElementById("preview-firma-existente");
+  var btnNuevaFirma = document.getElementById("btn-nueva-firma");
+  var panelDedup = document.getElementById("panel-dedup");
+  var btnGuardar = document.getElementById("btn-guardar");
+  var mensaje = document.getElementById("mensaje");
+
+  // firmaExistenteUrl: firma ya registrada (precarga o match de deduplicación).
+  // reemplazarFirma: true cuando el usuario pidió subir una firma nueva a pesar de tener una.
+  var firmaExistenteUrl = null;
+  var reemplazarFirma = false;
+  var timerDedup = null;
+
+  function mostrarMensaje(texto, tipo) {
+    mensaje.textContent = texto;
+    mensaje.className = tipo;
+  }
+
+  function limpiarMensaje() {
+    mensaje.textContent = "";
+    mensaje.className = "";
+  }
+
+  function firmaRequerida() {
+    return !firmaExistenteUrl || reemplazarFirma;
+  }
+
+  function mostrarPanelFirmaExistente(url) {
+    firmaExistenteUrl = url;
+    reemplazarFirma = false;
+    previewFirmaExistente.src = url;
+    panelFirmaExistente.style.display = "block";
+    bloqueFirmaNueva.hidden = true;
+    campoFirma.value = "";
+  }
+
+  function ocultarPanelFirmaExistente() {
+    firmaExistenteUrl = null;
+    reemplazarFirma = false;
+    panelFirmaExistente.style.display = "none";
+    bloqueFirmaNueva.hidden = false;
+  }
+
+  btnNuevaFirma.addEventListener("click", function () {
+    reemplazarFirma = true;
+    bloqueFirmaNueva.hidden = false;
+    validarFormulario();
+  });
+
+  // ---- Matrícula 2: el checkbox solo se exige si hay contenido en matricula_2 ----
+  campoMatricula2.addEventListener("input", function () {
+    var tieneValor = campoMatricula2.value.trim() !== "";
+    chkMatricula2.disabled = !tieneValor;
+    filaChkMatricula2.classList.toggle("deshabilitada", !tieneValor);
+    if (!tieneValor) {
+      chkMatricula2.checked = false;
+    }
+    validarFormulario();
+  });
+
+  // ---- Validación en tiempo real ----
+  function validarFormulario() {
+    var camposOk =
+      campoNombre.value.trim() !== "" &&
+      campoApellido.value.trim() !== "" &&
+      campoMatricula.value.trim() !== "" &&
+      campoEmail.value.trim() !== "" &&
+      campoEmail.checkValidity();
+
+    var matricula1Ok = chkMatricula1.checked;
+
+    var tieneMatricula2 = campoMatricula2.value.trim() !== "";
+    var matricula2Ok = !tieneMatricula2 || chkMatricula2.checked;
+
+    var firmaOk = !firmaRequerida() || (campoFirma.files && campoFirma.files.length > 0);
+
+    var todoOk = camposOk && matricula1Ok && matricula2Ok && firmaOk;
+    btnGuardar.disabled = !todoOk;
+    return todoOk;
+  }
+
+  [
+    campoNombre, campoApellido, campoMatricula, campoEmail,
+    campoTelefono, campoEspecialidad, chkMatricula1, chkMatricula2, campoFirma
+  ].forEach(function (el) {
+    el.addEventListener("input", validarFormulario);
+    el.addEventListener("change", validarFormulario);
+  });
+
+  // ---- Precarga desde localStorage ----
+  function cargarDesdeLocalStorage() {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      var datos = JSON.parse(raw);
+      if (datos.nombre) campoNombre.value = datos.nombre;
+      if (datos.apellido) campoApellido.value = datos.apellido;
+      if (datos.matricula) campoMatricula.value = datos.matricula;
+      if (datos.matricula_2) {
+        campoMatricula2.value = datos.matricula_2;
+        chkMatricula2.disabled = false;
+        filaChkMatricula2.classList.remove("deshabilitada");
+      }
+      if (datos.email) campoEmail.value = datos.email;
+      if (datos.telefono) campoTelefono.value = datos.telefono;
+      if (datos.especialidad) campoEspecialidad.value = datos.especialidad;
+      if (datos.firma_url) mostrarPanelFirmaExistente(datos.firma_url);
+    } catch (e) {
+      // localStorage corrupto: se ignora, el formulario queda vacío.
+    }
+    validarFormulario();
+  }
+
+  // ---- Deduplicación asistida por apellido (Capa 2) ----
+  function candidatosDistintos(lista) {
+    var emailActual = campoEmail.value.trim().toLowerCase();
+    return lista.filter(function (p) {
+      return (p.email || "").trim().toLowerCase() !== emailActual;
+    });
+  }
+
+  function renderPanelDedup(candidatos) {
+    panelDedup.innerHTML = "";
+    if (candidatos.length === 0) {
+      panelDedup.hidden = true;
+      return;
+    }
+    var texto = document.createElement("div");
+    texto.textContent = candidatos.length === 1
+      ? "Ya existe un profesional con apellido similar. ¿Sos vos o es otro?"
+      : "Hay " + candidatos.length + " profesionales con apellido similar. ¿Sos alguno de estos o es otra persona?";
+    panelDedup.appendChild(texto);
+
+    var acciones = document.createElement("div");
+    acciones.className = "acciones";
+
+    candidatos.forEach(function (p) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Soy yo: " + p.nombre + " " + p.apellido + " (" + p.email + ")";
+      btn.addEventListener("click", function () {
+        aplicarCandidatoDedup(p);
+      });
+      acciones.appendChild(btn);
+    });
+
+    var btnOtro = document.createElement("button");
+    btnOtro.type = "button";
+    btnOtro.textContent = "Es otro / soy nuevo";
+    btnOtro.addEventListener("click", function () {
+      panelDedup.hidden = true;
+    });
+    acciones.appendChild(btnOtro);
+
+    panelDedup.appendChild(acciones);
+    panelDedup.hidden = false;
+  }
+
+  function aplicarCandidatoDedup(p) {
+    campoNombre.value = p.nombre || "";
+    campoApellido.value = p.apellido || "";
+    campoMatricula.value = p.matricula || "";
+    if (p.matricula_2) {
+      campoMatricula2.value = p.matricula_2;
+      chkMatricula2.disabled = false;
+      filaChkMatricula2.classList.remove("deshabilitada");
+    } else {
+      campoMatricula2.value = "";
+      chkMatricula2.disabled = true;
+      chkMatricula2.checked = false;
+      filaChkMatricula2.classList.add("deshabilitada");
+    }
+    campoEmail.value = p.email || "";
+    if (p.telefono) campoTelefono.value = p.telefono;
+    if (p.especialidad) campoEspecialidad.value = p.especialidad;
+    if (p.firma_url) {
+      mostrarPanelFirmaExistente(p.firma_url);
+    } else {
+      ocultarPanelFirmaExistente();
+    }
+    panelDedup.hidden = true;
+    validarFormulario();
+  }
+
+  function buscarPorApellido(apellido) {
+    var url = SUPABASE_URL + "/rest/v1/profesionales?apellido=ilike.*" +
+      encodeURIComponent(apellido) + "*&select=id,nombre,apellido,email,matricula,matricula_2,telefono,especialidad,firma_url";
+    fetch(url, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + SUPABASE_ANON_KEY
+      }
+    })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (lista) {
+        renderPanelDedup(candidatosDistintos(lista || []));
+      })
+      .catch(function () {
+        // Fallo silencioso: la deduplicación es asistencia, no bloquea el alta.
+      });
+  }
+
+  campoApellido.addEventListener("input", function () {
+    var valor = campoApellido.value.trim();
+    if (timerDedup) clearTimeout(timerDedup);
+    if (valor.length < 3) {
+      panelDedup.hidden = true;
+      return;
+    }
+    timerDedup = setTimeout(function () {
+      buscarPorApellido(valor);
+    }, 400);
+  });
+
+  // ---- Subida de firma a Supabase Storage ----
+  function subirFirma(file) {
+    var esPng = file.type === "image/png";
+    var ext = esPng ? "png" : "jpg";
+    var nombreArchivo = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)) + "." + ext;
+    var url = SUPABASE_URL + "/storage/v1/object/firmas/" + nombreArchivo;
+
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + SUPABASE_ANON_KEY,
+        "Content-Type": file.type || (esPng ? "image/png" : "image/jpeg")
+      },
+      body: file
+    }).then(function (r) {
+      if (!r.ok) {
+        throw new Error("No se pudo subir la firma (HTTP " + r.status + ")");
+      }
+      return SUPABASE_URL + "/storage/v1/object/public/firmas/" + nombreArchivo;
+    });
+  }
+
+  // ---- Envío del registro a n8n ----
+  function registrarProfesional(payload) {
+    return fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok || data.status !== "ok") {
+          throw new Error((data && data.message) || "El servidor no pudo guardar el profesional (HTTP " + r.status + ")");
+        }
+        return data;
+      });
+    });
+  }
+
+  // ---- Submit ----
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    limpiarMensaje();
+
+    if (!validarFormulario()) {
+      mostrarMensaje("Revisá los campos obligatorios y las confirmaciones de matrícula.", "error");
+      return;
+    }
+
+    btnGuardar.disabled = true;
+    btnGuardar.textContent = "Guardando…";
+
+    var subidaFirma;
+    if (firmaRequerida()) {
+      subidaFirma = subirFirma(campoFirma.files[0]);
+    } else {
+      subidaFirma = Promise.resolve(firmaExistenteUrl);
+    }
+
+    subidaFirma
+      .then(function (firmaUrl) {
+        var payload = {
+          nombre: campoNombre.value.trim(),
+          apellido: campoApellido.value.trim(),
+          matricula: campoMatricula.value.trim(),
+          matricula_2: campoMatricula2.value.trim() || null,
+          email: campoEmail.value.trim().toLowerCase(),
+          telefono: campoTelefono.value.trim() || null,
+          especialidad: campoEspecialidad.value.trim() || null,
+          firma_url: firmaUrl
+        };
+        return registrarProfesional(payload).then(function (respuesta) {
+          var guardado = {
+            profesional_id: respuesta.profesional_id,
+            nombre: payload.nombre,
+            apellido: payload.apellido,
+            matricula: payload.matricula,
+            matricula_2: payload.matricula_2,
+            email: payload.email,
+            firma_url: firmaUrl
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(guardado));
+          mostrarPanelFirmaExistente(firmaUrl);
+          mostrarMensaje("Datos guardados correctamente.", "exito");
+        });
+      })
+      .catch(function (err) {
+        mostrarMensaje(err.message || "Ocurrió un error al guardar. Probá de nuevo.", "error");
+      })
+      .finally(function () {
+        btnGuardar.textContent = "Guardar";
+        validarFormulario();
+      });
+  });
+
+  cargarDesdeLocalStorage();
+  validarFormulario();
+})();
+</script>
+</body>
+</html>
