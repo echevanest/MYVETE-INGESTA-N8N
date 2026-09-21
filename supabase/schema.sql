@@ -86,9 +86,13 @@ create index mascotas_tutor_id_idx on public.mascotas (tutor_id);
 -- profesionales
 -- ---------------------------------------------------------------------------
 -- Sprint 7 (Identificación de Profesional), agregada 2026-09-17. Decisiones
--- cerradas por Marcelo: email es la clave natural (UNIQUE, para
--- on_conflict=email en el upsert); matricula_2 nullable (matrícula
--- secundaria, algunos profesionales tienen más de una); índice en apellido
+-- cerradas por Marcelo: matrículas normalizadas en tipo + número (MN/MP);
+-- la matrícula 2 es opcional (algunos profesionales tienen más de una); la
+-- clave natural es (matricula_tipo, matricula_numero), UNIQUE, para
+-- on_conflict=matricula_tipo,matricula_numero en el upsert (cambió el
+-- 2026-09-21, Sprint 7 Prompt 3-bis: antes era email, que ahora es solo un
+-- dato, no aparece en el informe); sin teléfono (dato personal sin uso);
+-- índice en apellido
 -- para la deduplicación de capa 2; firma_url guarda la URL pública del
 -- archivo en el bucket Storage `firmas` (ver más abajo), nombrado
 -- `{profesional_id}.{ext}`, un archivo por profesional con sobreescritura
@@ -97,18 +101,32 @@ create table public.profesionales (
   id           uuid primary key default gen_random_uuid(),
   nombre       text not null,
   apellido     text not null,
-  matricula    text not null,
-  matricula_2  text,
+  matricula_tipo     text not null,
+  matricula_numero   text not null,
+  matricula_2_tipo   text,
+  matricula_2_numero text,
   email        text not null,
-  telefono     text,
   especialidad text,
   firma_url    text not null,
   activo       boolean not null default true,
   created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now()
+  updated_at   timestamptz not null default now(),
+  constraint profesionales_matricula_tipo_check
+    check (matricula_tipo in ('MN', 'MP')),
+  constraint profesionales_matricula_numero_check
+    check (matricula_numero ~ '^[0-9]+$'),
+  constraint profesionales_matricula_2_tipo_check
+    check (matricula_2_tipo is null or matricula_2_tipo in ('MN', 'MP')),
+  constraint profesionales_matricula_2_numero_check
+    check (matricula_2_numero is null or matricula_2_numero ~ '^[0-9]+$'),
+  -- matrícula 2: tipo y número van juntos o ninguno.
+  constraint profesionales_matricula_2_coherente_check
+    check ((matricula_2_tipo is null and matricula_2_numero is null)
+        or (matricula_2_tipo is not null and matricula_2_numero is not null)),
+  constraint profesionales_matricula_unique
+    unique (matricula_tipo, matricula_numero)
 );
 
-create unique index profesionales_email_key on public.profesionales (email);
 create index profesionales_apellido_idx on public.profesionales (apellido);
 
 -- updated_at se mantiene solo por trigger (no hay UPDATE manual esperado del

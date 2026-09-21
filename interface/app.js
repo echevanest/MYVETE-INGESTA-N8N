@@ -57,6 +57,60 @@ if (document.readyState === 'complete') {
 }
 
 // ---------------------------------------------------------------------------
+// 0.bis. Identificación del profesional (Sprint 7) — modal bloqueante
+// ---------------------------------------------------------------------------
+// profesional.html (iframe, mismo origen) guarda en localStorage bajo esta misma
+// clave un objeto { profesional_id, nombre, apellido, matricula, ... }. Va DESPUÉS
+// de notificarPanelListo() para no retrasar el handshake con el bookmarklet.
+const CLAVE_PROFESIONAL = 'myvete_profesional';
+
+function abrirModalProfesional() {
+  const modal = document.getElementById('modal-profesional');
+  if (modal) modal.hidden = false;
+}
+
+function cerrarModalProfesional() {
+  const modal = document.getElementById('modal-profesional');
+  if (modal) modal.hidden = true;
+}
+
+// Devuelve true si el valor es un profesional válido (con profesional_id).
+function aplicarProfesional(crudo) {
+  try {
+    const datos = JSON.parse(crudo);
+    if (!datos || !datos.profesional_id) return false;
+    window.profesionalActual = datos;
+    cerrarModalProfesional();
+    return true;
+  } catch (error) {
+    console.error('Error parseando profesional de localStorage:', error);
+    return false;
+  }
+}
+
+let intervaloProfesional = null;
+
+// Se registra SIEMPRE (haya o no identificación al arrancar): si window.profesionalActual
+// se pierde y el modal se reabre, esto lo cierra cuando profesional.html vuelva a guardar.
+// 'storage' se dispara en el documento padre cuando el iframe (mismo origen) escribe;
+// el polling es respaldo por si el evento no llega.
+function esperarIdentificacionProfesional() {
+  window.addEventListener('storage', (evento) => {
+    if (evento.key === CLAVE_PROFESIONAL && evento.newValue) aplicarProfesional(evento.newValue);
+  });
+  intervaloProfesional = setInterval(() => {
+    const guardado = localStorage.getItem(CLAVE_PROFESIONAL);
+    if (guardado) aplicarProfesional(guardado);
+  }, 1000);
+}
+
+const profesionalGuardado = localStorage.getItem(CLAVE_PROFESIONAL);
+if (!profesionalGuardado || !aplicarProfesional(profesionalGuardado)) {
+  abrirModalProfesional();
+}
+esperarIdentificacionProfesional();
+
+// ---------------------------------------------------------------------------
 // 1. Perfiles clínicos — por especie, con persistencia en localStorage
 // ---------------------------------------------------------------------------
 // Reemplaza el placeholder vacío de V4.8 (Paso A). Decisión confirmada por
@@ -632,6 +686,8 @@ function leerMedicacion() {
 // ---------------------------------------------------------------------------
 function consolidarPayloadFinal() {
   return {
+    profesional_id: window.profesionalActual?.profesional_id || null,
+    profesional: window.profesionalActual || null,
     filiacion: {
       tutor: {
         id_myvete: idTutorMyVete,
@@ -716,6 +772,12 @@ if (btnSubmitFormulario) {
       return;
     }
     avisoFormulario.hidden = true;
+
+    if (!window.profesionalActual?.profesional_id) {
+      mostrarAviso('Necesitás identificarte antes de enviar.');
+      abrirModalProfesional();
+      return;
+    }
 
     if (!WEBHOOK_URL_N8N) {
       mostrarAviso('Falta configurar WEBHOOK_URL_N8N en app.js — todavía no hay workflow publicado en n8n.');

@@ -448,3 +448,52 @@ section {
     flex-direction: column;
   }
 }
+
+/* Modal bloqueante de identificación del profesional (Sprint 7) */
+#modal-profesional[hidden] {
+  display: none;
+}
+
+#modal-profesional {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#modal-profesional .modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+#modal-profesional .modal-contenido {
+  position: relative;
+  width: 90%;
+  height: 90%;
+  max-width: 720px;
+  max-height: 900px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+#modal-profesional iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (max-width: 600px) {
+  #modal-profesional .modal-contenido {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+}

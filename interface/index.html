@@ -488,6 +488,15 @@
     </section>
   </main>
 
+  <!-- Modal bloqueante de identificación del profesional (Sprint 7). Sin botón de
+       cerrar: app.js lo oculta cuando profesional.html guarda `myvete_profesional`. -->
+  <div id="modal-profesional" hidden>
+    <div class="modal-overlay"></div>
+    <div class="modal-contenido">
+      <iframe id="iframe-profesional" src="profesional.html" title="Alta de profesional"></iframe>
+    </div>
+  </div>
+
   <!-- PDF.js — usado por el bloque "Datos Ecocardiográficos" (app.js Sección 8)
        para extraer texto del PDF del ecocardiograma. Debe ir antes de app.js. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>

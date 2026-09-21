@@ -57,6 +57,10 @@
     font-size: 0.85rem;
     font-weight: 600;
   }
+  .ayuda-matricula {
+    font-size: 0.8rem;
+    color: var(--color-texto-suave);
+  }
   .campo .opcional {
     font-weight: 400;
     color: var(--color-texto-suave);
@@ -64,7 +68,8 @@
   input[type="text"],
   input[type="email"],
   input[type="tel"],
-  input[type="file"] {
+  input[type="file"],
+  select {
     padding: 10px 11px;
     border: 1px solid var(--color-borde);
     border-radius: 6px;
@@ -73,7 +78,15 @@
     color: var(--color-texto);
     width: 100%;
   }
-  input:focus {
+  .matricula-fila {
+    display: flex;
+    gap: 8px;
+  }
+  .matricula-fila select {
+    flex: 0 0 38%;
+  }
+  input:focus,
+  select:focus {
     outline: 2px solid var(--color-primario);
     outline-offset: 1px;
   }
@@ -199,18 +212,38 @@
       <input type="text" id="apellido" name="apellido" required autocomplete="family-name" />
     </div>
 
-    <div class="campo">
-      <label for="matricula">Matrícula</label>
-      <input type="text" id="matricula" name="matricula" required />
+    <div class="campo matricula-compuesta">
+      <label for="matricula_numero">Matrícula 1</label>
+      <div class="matricula-fila">
+        <select id="matricula_tipo" name="matricula_tipo" required>
+          <option value="" disabled selected>Elegí tipo</option>
+          <option value="MN">M.N.</option>
+          <option value="MP">M.P.</option>
+        </select>
+        <input type="text" id="matricula_numero" name="matricula_numero" inputmode="numeric" pattern="[0-9]+" placeholder="7356" required />
+      </div>
+      <small class="ayuda-matricula">
+        Solo números, sin puntos ni espacios. Ej: 7356
+      </small>
     </div>
     <div class="fila-checkbox">
       <input type="checkbox" id="chk_matricula_1" required />
       <label for="chk_matricula_1">Confirmo que la matrícula 1 es correcta</label>
     </div>
 
-    <div class="campo">
-      <label for="matricula_2">Matrícula 2 <span class="opcional">(opcional)</span></label>
-      <input type="text" id="matricula_2" name="matricula_2" />
+    <div class="campo matricula-compuesta">
+      <label for="matricula_2_numero">Matrícula 2 <span class="opcional">(opcional)</span></label>
+      <div class="matricula-fila">
+        <select id="matricula_2_tipo" name="matricula_2_tipo">
+          <option value="" selected>Elegí tipo</option>
+          <option value="MN">M.N.</option>
+          <option value="MP">M.P.</option>
+        </select>
+        <input type="text" id="matricula_2_numero" name="matricula_2_numero" inputmode="numeric" pattern="[0-9]+" placeholder="10087" />
+      </div>
+      <small class="ayuda-matricula">
+        Solo números, sin puntos ni espacios. Ej: 7356
+      </small>
     </div>
     <div class="fila-checkbox deshabilitada" id="fila-chk-matricula-2">
       <input type="checkbox" id="chk_matricula_2" disabled />
@@ -220,11 +253,6 @@
     <div class="campo">
       <label for="email">E-mail</label>
       <input type="email" id="email" name="email" required autocomplete="email" />
-    </div>
-
-    <div class="campo">
-      <label for="telefono">Teléfono <span class="opcional">(opcional)</span></label>
-      <input type="tel" id="telefono" name="telefono" autocomplete="tel" />
     </div>
 
     <div class="campo">
@@ -263,13 +291,14 @@
   var form = document.getElementById("form-profesional");
   var campoNombre = document.getElementById("nombre");
   var campoApellido = document.getElementById("apellido");
-  var campoMatricula = document.getElementById("matricula");
-  var campoMatricula2 = document.getElementById("matricula_2");
+  var campoMatriculaTipo = document.getElementById("matricula_tipo");
+  var campoMatriculaNumero = document.getElementById("matricula_numero");
+  var campoMatricula2Tipo = document.getElementById("matricula_2_tipo");
+  var campoMatricula2Numero = document.getElementById("matricula_2_numero");
   var chkMatricula1 = document.getElementById("chk_matricula_1");
   var chkMatricula2 = document.getElementById("chk_matricula_2");
   var filaChkMatricula2 = document.getElementById("fila-chk-matricula-2");
   var campoEmail = document.getElementById("email");
-  var campoTelefono = document.getElementById("telefono");
   var campoEspecialidad = document.getElementById("especialidad");
   var campoFirma = document.getElementById("firma");
   var bloqueFirmaNueva = document.getElementById("campo-firma-nueva");
@@ -287,11 +316,13 @@
   var timerDedup = null;
 
   function mostrarMensaje(texto, tipo) {
+    mensajeEsDeMatricula = false;
     mensaje.textContent = texto;
     mensaje.className = tipo;
   }
 
   function limpiarMensaje() {
+    mensajeEsDeMatricula = false;
     mensaje.textContent = "";
     mensaje.className = "";
   }
@@ -322,30 +353,71 @@
     validarFormulario();
   });
 
-  // ---- Matrícula 2: el checkbox solo se exige si hay contenido en matricula_2 ----
-  campoMatricula2.addEventListener("input", function () {
-    var tieneValor = campoMatricula2.value.trim() !== "";
-    chkMatricula2.disabled = !tieneValor;
-    filaChkMatricula2.classList.toggle("deshabilitada", !tieneValor);
-    if (!tieneValor) {
+  // ---- Matrícula 2: el checkbox solo se exige si hay tipo y número cargados ----
+  var REGEX_NUMERO = /^[0-9]+$/;
+
+  function matricula2Completa() {
+    return campoMatricula2Tipo.value !== "" && REGEX_NUMERO.test(campoMatricula2Numero.value.trim());
+  }
+
+  function matricula2Vacia() {
+    return campoMatricula2Tipo.value === "" && campoMatricula2Numero.value.trim() === "";
+  }
+
+  function actualizarChkMatricula2() {
+    var completa = matricula2Completa();
+    chkMatricula2.disabled = !completa;
+    filaChkMatricula2.classList.toggle("deshabilitada", !completa);
+    if (!completa) {
       chkMatricula2.checked = false;
     }
-    validarFormulario();
+  }
+
+  [campoMatricula2Tipo, campoMatricula2Numero].forEach(function (el) {
+    el.addEventListener("input", function () {
+      actualizarChkMatricula2();
+      validarFormulario();
+    });
+    el.addEventListener("change", function () {
+      actualizarChkMatricula2();
+      validarFormulario();
+    });
   });
+
+  // ---- Mensaje específico si el número de matrícula trae puntos, espacios o letras ----
+  var MSG_MATRICULA_FORMATO = "El número de matrícula va sin puntos ni espacios. Ej: 10087";
+  var mensajeEsDeMatricula = false;
+
+  function numeroConFormatoInvalido(campo) {
+    var v = campo.value.trim();
+    return v !== "" && !REGEX_NUMERO.test(v);
+  }
+
+  function actualizarMensajeMatricula() {
+    if (numeroConFormatoInvalido(campoMatriculaNumero) || numeroConFormatoInvalido(campoMatricula2Numero)) {
+      mostrarMensaje(MSG_MATRICULA_FORMATO, "error");
+      mensajeEsDeMatricula = true;
+    } else if (mensajeEsDeMatricula) {
+      limpiarMensaje();
+    }
+  }
 
   // ---- Validación en tiempo real ----
   function validarFormulario() {
+    actualizarMensajeMatricula();
     var camposOk =
       campoNombre.value.trim() !== "" &&
       campoApellido.value.trim() !== "" &&
-      campoMatricula.value.trim() !== "" &&
+      campoMatriculaTipo.value !== "" &&
+      REGEX_NUMERO.test(campoMatriculaNumero.value.trim()) &&
       campoEmail.value.trim() !== "" &&
       campoEmail.checkValidity();
 
     var matricula1Ok = chkMatricula1.checked;
 
-    var tieneMatricula2 = campoMatricula2.value.trim() !== "";
-    var matricula2Ok = !tieneMatricula2 || chkMatricula2.checked;
+    // Matrícula 2: vacía (ok), o completa (tipo + número) con checkbox marcado.
+    // Solo uno de los dos campos cargado es inválido.
+    var matricula2Ok = matricula2Vacia() || (matricula2Completa() && chkMatricula2.checked);
 
     var firmaOk = !firmaRequerida() || (campoFirma.files && campoFirma.files.length > 0);
 
@@ -355,8 +427,8 @@
   }
 
   [
-    campoNombre, campoApellido, campoMatricula, campoEmail,
-    campoTelefono, campoEspecialidad, chkMatricula1, chkMatricula2, campoFirma
+    campoNombre, campoApellido, campoMatriculaTipo, campoMatriculaNumero, campoEmail,
+    campoEspecialidad, chkMatricula1, chkMatricula2, campoFirma
   ].forEach(function (el) {
     el.addEventListener("input", validarFormulario);
     el.addEventListener("change", validarFormulario);
@@ -370,14 +442,12 @@
       var datos = JSON.parse(raw);
       if (datos.nombre) campoNombre.value = datos.nombre;
       if (datos.apellido) campoApellido.value = datos.apellido;
-      if (datos.matricula) campoMatricula.value = datos.matricula;
-      if (datos.matricula_2) {
-        campoMatricula2.value = datos.matricula_2;
-        chkMatricula2.disabled = false;
-        filaChkMatricula2.classList.remove("deshabilitada");
-      }
+      if (datos.matricula_tipo) campoMatriculaTipo.value = datos.matricula_tipo;
+      if (datos.matricula_numero) campoMatriculaNumero.value = datos.matricula_numero;
+      if (datos.matricula_2_tipo) campoMatricula2Tipo.value = datos.matricula_2_tipo;
+      if (datos.matricula_2_numero) campoMatricula2Numero.value = datos.matricula_2_numero;
+      actualizarChkMatricula2();
       if (datos.email) campoEmail.value = datos.email;
-      if (datos.telefono) campoTelefono.value = datos.telefono;
       if (datos.especialidad) campoEspecialidad.value = datos.especialidad;
       if (datos.firma_url) mostrarPanelFirmaExistente(datos.firma_url);
     } catch (e) {
@@ -388,9 +458,11 @@
 
   // ---- Deduplicación asistida por apellido (Capa 2) ----
   function candidatosDistintos(lista) {
-    var emailActual = campoEmail.value.trim().toLowerCase();
+    var tipoActual = campoMatriculaTipo.value;
+    var numeroActual = campoMatriculaNumero.value.trim();
     return lista.filter(function (p) {
-      return (p.email || "").trim().toLowerCase() !== emailActual;
+      return !(tipoActual !== "" && numeroActual !== "" &&
+        p.matricula_tipo === tipoActual && p.matricula_numero === numeroActual);
     });
   }
 
@@ -434,19 +506,12 @@
   function aplicarCandidatoDedup(p) {
     campoNombre.value = p.nombre || "";
     campoApellido.value = p.apellido || "";
-    campoMatricula.value = p.matricula || "";
-    if (p.matricula_2) {
-      campoMatricula2.value = p.matricula_2;
-      chkMatricula2.disabled = false;
-      filaChkMatricula2.classList.remove("deshabilitada");
-    } else {
-      campoMatricula2.value = "";
-      chkMatricula2.disabled = true;
-      chkMatricula2.checked = false;
-      filaChkMatricula2.classList.add("deshabilitada");
-    }
+    campoMatriculaTipo.value = p.matricula_tipo || "";
+    campoMatriculaNumero.value = p.matricula_numero || "";
+    campoMatricula2Tipo.value = p.matricula_2_tipo || "";
+    campoMatricula2Numero.value = p.matricula_2_numero || "";
+    actualizarChkMatricula2();
     campoEmail.value = p.email || "";
-    if (p.telefono) campoTelefono.value = p.telefono;
     if (p.especialidad) campoEspecialidad.value = p.especialidad;
     if (p.firma_url) {
       mostrarPanelFirmaExistente(p.firma_url);
@@ -459,7 +524,7 @@
 
   function buscarPorApellido(apellido) {
     var url = SUPABASE_URL + "/rest/v1/profesionales?apellido=ilike.*" +
-      encodeURIComponent(apellido) + "*&select=id,nombre,apellido,email,matricula,matricula_2,telefono,especialidad,firma_url";
+      encodeURIComponent(apellido) + "*&select=id,nombre,apellido,email,matricula_tipo,matricula_numero,matricula_2_tipo,matricula_2_numero,especialidad,firma_url";
     fetch(url, {
       headers: {
         apikey: SUPABASE_ANON_KEY,
@@ -551,10 +616,11 @@
         var payload = {
           nombre: campoNombre.value.trim(),
           apellido: campoApellido.value.trim(),
-          matricula: campoMatricula.value.trim(),
-          matricula_2: campoMatricula2.value.trim() || null,
+          matricula_tipo: campoMatriculaTipo.value,
+          matricula_numero: campoMatriculaNumero.value.trim(),
+          matricula_2_tipo: campoMatricula2Tipo.value || null,
+          matricula_2_numero: campoMatricula2Numero.value.trim() || null,
           email: campoEmail.value.trim().toLowerCase(),
-          telefono: campoTelefono.value.trim() || null,
           especialidad: campoEspecialidad.value.trim() || null,
           firma_url: firmaUrl
         };
@@ -563,9 +629,12 @@
             profesional_id: respuesta.profesional_id,
             nombre: payload.nombre,
             apellido: payload.apellido,
-            matricula: payload.matricula,
-            matricula_2: payload.matricula_2,
+            matricula_tipo: payload.matricula_tipo,
+            matricula_numero: payload.matricula_numero,
+            matricula_2_tipo: payload.matricula_2_tipo,
+            matricula_2_numero: payload.matricula_2_numero,
             email: payload.email,
+            especialidad: payload.especialidad,
             firma_url: firmaUrl
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(guardado));

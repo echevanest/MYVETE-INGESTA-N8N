@@ -3,12 +3,12 @@
   "name": "MYVETE - Alta Profesional",
   "description": null,
   "active": true,
-  "activeVersionId": "fb8b246e-d2a3-4fad-830c-97d87bf28936",
+  "activeVersionId": "a0259b6e-2046-4bf6-9e48-144f0de99f6b",
   "createdAt": "2026-09-20T20:41:26.444Z",
-  "updatedAt": "2026-09-20T20:41:26.444Z",
+  "updatedAt": "2026-09-21T22:13:56.167Z",
   "isArchived": false,
-  "versionId": "fb8b246e-d2a3-4fad-830c-97d87bf28936",
-  "versionCounter": 1,
+  "versionId": "a0259b6e-2046-4bf6-9e48-144f0de99f6b",
+  "versionCounter": 2,
   "sourceWorkflowId": null,
   "triggerCount": 1,
   "nodes": [
@@ -42,7 +42,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const body = $input.item.json.body || {};\nconst required = ['nombre', 'apellido', 'matricula', 'email', 'firma_url'];\nconst faltantes = required.filter((campo) => !body[campo] || String(body[campo]).trim() === '');\n\nif (faltantes.length > 0) {\n  throw new Error(`Faltan campos obligatorios: ${faltantes.join(', ')}`);\n}\n\nreturn {\n  json: {\n    nombre: String(body.nombre).trim(),\n    apellido: String(body.apellido).trim(),\n    matricula: String(body.matricula).trim(),\n    matricula_2: body.matricula_2 ? String(body.matricula_2).trim() : null,\n    email: String(body.email).trim().toLowerCase(),\n    telefono: body.telefono ? String(body.telefono).trim() : null,\n    especialidad: body.especialidad ? String(body.especialidad).trim() : null,\n    firma_url: String(body.firma_url).trim(),\n    activo: true\n  }\n};"
+        "jsCode": "const body = $input.item.json.body || {};\nconst required = ['nombre', 'apellido', 'matricula_tipo', 'matricula_numero', 'email', 'firma_url'];\nconst faltantes = required.filter((campo) => !body[campo] || String(body[campo]).trim() === '');\n\nif (faltantes.length > 0) {\n  throw new Error(`Faltan campos obligatorios: ${faltantes.join(', ')}`);\n}\n\nconst matricula_tipo = String(body.matricula_tipo).trim().toUpperCase();\nconst matricula_numero = String(body.matricula_numero).trim();\nconst matricula_2_tipo = body.matricula_2_tipo ? String(body.matricula_2_tipo).trim().toUpperCase() : null;\nconst matricula_2_numero = body.matricula_2_numero ? String(body.matricula_2_numero).trim() : null;\n\nif (!['MN', 'MP'].includes(matricula_tipo)) {\n  throw new Error('matricula_tipo debe ser MN o MP');\n}\nif (!/^[0-9]+$/.test(matricula_numero)) {\n  throw new Error('matricula_numero debe contener solo dígitos');\n}\nif ((matricula_2_tipo === null) !== (matricula_2_numero === null)) {\n  throw new Error('Matrícula 2 incompleta: hacen falta matricula_2_tipo y matricula_2_numero, o ninguno');\n}\nif (matricula_2_tipo !== null) {\n  if (!['MN', 'MP'].includes(matricula_2_tipo)) {\n    throw new Error('matricula_2_tipo debe ser MN o MP');\n  }\n  if (!/^[0-9]+$/.test(matricula_2_numero)) {\n    throw new Error('matricula_2_numero debe contener solo dígitos');\n  }\n}\n\nreturn {\n  json: {\n    nombre: String(body.nombre).trim(),\n    apellido: String(body.apellido).trim(),\n    matricula_tipo,\n    matricula_numero,\n    matricula_2_tipo,\n    matricula_2_numero,\n    email: String(body.email).trim().toLowerCase(),\n    especialidad: body.especialidad ? String(body.especialidad).trim() : null,\n    firma_url: String(body.firma_url).trim(),\n    activo: true\n  }\n};"
       }
     },
     {
@@ -56,7 +56,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/profesionales?on_conflict=email",
+        "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/profesionales?on_conflict=matricula_tipo,matricula_numero",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -168,28 +168,8 @@
   "pinData": null,
   "meta": null,
   "tags": [],
-  "shared": [
-    {
-      "role": "workflow:owner",
-      "workflowId": "MlEGaxt7k6H9SAfP",
-      "projectId": "Zd10owVJgf5TNlgm",
-      "project": {
-        "id": "Zd10owVJgf5TNlgm",
-        "name": "Marcelo Echevarria <echevanest@gmail.com>",
-        "type": "personal",
-        "icon": null,
-        "description": null,
-        "customTelemetryTags": [],
-        "creatorId": "3681f54f-c910-4634-a36b-31064680e25f",
-        "createdAt": "2025-12-15T13:22:07.178Z",
-        "updatedAt": "2025-12-15T13:22:12.778Z"
-      },
-      "createdAt": "2026-09-20T20:41:26.455Z",
-      "updatedAt": "2026-09-20T20:41:26.455Z"
-    }
-  ],
   "activeVersion": {
-    "versionId": "fb8b246e-d2a3-4fad-830c-97d87bf28936",
+    "versionId": "a0259b6e-2046-4bf6-9e48-144f0de99f6b",
     "workflowId": "MlEGaxt7k6H9SAfP",
     "nodes": [
       {
@@ -222,7 +202,7 @@
           0
         ],
         "parameters": {
-          "jsCode": "const body = $input.item.json.body || {};\nconst required = ['nombre', 'apellido', 'matricula', 'email', 'firma_url'];\nconst faltantes = required.filter((campo) => !body[campo] || String(body[campo]).trim() === '');\n\nif (faltantes.length > 0) {\n  throw new Error(`Faltan campos obligatorios: ${faltantes.join(', ')}`);\n}\n\nreturn {\n  json: {\n    nombre: String(body.nombre).trim(),\n    apellido: String(body.apellido).trim(),\n    matricula: String(body.matricula).trim(),\n    matricula_2: body.matricula_2 ? String(body.matricula_2).trim() : null,\n    email: String(body.email).trim().toLowerCase(),\n    telefono: body.telefono ? String(body.telefono).trim() : null,\n    especialidad: body.especialidad ? String(body.especialidad).trim() : null,\n    firma_url: String(body.firma_url).trim(),\n    activo: true\n  }\n};"
+          "jsCode": "const body = $input.item.json.body || {};\nconst required = ['nombre', 'apellido', 'matricula_tipo', 'matricula_numero', 'email', 'firma_url'];\nconst faltantes = required.filter((campo) => !body[campo] || String(body[campo]).trim() === '');\n\nif (faltantes.length > 0) {\n  throw new Error(`Faltan campos obligatorios: ${faltantes.join(', ')}`);\n}\n\nconst matricula_tipo = String(body.matricula_tipo).trim().toUpperCase();\nconst matricula_numero = String(body.matricula_numero).trim();\nconst matricula_2_tipo = body.matricula_2_tipo ? String(body.matricula_2_tipo).trim().toUpperCase() : null;\nconst matricula_2_numero = body.matricula_2_numero ? String(body.matricula_2_numero).trim() : null;\n\nif (!['MN', 'MP'].includes(matricula_tipo)) {\n  throw new Error('matricula_tipo debe ser MN o MP');\n}\nif (!/^[0-9]+$/.test(matricula_numero)) {\n  throw new Error('matricula_numero debe contener solo dígitos');\n}\nif ((matricula_2_tipo === null) !== (matricula_2_numero === null)) {\n  throw new Error('Matrícula 2 incompleta: hacen falta matricula_2_tipo y matricula_2_numero, o ninguno');\n}\nif (matricula_2_tipo !== null) {\n  if (!['MN', 'MP'].includes(matricula_2_tipo)) {\n    throw new Error('matricula_2_tipo debe ser MN o MP');\n  }\n  if (!/^[0-9]+$/.test(matricula_2_numero)) {\n    throw new Error('matricula_2_numero debe contener solo dígitos');\n  }\n}\n\nreturn {\n  json: {\n    nombre: String(body.nombre).trim(),\n    apellido: String(body.apellido).trim(),\n    matricula_tipo,\n    matricula_numero,\n    matricula_2_tipo,\n    matricula_2_numero,\n    email: String(body.email).trim().toLowerCase(),\n    especialidad: body.especialidad ? String(body.especialidad).trim() : null,\n    firma_url: String(body.firma_url).trim(),\n    activo: true\n  }\n};"
         }
       },
       {
@@ -236,7 +216,7 @@
         ],
         "parameters": {
           "method": "POST",
-          "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/profesionales?on_conflict=email",
+          "url": "https://tuedigqvvkvgongpcnjx.supabase.co/rest/v1/profesionales?on_conflict=matricula_tipo,matricula_numero",
           "authentication": "genericCredentialType",
           "genericAuthType": "httpHeaderAuth",
           "sendHeaders": true,
@@ -345,16 +325,16 @@
     "name": null,
     "description": null,
     "autosaved": false,
-    "createdAt": "2026-09-20T20:41:26.464Z",
-    "updatedAt": "2026-09-20T20:41:26.464Z",
+    "createdAt": "2026-09-21T22:13:56.169Z",
+    "updatedAt": "2026-09-21T22:13:56.169Z",
     "workflowPublishHistory": [
       {
-        "id": 533,
+        "id": 535,
         "workflowId": "MlEGaxt7k6H9SAfP",
-        "versionId": "fb8b246e-d2a3-4fad-830c-97d87bf28936",
+        "versionId": "a0259b6e-2046-4bf6-9e48-144f0de99f6b",
         "event": "activated",
         "userId": "3681f54f-c910-4634-a36b-31064680e25f",
-        "createdAt": "2026-09-20T20:41:30.113Z"
+        "createdAt": "2026-09-21T22:13:56.278Z"
       }
     ]
   }
