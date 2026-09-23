@@ -7,11 +7,35 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 - Plantillas JSON exportadas de cada workflow (respaldo ante cambios o errores en la nube).
 - Notas de configuración de nodos que no queden claras solo con el JSON (credenciales referenciadas, nombres de hojas de cálculo, direcciones de correo de destino).
 
-## Workflow: MYVETE - Ingesta Filiación & Orquestador Core
+## Estado actual (2026-09-23)
+
+| Workflow | ID | Estado | Rol |
+|---|---|---|---|
+| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (31 nodos, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
+| `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7). |
+| `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sprint 8.0, Prompt 2c (2026-09-23)
+
+Adaptado al payload nuevo del SPA (`body.examen_clinico`, ver `SPRINT-08-ESTADO.md`). Cambio vía `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 40), **sin activar ni publicar**. Solo se tocaron 3 nodos:
+
+*   **IA - Estructurar Anamnesis:** el user prompt lee `body.examen_clinico.anamnesis` / `.diagnostico` (antes `body.consulta.*`). System prompt y schema `borrador_medico_v4` sin cambios. Nota en el nodo: los `fc/fr/pas/pam/pad/mucosas` que devuelve la IA **no son fuente de verdad**, solo quedan dentro de `informe_borrador`.
+*   **Insert Atención Cardiología:** mapea 25 columnas de `atenciones_cardiologia` — `profesional_id`, `mascota_id`, `datos_filiacion`, `informe_borrador`, `anamnesis_raw`/`diagnostico_raw`/`indicaciones_raw` y las 18 del examen clínico (`sensorio`, `mucosas`, `pulso_femoral`, `reflejo_tusigeno`, `hidratacion`, `tllc`, `sucusion`, `auscultacion_pulmonar_patron`/`_amplitud`/`_sltb`, `fr_numero`, `fr_tipo`, `auscultacion_cardiaca`, `fc_numero`, `soplos`, `pas`, `pam`, `pad`). Todo desde `$('Webhook').item.json.body.examen_clinico` (no `$json`, que en ese nodo es la salida de Upsert Mascota). `auscultacion_cardiaca` y `soplos` van como arrays JSON (`[]` si vienen vacíos); el resto, `null` si falta. **Ya no manda `metricas`** (columna eliminada en el Prompt 2a).
+*   **Preparar Datos para PDF:** FC/FR/PAS/PAM/PAD/mucosas salen **solo** de `examen_clinico` (se eliminó el fallback a la IA, que además tenía prioridad sobre el SPA — hallazgo H2). La IA sigue aportando `resumen_anamnesis` y, como respaldo, diagnóstico/indicaciones sugeridos. Informe:
+    *   Sección nueva **MOTIVO DE LA CONSULTA** (el motivo no tiene columna en Supabase, va solo al informe).
+    *   **CONSTANTES FISIOLOGICAS:** la línea de FR incluye el tipo (`FR: 20 rpm (Polipnea)`).
+    *   Sección nueva **EXAMEN CLÍNICO**, después de las constantes, en el orden del SPA: sensorio, pulso femoral, reflejo tusígeno, hidratación, TLLC, sucusión, auscultación pulmonar (patrón/amplitud/SLTB), auscultación cardíaca (lista separada por comas) y soplos (uno por línea, ordenados por `orden`, formato `SOPLO SISTÓLICO MITRAL 3/6`). Los valores vacíos/null no se imprimen; mucosas y FR no se repiten.
+*   **Nodos que NO leen el payload viejo** pese a contener la palabra "consulta": `Enviar informe al tutor` y `Preparar alerta` (solo texto del mail), sin cambios.
+*   **Verificación:** los nodos Insert y PDF se probaron localmente con un payload real del SPA (mapeo exacto de 25 columnas, IA ignorada para constantes, `firma_index` intacto) y la versión viva se releyó por API (idéntica a la probada). **Falta la prueba E2E real**, que requiere publicar el workflow.
+*   **Backups:** `n8n/workflow_v7_pre-2c.json` (estado previo, bajado por API antes del PUT) y `n8n/workflow_v7_post-2c.json` (estado vivo después del PUT). Sin secretos (credenciales solo por id).
+
+---
+
+## Workflow: MYVETE - Ingesta Filiación & Orquestador Core (HISTÓRICO — hoy backup inactivo)
 
 *   **Instancia:** `echevanest.app.n8n.cloud`
 *   **Workflow ID:** `5gGWXOjY2BBOAfuw`
-*   **Estado:** Activo (publicado 28/07/2026, nodo IA agregado y activado 31/07/2026)
+*   **Estado:** `active: false` — backup `[BACKUP - NO TOCAR]` desde la transición a producción del 2026-09-13. (Histórico: publicado 28/07/2026, nodo IA agregado y activado 31/07/2026.)
 *   **Production URL:** `https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion-v4`
 *   **Nodos:**
     1.  **Webhook** — `POST`, path `ingesta-filiacion-v4`, `responseMode: responseNode`, CORS abierto (`options.allowedOrigins: "*"`) para aceptar el POST desde la ventana popup del bookmarklet (origen `null`/`file://`).

@@ -1,6 +1,6 @@
 # 🗺️ ESTADO DEL PROYECTO: INTERFAZ LOCAL & n8n
 
-*   **Última actualización:** 2026-09-12 — ver Sección J.3 (corrección de topología de workflows + Fix 1: migración de credencial Drive ARES→infoacivet en 7 nodos, **completo y verificado contra la API viva de n8n**). Sección J.2 (2026-09-10): Sprint 6 v2 (persistencia del PDF en Drive + índice en Sheets + alerta de fallo). Sección J (2026-09-09): primera versión del Sprint 6 (PDF + mail), también en STAGING. 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
+*   **Última actualización:** 2026-09-23 — ver Sección L (Sprint 8.0: examen clínico en Supabase + SPA + n8n + informe) y Sección K (Sprint 7: Identificación de Profesional, cerrado). **Nota sobre A-E:** esas secciones son históricas (julio-agosto 2026) y no se re-auditaron. La B ("Consulta de Hoy") quedó reemplazada por el bloque "Consulta y examen clínico" (Sección L), y la C/D describen el workflow CORE, hoy backup inactivo (ver `n8n/README.md` → "Estado actual"). Texto anterior de esta línea: 2026-09-12 — ver Sección J.3 (corrección de topología de workflows + Fix 1: migración de credencial Drive ARES→infoacivet en 7 nodos, **completo y verificado contra la API viva de n8n**). Sección J.2 (2026-09-10): Sprint 6 v2 (persistencia del PDF en Drive + índice en Sheets + alerta de fallo). Sección J (2026-09-09): primera versión del Sprint 6 (PDF + mail), también en STAGING. 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
 *   **Versión de la Arquitectura:** V5.0 — COMPLETADA Y VALIDADA E2E (Streaming de Dictado Interino + Conexión End-to-End n8n Cloud Validada + Nodo IA en producción + Fix de renderizado de `borrador_medico` + Bookmarklet de Filiación: extracción de mascota **y** de tutor validadas E2E contra MyVete real — cobertura de filiación 100%)
 *   **Control de versión:** Repositorio Git local inicializado (branch `master`). Commit `8634294` (V4.9 consolidado); extracción de tutor (V5.0), validada E2E, en curso de commit.
 *   **Nota sobre "ARCHIVO MAESTRO v5.2":** referenciado en conversación externa (Gemini/Arquitectura) como fuente de un DDL de Supabase — no se encontró ningún archivo con ese nombre en este repo ni en el Google Drive conectado al momento de escribir la Sección F. Si existe, no está compartido con esta sesión.
@@ -325,7 +325,54 @@ No se tocó ningún nodo preexistente ni la lógica del `IF - ¿Persistió en Su
 
 ---
 
+### K. Sprint 7 — Identificación de Profesional (2026-09-17 a 2026-09-22) — CERRADO
+
+*   **Supabase** (commit `e9aa6c1`):
+    *   Tabla `profesionales` con matrícula normalizada en tipo (MN/MP) + número, más una matrícula 2 opcional. La clave natural es UNIQUE `(matricula_tipo, matricula_numero)` desde el Prompt 3-bis (2026-09-21); antes era el email.
+    *   `firma_url` es NOT NULL.
+    *   Bucket público `firmas` (PNG/JPG, máx. 5 MB) con policies para `anon`.
+    *   `atenciones_cardiologia.profesional_id` es NOT NULL con ON DELETE RESTRICT.
+    *   Detalle en `supabase/schema.sql`.
+*   **Alta de profesionales** (commit `803c785`):
+    *   Formulario standalone `interface/profesional.html`: sube la firma al bucket y hace POST al workflow `MYVETE - Alta Profesional` (`MlEGaxt7k6H9SAfP`, activo), que hace el upsert con service_role.
+    *   Deduplicación por apellido.
+*   **SPA + n8n** (commit `8d2ebdd`):
+    *   El SPA lee `myvete_profesional` de localStorage. Si falta, abre un modal bloqueante con el formulario.
+    *   Inyecta `profesional_id` y `profesional` en el payload.
+    *   `MYVETE - Ingesta` persiste `profesional_id` y el informe suma "PROFESIONAL ACTUANTE" y "FIRMA DEL PROFESIONAL" (firma como imagen).
+    *   Respaldos: `n8n/workflow_B.*` y `workflow_alta_profesional.*`.
+*   **Prueba E (2026-09-22): E2E real exitosa.** Alta, reconocimiento en el SPA, atención con `profesional_id`, PDF con firma y mail al tutor, seguida de limpieza completa.
+
+### L. Sprint 8.0 — Examen clínico en Supabase + SPA + n8n + informe (2026-09-23) — IMPLEMENTADO, SIN E2E
+
+Resumen completo, decisiones y pendientes en `SPRINT-08-ESTADO.md`.
+
+*   **Motivo:** hallazgo H2. Las constantes que carga el vet no se persistían (`metricas` se armaba con la salida de la IA), y en el PDF la IA tenía prioridad sobre el SPA.
+*   **Supabase:**
+    *   Migraciones `sprint8_examen_clinico_atenciones` y `sprint8_pa_columns_drop_metricas_updated_at`.
+    *   18 columnas nuevas del examen en `atenciones_cardiologia`, con `soplos` y `auscultacion_cardiaca` en jsonb y `fc_numero`/`fr_numero`/`pas`/`pam`/`pad` en integer.
+    *   Se eliminaron `metricas`, `updated_at` y su trigger. La tabla tenía 0 filas.
+*   **SPA (2b):**
+    *   Bloque único "Consulta y examen clínico" (21 ítems, 3 reservados).
+    *   Catálogo único de opciones y defaults (`app.js` Sección 9).
+    *   Soplos N por consulta, auscultación cardíaca multiselección con reglas.
+    *   Payload `examen_clinico` en lugar de `consulta`.
+    *   Verificado en DOM simulado (jsdom), no en navegador real.
+*   **n8n (2c):**
+    *   `MYVETE - Ingesta` quedó compatible con el payload nuevo (3 nodos) y el informe suma MOTIVO DE LA CONSULTA y EXAMEN CLÍNICO.
+    *   Aplicado por `PUT`, **sin activar** (`active: false`).
+    *   Backups `n8n/workflow_v7_pre-2c.json` y `workflow_v7_post-2c.json`.
+*   **Falta:** prueba E2E real con el workflow publicado.
+
+---
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
+
+**Actualización 2026-09-23:**
+
+- `lkOwTFmVTZu7EMoU` está hoy `active: false`: se despublica entre pruebas y se publica para validar.
+- El trabajo en curso es la validación E2E del Sprint 8.0 (Sección L).
+- El párrafo siguiente es el estado al 2026-09-13.
 
 **Sprint 6 — publicado como producción (2026-09-13, ver Secciones J.5 y J.6).** El workflow `lkOwTFmVTZu7EMoU` (29 nodos) quedó `active: true` en el path `ingesta-filiacion`, recibiendo el tráfico del SPA. Fixes 1, 2, 5, 6→7 completos; Pruebas E2E A, B1, B2 (Sprint 6) y limpia/forzada (epr + gap H7) **todas exitosas**; residuos de Supabase limpiados (Drive/Sheets pendiente de Marcelo, ver J.4 y J.6). `epr`/`tiempo_eyectivo` se persisten; fallo de insert del eco ahora genera alerta propia. Workflow CORE (`5gGWXOjY2BBOAfuw`) queda como backup, sin tocar, hasta validar 3-7 días de tráfico real. Falta: Fix 3 (confirmar Gmail INFOACIVET), Fix 8 (validación de obligatorios), sección ECG, validación en real con tráfico real (con Marcelo) y recién entonces borrar CORE.
 
