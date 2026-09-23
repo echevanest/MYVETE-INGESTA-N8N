@@ -216,12 +216,30 @@ create table public.atenciones_cardiologia (
   profesional_id   uuid not null references public.profesionales (id) on delete restrict,
   fecha            timestamptz not null default now(),
   datos_filiacion  jsonb not null,
-  metricas         jsonb,
   informe_borrador jsonb,
   created_at       timestamptz not null default now(),
   anamnesis_raw    text,
   diagnostico_raw  text,
-  indicaciones_raw text
+  indicaciones_raw text,
+  -- Examen clínico (Sprint 8, ver bloque de comentarios más abajo)
+  sensorio                       text,
+  mucosas                        text,
+  pulso_femoral                  text,
+  reflejo_tusigeno               text,
+  hidratacion                    text,
+  tllc                           text,
+  sucusion                       text,
+  auscultacion_pulmonar_patron   text,
+  auscultacion_pulmonar_amplitud text,
+  auscultacion_pulmonar_sltb     text,
+  fr_numero                      integer,
+  fr_tipo                        text,
+  auscultacion_cardiaca          jsonb,
+  fc_numero                      integer,
+  soplos                         jsonb,
+  pas                            integer,
+  pam                            integer,
+  pad                            integer
 );
 
 create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (mascota_id, fecha desc);
@@ -244,6 +262,36 @@ create index atenciones_cardiologia_profesional_id_idx on public.atenciones_card
 -- resumen que devuelve la IA. Todavía no las llena ningún nodo — falta editar
 -- "Insert Atención Cardiología" en n8n para incluirlas en el jsonBody (sin
 -- acceso a n8n desde este repo/sesión; ver STATUS.md).
+
+-- Examen clínico — Sprint 8, Prompt 1 (migración
+-- `sprint8_examen_clinico_atenciones`, 2026-09-23). Decisión cerrada: el
+-- examen vive en columnas de esta tabla (no tabla aparte, no jsonb único), así
+-- se persiste en el mismo INSERT que la atención (atómico, sin nodo n8n extra).
+-- Todas nullable y sin CHECK: los textos de los dropdowns se guardan tal cual
+-- los muestra el SPA (con tildes); null = no evaluado / no informado.
+--   - fc_numero (lpm) / fr_numero (por minuto): integer, sin CHECK.
+--   - fr_tipo: calificador de la FR (Polipnea, Eupneico, Distrés ...).
+--   - auscultacion_cardiaca: jsonb (admite más de un hallazgo). Queda vacía
+--     cuando hay soplos, salvo elección explícita del profesional.
+--   - soplos: jsonb, array de { momento, foco, intensidad } (N por atención).
+--     Formato en informe: "SOPLO [MOMENTO] [FOCO] [INTENSIDAD]".
+--   - pas / pam / pad (mmHg): integer, sin CHECK. Agregadas en el Prompt 2a
+--     (migración `sprint8_pa_columns_drop_metricas_updated_at`, 2026-09-23)
+--     para reemplazar la presión arterial que antes viajaba en `metricas`.
+-- Al 2026-09-23 ningún nodo n8n ni el SPA las llenan todavía (Prompts 2b/2c).
+--
+-- `metricas` (jsonb) ELIMINADA en el Prompt 2a (misma migración): n8n la armaba
+-- con la salida de la IA, no con lo que carga el profesional (hallazgo H2), y
+-- sus valores pasan a fc_numero/fr_numero/mucosas/pas/pam/pad. La tabla tenía 0
+-- filas, no hubo datos que migrar. OJO: el nodo n8n "Insert Atención
+-- Cardiología" del workflow `MYVETE - Ingesta` (lkOwTFmVTZu7EMoU, inactivo) y
+-- del backup CORE (5gGWXOjY2BBOAfuw, inactivo) todavía mandan `metricas` en el
+-- jsonBody: hasta el Prompt 2c, ese insert falla con PGRST204 (columna
+-- inexistente).
+--
+-- updated_at + trigger `atenciones_cardiologia_set_updated_at`: agregados en el
+-- Prompt 1 y eliminados en el Prompt 2a (decisión: no aportaba valor). La
+-- función public.set_updated_at() se conserva: la sigue usando profesionales.
 
 -- ---------------------------------------------------------------------------
 -- datos_ecocardiografia

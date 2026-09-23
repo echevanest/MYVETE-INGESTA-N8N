@@ -677,8 +677,9 @@ function leerMedicacion() {
 //     métricas de ecocardiograma viven ahora en la Sección 8
 //     (leerBloqueEcocardiografia → payload.datos_ecocardiografia) y las de
 //     electrocardiograma en leerBloqueEKG → payload.bloque_ekg. El viejo
-//     payload.bloque_metrico ya no se emite (n8n nunca lo consumió: la clave
-//     `metricas` de atenciones_cardiologia se arma con la salida de la IA).
+//     payload.bloque_metrico ya no se emite. La columna `metricas` de
+//     atenciones_cardiologia se eliminó en el Sprint 8 (Prompt 2a): las
+//     constantes viajan ahora en payload.examen_clinico (Sección 9).
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -703,17 +704,10 @@ function consolidarPayloadFinal() {
       },
       editado: bloqueFiliacionEditado,
     },
-    consulta: {
-      fc: document.getElementById('clinica-fc').value === '' ? null : Number(document.getElementById('clinica-fc').value),
-      fr: document.getElementById('clinica-fr').value === '' ? null : Number(document.getElementById('clinica-fr').value),
-      pas: document.getElementById('clinica-pas').value === '' ? null : Number(document.getElementById('clinica-pas').value),
-      pam: document.getElementById('clinica-pam').value === '' ? null : Number(document.getElementById('clinica-pam').value),
-      pad: document.getElementById('clinica-pad').value === '' ? null : Number(document.getElementById('clinica-pad').value),
-      mucosas: document.getElementById('clinica-mucosas').value,
-      anamnesis: document.getElementById('consulta-anamnesis').value.trim(),
-      diagnostico: document.getElementById('consulta-diagnostico').value.trim(),
-      indicaciones: document.getElementById('consulta-indicaciones').value.trim(),
-    },
+    // Consulta + examen clínico (Sprint 8.0). Reemplaza al viejo
+    // payload.consulta: n8n (Prompt 2c) mapea cada clave a su columna de
+    // atenciones_cardiologia. leerExamenClinico está en la Sección 9 (hoisted).
+    examen_clinico: leerExamenClinico(),
     medicacion: leerMedicacion(),
     // Bloque para la tabla Supabase `datos_ecocardiografia` (Sección 8). Objeto
     // con las 72 columnas (null las vacías) o null si no se cargó ningún dato;
@@ -1441,4 +1435,301 @@ if (btnExtraerEcoPdf) {
       escribirLog(`❌ Error al leer el PDF: ${error.message}`);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// 9. Examen clínico (Sprint 8.0, Prompt 2b — 2026-09-23)
+// ---------------------------------------------------------------------------
+// Fuente única de opciones y defaults del examen clínico. index.html solo trae
+// los <select data-catalogo="..."> vacíos; acá se llenan. Las opciones se
+// guardan TAL CUAL (con tildes) en las columnas text de atenciones_cardiologia,
+// así que corregir un texto después deja historial con el texto viejo.
+// Todos los selects llevan una opción vacía "—" (value ""), que viaja como null
+// y no se imprime en el informe. Los defaults son los del paciente típico de
+// consultorio (mayormente nervioso), no el estado normal.
+const CATALOGO_EXAMEN = {
+  fr_tipo: {
+    opciones: [
+      'Polipnea',
+      'Eupneico',
+      'Distrés respiratorio obstructivo leve',
+      'Distrés respiratorio obstructivo moderado',
+      'Distrés respiratorio leve',
+      'Distrés respiratorio moderado',
+      'Distrés respiratorio severo',
+    ],
+    default: 'Polipnea',
+  },
+  sensorio: {
+    opciones: [
+      'Excitación',
+      'Excitación y agresividad',
+      'Alerta',
+      'Alerta (relatan decaimiento leve)',
+      'Alerta (relatan decaimiento moderado)',
+      'Depresión leve',
+      'Depresión moderada',
+      'Estupor',
+      'Coma',
+    ],
+    default: 'Excitación',
+  },
+  mucosas: {
+    opciones: [
+      'Rosadas y húmedas',
+      'Rosadas y secas',
+      'Rosado pálido y húmedas',
+      'Rosado pálido y secas',
+      'Rosado intenso y húmedas',
+      'Rosado intenso y secas',
+      'Levemente cianóticas (lengua)',
+      'Francamente cianóticas',
+      'Ictéricas',
+    ],
+    default: 'Rosadas y húmedas',
+  },
+  pulso_femoral: {
+    opciones: [
+      'Imperceptible',
+      'Débil',
+      'Moderado. Coincidente con auscultación y sin déficit',
+      'Moderado. Coincidente con auscultación con déficit esporádico',
+      'Moderado. Coincidente con auscultación con déficit frecuente',
+      'Moderado. Coincidente con auscultación con déficit muy frecuente',
+      'Caótico',
+      'Hipercinético',
+    ],
+    default: 'Moderado. Coincidente con auscultación y sin déficit',
+  },
+  reflejo_tusigeno: {
+    opciones: ['Negativo', 'Levemente positivo', 'Francamente positivo', 'No provocado'],
+    default: 'No provocado',
+  },
+  hidratacion: {
+    opciones: [
+      'Normal',
+      'Déficit menor a 5 %',
+      'Déficit 5 %',
+      'Déficit 8 %',
+      'Déficit 10 a 12 %',
+      'Déficit mayor a 12 %',
+    ],
+    default: 'Normal',
+  },
+  tllc: {
+    opciones: ['Normal', 'Disminuido', 'Aumentado'],
+    default: '', // frecuentemente no se evalúa
+  },
+  sucusion: {
+    opciones: ['Positiva', 'Negativa', 'No evaluada'],
+    default: '',
+  },
+  auscultacion_pulmonar_patron: {
+    opciones: [
+      'Toraco-abdominal',
+      'Refuerzo abdominal',
+      'Francamente abdominal',
+      'Obstructivo inspiratorio',
+      'Obstructivo espiratorio',
+      'Restrictivo',
+    ],
+    default: 'Toraco-abdominal',
+  },
+  auscultacion_pulmonar_amplitud: {
+    opciones: ['Muy superficial', 'Superficial', 'Media', 'Profunda'],
+    default: 'Superficial',
+  },
+  auscultacion_pulmonar_sltb: {
+    opciones: ['Normal', 'Aumentado', 'Disminuido'],
+    default: 'Aumentado',
+  },
+};
+
+// Atributos de cada soplo. En el informe: "SOPLO [MOMENTO] [FOCO] [INTENSIDAD]".
+const CATALOGO_SOPLO = {
+  momento: {
+    opciones: ['Sistólico', 'Diastólico', 'Holosistólico', 'Continuo', 'Sistodiastólico / vaivén'],
+    default: 'Sistólico',
+  },
+  foco: {
+    opciones: [
+      'Mitral',
+      'Tricuspídeo',
+      'Aórtico',
+      'Pulmonar',
+      'Basal izquierdo',
+      'Basal derecho',
+      'Esternal izquierdo',
+      'Esternal derecho',
+    ],
+    default: 'Mitral',
+  },
+  intensidad: {
+    opciones: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6'],
+    default: '3/6',
+  },
+};
+
+// Auscultación cardíaca: selección múltiple; "Normal" es excluyente.
+const AUSC_CARDIACA_NORMAL = 'Normal';
+const OPCIONES_AUSC_CARDIACA = [
+  AUSC_CARDIACA_NORMAL,
+  'Refuerzo del segundo ruido',
+  'Desdoblamiento del segundo ruido',
+  'Cadencia con ritmo de galope',
+  'Sonidos cardíacos levemente apagados',
+  'Sonidos cardíacos francamente apagados',
+];
+
+function poblarSelect(select, { opciones, default: valorDefault }) {
+  select.innerHTML = '';
+  const vacia = document.createElement('option');
+  vacia.value = '';
+  vacia.textContent = '—';
+  select.appendChild(vacia);
+  opciones.forEach((texto) => {
+    const opcion = document.createElement('option');
+    opcion.value = texto;
+    opcion.textContent = texto;
+    select.appendChild(opcion);
+  });
+  select.value = valorDefault;
+}
+
+document.querySelectorAll('select[data-catalogo]').forEach((select) => {
+  const catalogo = CATALOGO_EXAMEN[select.dataset.catalogo];
+  if (catalogo) poblarSelect(select, catalogo);
+});
+
+// --- Auscultación cardíaca ---------------------------------------------------
+// Mientras el profesional no la toque, el campo sigue a los soplos: con soplos
+// cargados queda vacío; si se borran todos, vuelve a ["Normal"]. Una vez que
+// el profesional la toca a mano (elección adrede), deja de ajustarse sola.
+const grupoAuscCardiaca = document.getElementById('clinica-ausc-cardiaca');
+let auscCardiacaTocadaAMano = false;
+
+function checksAuscCardiaca() {
+  return grupoAuscCardiaca
+    ? Array.from(grupoAuscCardiaca.querySelectorAll('input[type="checkbox"]'))
+    : [];
+}
+
+function marcarAuscCardiaca(valores) {
+  checksAuscCardiaca().forEach((check) => {
+    check.checked = valores.includes(check.value);
+  });
+}
+
+if (grupoAuscCardiaca) {
+  OPCIONES_AUSC_CARDIACA.forEach((texto) => {
+    const label = document.createElement('label');
+    label.className = 'opcion-check';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.value = texto;
+    label.append(check, ` ${texto}`);
+    grupoAuscCardiaca.appendChild(label);
+  });
+
+  grupoAuscCardiaca.addEventListener('change', (evento) => {
+    const check = evento.target;
+    auscCardiacaTocadaAMano = true;
+    if (!check.checked) return;
+    // Marcar "Normal" desmarca el resto; marcar otra desmarca "Normal".
+    checksAuscCardiaca().forEach((otro) => {
+      if (otro === check) return;
+      if (check.value === AUSC_CARDIACA_NORMAL || otro.value === AUSC_CARDIACA_NORMAL) otro.checked = false;
+    });
+  });
+
+  marcarAuscCardiaca([AUSC_CARDIACA_NORMAL]);
+}
+
+// --- Soplos ------------------------------------------------------------------
+const listaSoplos = document.getElementById('lista-soplos');
+const plantillaFilaSoplo = document.getElementById('plantilla-fila-soplo');
+const btnAgregarSoplo = document.getElementById('btn-agregar-soplo');
+
+// Renglones con al menos un atributo cargado; los totalmente vacíos no cuentan
+// (ni para la regla de auscultación ni para el payload). `orden` = posición
+// entre los renglones que sí se envían.
+function leerSoplos() {
+  if (!listaSoplos) return [];
+  return Array.from(listaSoplos.querySelectorAll('.fila-soplo'))
+    .map((fila) => {
+      const valor = (clave) => fila.querySelector(`[data-soplo="${clave}"]`).value || null;
+      return { momento: valor('momento'), foco: valor('foco'), intensidad: valor('intensidad') };
+    })
+    .filter((soplo) => soplo.momento || soplo.foco || soplo.intensidad)
+    .map((soplo, orden) => ({ ...soplo, orden }));
+}
+
+function sincronizarAuscCardiacaConSoplos() {
+  if (auscCardiacaTocadaAMano) return;
+  marcarAuscCardiaca(leerSoplos().length ? [] : [AUSC_CARDIACA_NORMAL]);
+}
+
+function crearFilaSoplo() {
+  const fila = plantillaFilaSoplo.content.firstElementChild.cloneNode(true);
+  fila.querySelectorAll('select[data-soplo]').forEach((select) => {
+    poblarSelect(select, CATALOGO_SOPLO[select.dataset.soplo]);
+  });
+  fila.addEventListener('change', sincronizarAuscCardiacaConSoplos);
+  fila.querySelector('.btn-eliminar-soplo').addEventListener('click', () => {
+    fila.remove();
+    sincronizarAuscCardiacaConSoplos();
+  });
+  return fila;
+}
+
+if (btnAgregarSoplo && listaSoplos && plantillaFilaSoplo) {
+  btnAgregarSoplo.addEventListener('click', () => {
+    const fila = crearFilaSoplo();
+    listaSoplos.appendChild(fila);
+    sincronizarAuscCardiacaConSoplos();
+    fila.querySelector('select').focus();
+  });
+}
+
+// --- Lectura para el payload -------------------------------------------------
+// Los números son integer en Supabase: se redondean (un 120.5 rompería el
+// insert) y vacío / inválido viaja como null. Los textos vacíos también.
+function leerEntero(idCampo) {
+  const campo = document.getElementById(idCampo);
+  if (!campo || campo.value === '') return null;
+  const numero = Number(campo.value);
+  return Number.isFinite(numero) ? Math.round(numero) : null;
+}
+
+function leerTexto(idCampo) {
+  const campo = document.getElementById(idCampo);
+  const valor = campo ? campo.value.trim() : '';
+  return valor === '' ? null : valor;
+}
+
+function leerExamenClinico() {
+  return {
+    motivo: leerTexto('consulta-motivo'),
+    anamnesis: leerTexto('consulta-anamnesis'),
+    fc_numero: leerEntero('clinica-fc'),
+    soplos: leerSoplos(),
+    fr_numero: leerEntero('clinica-fr'),
+    fr_tipo: leerTexto('clinica-fr-tipo'),
+    sensorio: leerTexto('clinica-sensorio'),
+    mucosas: leerTexto('clinica-mucosas'),
+    pulso_femoral: leerTexto('clinica-pulso-femoral'),
+    reflejo_tusigeno: leerTexto('clinica-reflejo-tusigeno'),
+    hidratacion: leerTexto('clinica-hidratacion'),
+    tllc: leerTexto('clinica-tllc'),
+    sucusion: leerTexto('clinica-sucusion'),
+    auscultacion_pulmonar_patron: leerTexto('clinica-ausc-pulmonar-patron'),
+    auscultacion_pulmonar_amplitud: leerTexto('clinica-ausc-pulmonar-amplitud'),
+    auscultacion_pulmonar_sltb: leerTexto('clinica-ausc-pulmonar-sltb'),
+    auscultacion_cardiaca: checksAuscCardiaca().filter((check) => check.checked).map((check) => check.value),
+    pas: leerEntero('clinica-pas'),
+    pam: leerEntero('clinica-pam'),
+    pad: leerEntero('clinica-pad'),
+    diagnostico: leerTexto('consulta-diagnostico'),
+    indicaciones: leerTexto('consulta-indicaciones'),
+  };
 }

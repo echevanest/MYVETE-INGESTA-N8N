@@ -114,14 +114,18 @@
       </li>
     </template>
 
-    <!-- Texto clínico de la consulta de hoy (Sección 2.3).
-         El bloque "consulta" del payload de salida mantiene la forma ya fijada en
-         CONTRATO-DE-DATOS-V2.7.md, Sección 2 (anamnesis / diagnostico / indicaciones),
-         con "constantes" agregado como sub-objeto (resolución del 2026-07-16).
-         "consulta-motivo" es ayuda visual para el médico: no tiene lugar en ese
-         contrato todavía, así que no se incluye en el payload (ver app.js). -->
+    <!-- Consulta y examen clínico (Sprint 8.0, Prompt 2b — 2026-09-23).
+         Bloque ÚNICO, siempre visible: unifica la vieja "Consulta de hoy" con el
+         examen clínico completo, en el orden clínico fijado (21 ítems; 16, 17 y 21
+         quedan reservados). Todo viaja en `payload.examen_clinico` (ver app.js
+         Sección 5); cada campo tiene su columna en atenciones_cardiologia.
+         Las opciones y defaults de los <select> NO están acá: los genera app.js
+         (Sección 9, CATALOGO_EXAMEN) para tener una sola fuente de verdad. Todos
+         los campos son opcionales; la opción vacía "—" viaja como null y no se
+         imprime en el informe. Los defaults reflejan al paciente típico de
+         consultorio (mayormente nervioso), no el estado normal. -->
     <section id="bloque-texto-clinico">
-      <h2>Consulta de hoy</h2>
+      <h2>Consulta y examen clínico</h2>
 
       <!-- Perfiles clínicos por especie (INFORME_CODE Sección B, 28/07/2026).
            Combina PERFILES_BASE (app.js) con los perfiles personalizados guardados
@@ -141,42 +145,104 @@
         </div>
       </div>
 
+      <!-- 1. Motivo de la consulta -->
       <label class="campo-label campo-ancho">
         Motivo de la consulta
         <input type="text" id="consulta-motivo" class="input-control" placeholder="Ej: Control cardiológico por tos nocturna" />
       </label>
 
+      <!-- 2. Anamnesis y examen físico — dictado por voz (Web Speech API nativa,
+           sin librerías): cada botón .btn-dictado concatena el texto dictado al
+           final del campo indicado en data-target, sin borrar lo ya escrito. Solo
+           un campo puede estar "escuchando" a la vez (app.js Sección 7). -->
+      <label class="campo-label campo-ancho">
+        Anamnesis y examen físico
+        <div class="campo-con-dictado">
+          <textarea id="consulta-anamnesis" class="textarea-control" rows="4" placeholder="Paciente con tos nocturna de 2 semanas de evolución..."></textarea>
+          <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-anamnesis">🎙️ Dictar</button>
+        </div>
+      </label>
+
+      <!-- 3. FC + soplos. Los ids clinica-fc / clinica-fr se conservan porque los
+           usan los perfiles clínicos (CAMPOS_PERFIL en app.js). Los renglones de
+           soplo los arma app.js (Sección 9) desde #plantilla-fila-soplo. -->
       <div class="grid-constantes">
         <label class="campo-label">
           Frecuencia cardíaca (lpm)
-          <input type="number" id="clinica-fc" class="input-control" placeholder="Ej: 120" />
+          <input type="number" id="clinica-fc" class="input-control" value="120" min="0" step="1" inputmode="numeric" />
         </label>
+      </div>
+      <div class="campo-ancho bloque-soplos">
+        <span class="campo-label">Soplos</span>
+        <ul id="lista-soplos" class="lista-soplos"></ul>
+        <button type="button" id="btn-agregar-soplo" class="btn btn-secundario">+ Agregar soplo</button>
+      </div>
+
+      <!-- 4. FR + tipo -->
+      <div class="grid-constantes">
         <label class="campo-label">
           Frecuencia respiratoria (rpm)
-          <input type="number" id="clinica-fr" class="input-control" placeholder="Ej: 24" />
+          <input type="number" id="clinica-fr" class="input-control" value="20" min="0" step="1" inputmode="numeric" />
         </label>
         <label class="campo-label">
-          Presión arterial sistólica — PAS (mmHg)
-          <input type="number" id="clinica-pas" class="input-control" placeholder="Ej: 120" />
+          Tipo de respiración
+          <select id="clinica-fr-tipo" class="input-control" data-catalogo="fr_tipo"></select>
         </label>
+      </div>
+
+      <!-- 5 a 14. Dropdowns del examen clínico (opciones y defaults en app.js). -->
+      <div class="grid-constantes">
         <label class="campo-label">
-          Presión arterial media — PAM (mmHg)
-          <input type="number" id="clinica-pam" class="input-control" placeholder="Ej: 90" />
-        </label>
-        <label class="campo-label">
-          Presión arterial diastólica — PAD (mmHg)
-          <input type="number" id="clinica-pad" class="input-control" placeholder="Ej: 70" />
+          Sensorio
+          <select id="clinica-sensorio" class="input-control" data-catalogo="sensorio"></select>
         </label>
         <label class="campo-label">
           Mucosas
-          <select id="clinica-mucosas" class="input-control">
-            <option value="rosadas">Rosadas / Normales</option>
-            <option value="palidas">Pálidas</option>
-            <option value="congestivas">Congestivas</option>
-            <option value="cianoticas">Cianóticas</option>
-          </select>
+          <select id="clinica-mucosas" class="input-control" data-catalogo="mucosas"></select>
+        </label>
+        <label class="campo-label">
+          Pulso femoral
+          <select id="clinica-pulso-femoral" class="input-control" data-catalogo="pulso_femoral"></select>
+        </label>
+        <label class="campo-label">
+          Reflejo tusígeno
+          <select id="clinica-reflejo-tusigeno" class="input-control" data-catalogo="reflejo_tusigeno"></select>
+        </label>
+        <label class="campo-label">
+          Hidratación
+          <select id="clinica-hidratacion" class="input-control" data-catalogo="hidratacion"></select>
+        </label>
+        <label class="campo-label">
+          TLLC
+          <select id="clinica-tllc" class="input-control" data-catalogo="tllc"></select>
+        </label>
+        <label class="campo-label">
+          Sucusión
+          <select id="clinica-sucusion" class="input-control" data-catalogo="sucusion"></select>
+        </label>
+        <label class="campo-label">
+          Auscultación pulmonar — Patrón
+          <select id="clinica-ausc-pulmonar-patron" class="input-control" data-catalogo="auscultacion_pulmonar_patron"></select>
+        </label>
+        <label class="campo-label">
+          Auscultación pulmonar — Amplitud
+          <select id="clinica-ausc-pulmonar-amplitud" class="input-control" data-catalogo="auscultacion_pulmonar_amplitud"></select>
+        </label>
+        <label class="campo-label">
+          Auscultación pulmonar — SLTB
+          <select id="clinica-ausc-pulmonar-sltb" class="input-control" data-catalogo="auscultacion_pulmonar_sltb"></select>
         </label>
       </div>
+
+      <!-- 15. Auscultación cardíaca — selección múltiple. "Normal" es excluyente
+           con el resto; si hay soplos arranca vacía (reglas en app.js Sección 9). -->
+      <fieldset id="clinica-ausc-cardiaca" class="campo-ancho grupo-checks">
+        <legend class="campo-label">Auscultación cardíaca</legend>
+      </fieldset>
+
+      <!-- 16. [RESERVADO] Imágenes de eco / Doppler — no implementado todavía. -->
+      <!-- 17. [RESERVADO] Trazado de ECG — no implementado todavía. -->
+      <p class="placeholder-reservado">Reservado: imágenes de eco/Doppler y trazado de ECG (próximos sprints).</p>
 
       <!-- Datos Ecocardiográficos + Electrocardiograma — bloque ÚNICO de
            estudios complementarios (unificado el 2026-09-08: absorbió el viejo
@@ -441,18 +507,23 @@
         </label>
       </details>
 
-      <!-- Dictado por voz (Web Speech API nativa, sin librerías): cada botón
-           .btn-dictado agrega a #app.js el reconocimiento en español que concatena
-           el texto dictado al final del campo indicado en data-target, sin borrar
-           lo ya escrito. Solo un campo puede estar "escuchando" a la vez. -->
-      <label class="campo-label campo-ancho">
-        Anamnesis y examen físico
-        <div class="campo-con-dictado">
-          <textarea id="consulta-anamnesis" class="textarea-control" rows="4" placeholder="Soplo holosistólico mitral grado IV/VI, pulso femoral concordante y simétrico..."></textarea>
-          <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-anamnesis">🎙️ Dictar</button>
-        </div>
-      </label>
+      <!-- 18. Presión arterial — sin default, se carga a mano. -->
+      <div class="grid-constantes">
+        <label class="campo-label">
+          PAS (mmHg)
+          <input type="number" id="clinica-pas" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 120" />
+        </label>
+        <label class="campo-label">
+          PAM (mmHg)
+          <input type="number" id="clinica-pam" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 90" />
+        </label>
+        <label class="campo-label">
+          PAD (mmHg)
+          <input type="number" id="clinica-pad" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 70" />
+        </label>
+      </div>
 
+      <!-- 19. Diagnóstico -->
       <label class="campo-label campo-ancho">
         Diagnóstico
         <div class="campo-con-dictado">
@@ -461,6 +532,7 @@
         </div>
       </label>
 
+      <!-- 20. Indicaciones -->
       <label class="campo-label campo-ancho">
         Indicaciones
         <div class="campo-con-dictado">
@@ -468,7 +540,30 @@
           <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-indicaciones">🎙️ Dictar</button>
         </div>
       </label>
+
+      <!-- 21. [RESERVADO] Fotos del ecocardiograma — no implementado todavía. -->
+      <p class="placeholder-reservado">Reservado: fotos del ecocardiograma (próximos sprints).</p>
     </section>
+
+    <!-- Renglón de soplo — clonado por app.js (Sección 9). Los <select> se llenan
+         desde CATALOGO_SOPLO; el orden de los renglones define `orden`. -->
+    <template id="plantilla-fila-soplo">
+      <li class="fila-soplo">
+        <label class="campo-label">
+          Momento
+          <select class="input-control" data-soplo="momento"></select>
+        </label>
+        <label class="campo-label">
+          Foco
+          <select class="input-control" data-soplo="foco"></select>
+        </label>
+        <label class="campo-label">
+          Intensidad
+          <select class="input-control" data-soplo="intensidad"></select>
+        </label>
+        <button type="button" class="btn-icono btn-eliminar-soplo" title="Eliminar soplo" aria-label="Eliminar soplo">🗑️</button>
+      </li>
+    </template>
 
     <!-- Envío del payload hacia n8n (Sección 2.3) -->
     <footer>
