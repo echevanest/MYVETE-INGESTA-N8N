@@ -743,3 +743,43 @@ PRUEBA E — E2E real con identificación de profesional (2026-09-22):
 
 ================================================================================
 12. DECISIONES DE DISEÑO Y COMPLICACIONES RESUELTAS
+================================================================================
+
+Las decisiones de diseño del Sprint 8.0 y las complicaciones resueltas
+durante el desarrollo están documentadas en:
+  - AUDITORIA-SPRINT-8.md — hallazgos de las auditorías previas al
+    Sprint 8 y decisiones derivadas.
+  - SPRINT-08-ESTADO.md — estado del Sprint 8.0 (implementado y
+    pendiente).
+
+
+================================================================================
+13. SPRINT 7 — IDENTIFICACIÓN DE PROFESIONAL
+================================================================================
+
+El Sprint 7 (Identificación de Profesional) está documentado en:
+  - SPRINT 7 — IDENTIFICACIÓN DE PROFESIONAL.md — plan y detalle del
+    sprint.
+  - STATUS.md — Sección K, estado del Sprint 7 (cerrado).
+
+
+================================================================================
+14. PENDIENTES CONOCIDOS Y SPRINTS PLANIFICADOS
+================================================================================
+
+El roadmap de sprints (7 a 14) y los pendientes conocidos están
+documentados en:
+  - SPRINTS — ETAPA POSTERIOR A COMPROBACIÓN DE FUNCIÓN CORRECTA DE
+    PROTOTIPO 2.md — maestro de sprints.
+  - SPRINT 8 — *.md a SPRINT 14 — *.md — documentos individuales de
+    cada sprint.
+
+
+================================================================================
+15. APÉNDICES
+================================================================================
+
+Los apéndices (glosario, detalles técnicos menores, convenciones) están
+en el manual v2.0:
+  - MYVETE — SISTEMA DE INGESTA DE INFORMES CARDIOLÓGICOS
+    VETERINARIOS.md — manual v2.0, conservado como referencia.
