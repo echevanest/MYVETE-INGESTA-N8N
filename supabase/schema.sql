@@ -239,7 +239,21 @@ create table public.atenciones_cardiologia (
   soplos                         jsonb,
   pas                            integer,
   pam                            integer,
-  pad                            integer
+  pad                            integer,
+  -- Interpretación diagnóstica (Sub-fase 8.7a, ver bloque de comentarios más abajo)
+  acvim_estadio                  text,
+  mine2_puntaje                  integer,
+  mine2_clasificacion            text,
+  hp_clasificacion               text,
+  -- 8.7a-bis
+  acvim_origen                   text,
+  hp_sospecha                    boolean,
+  hp_signos                      jsonb,
+  hp_n_sitios                    smallint,
+  clasificacion_advertencias     jsonb,
+  morfo_aortica                  text,
+  morfo_pulmonar                 text,
+  eco_pulmonar_hallazgos         jsonb
 );
 
 create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (mascota_id, fecha desc);
@@ -293,6 +307,30 @@ create index atenciones_cardiologia_profesional_id_idx on public.atenciones_card
 -- Prompt 1 y eliminados en el Prompt 2a (decisión: no aportaba valor). La
 -- función public.set_updated_at() se conserva: la sigue usando profesionales.
 
+-- Interpretación diagnóstica — Sub-fase 8.7a (migración
+-- `sprint87a_clasificaciones_a_atenciones`, 2026-09-28). Decisión cerrada: las
+-- clasificaciones (ACVIM, MINE 2, HP) son de la atención, no de la tabla de
+-- medidas; los índices calculados siguen en datos_ecocardiografia. Criterios:
+-- `CRITERIOS DE CLASIFICACION.md`. Todas nullable, sin CHECK hasta que el SPA
+-- (8.7b) fije los valores. mine2_puntaje pasa a integer (suma de puntos, 3–11).
+-- hp_gradiente NO se movió: duplicaba gp_tricuspideo (se elimina). Las columnas
+-- equivalentes de datos_ecocardiografia quedan DEPRECADAS (no se borran hasta
+-- que 8.7b deje de enviarlas). Ningún nodo n8n ni el SPA las llenan todavía.
+--
+-- 8.7a-bis (migración `sprint87a_bis_columnas_interpretacion`, 2026-09-28),
+-- también sin CHECK (valores en CRITERIOS §0.5, §1.4, §3, §4):
+--   - acvim_origen: 'calculado' | 'manual'.
+--   - hp_sospecha / hp_signos (jsonb, signos visuales por sitio: true/false,
+--     ausente = no evaluado) / hp_n_sitios (0–3).
+--   - clasificacion_advertencias (jsonb): faltantes y advertencias por
+--     clasificación. Solo para el SPA; el informe PDF no las muestra.
+--   - morfo_aortica / morfo_pulmonar: texto del dropdown del SPA.
+--   - eco_pulmonar_hallazgos (jsonb): array de hallazgos de ecografía
+--     pulmonar (selección múltiple); base del prellenado ACVIM C.
+create index idx_atenciones_acvim     on public.atenciones_cardiologia (acvim_estadio);
+create index idx_atenciones_mine2_clas on public.atenciones_cardiologia (mine2_clasificacion);
+create index idx_atenciones_hp_clas    on public.atenciones_cardiologia (hp_clasificacion);
+
 -- ---------------------------------------------------------------------------
 -- datos_ecocardiografia
 -- ---------------------------------------------------------------------------
@@ -309,7 +347,9 @@ create index atenciones_cardiologia_profesional_id_idx on public.atenciones_card
 -- ~72 columnas de datos (todas nullable), casi todas `numeric` sin unidad
 -- declarada. Convención de unidades fijada del lado del SPA (interface/app.js
 -- Sección 8, y este comentario): lineales en cm, fracciones en %, velocidades
--- en m/s. Las 7 columnas `text`: efusion_pericardica, efusion_pleural,
+-- en m/s — OJO: decisión 8.7 (2026-09-28): TODAS las velocidades pasan a cm/s
+-- (MINE 2 y HP convierten a m/s solo para calcular); rige cuando 8.7b cambie el
+-- SPA. La tabla tenía 0 filas, no hubo datos que convertir. Las 7 columnas `text`: efusion_pericardica, efusion_pleural,
 -- patron_llenado_vi, observaciones, acvim_estadio, mine2_clasificacion,
 -- hp_clasificacion.
 create table public.datos_ecocardiografia (
@@ -338,7 +378,14 @@ create table public.datos_ecocardiografia (
   velocidad_e_tricuspideo numeric, velocidad_a_tricuspideo numeric, relacion_ea_tricuspideo numeric,
   -- Función longitudinal / atrial / derecho
   mapse numeric, tapse numeric, fa_atrial numeric,
+  -- ao_ap = Ao/AP (TP/Ao = 1/ao_ap), vp_ap = VP/AP, dapd = RPAD (%),
+  -- dvccd = DVCCd (semántica confirmada por Marcelo, 2026-09-28).
   vp_ap numeric, ao_ap numeric, dapd numeric, dvccd numeric,
+  -- 8.7a-bis (2026-09-28): flujo pulmonar y VD. at/et en ms; vel_regurg_pulmonar
+  -- en cm/s; dvdd/dvds/plvdd/plvds en mm (excepción a la convención de cm).
+  at_pulmonar numeric, et_pulmonar numeric, at_et_pulmonar numeric,
+  vel_regurg_pulmonar numeric,
+  dvdd numeric, dvds numeric, plvdd numeric, plvds numeric,
   -- Efusiones / patrón (text)
   efusion_pericardica text, efusion_pleural text, patron_llenado_vi text, observaciones text,
   -- Indexados a superficie corporal / peso
@@ -348,7 +395,10 @@ create table public.datos_ecocardiografia (
   volumen_fdi_indexado numeric, volumen_fsi_indexado numeric, volumen_si_indexado numeric,
   gasto_cardiaco_indexado numeric,
   volumen_vi_fd_indexado numeric, volumen_vi_fs_indexado numeric,
-  -- Clasificación / scores
+  -- Clasificación / scores — DEPRECADAS 8.7a (2026-09-28): movidas a
+  -- atenciones_cardiologia (hp_gradiente no se movió: duplicaba gp_tricuspideo).
+  -- Se eliminan, con sus índices, cuando 8.7b deje de enviarlas. Marcadas
+  -- también con COMMENT ON COLUMN en la base.
   acvim_estadio text, mine2_puntaje numeric, mine2_clasificacion text,
   hp_gradiente numeric, hp_clasificacion text
 );
