@@ -6,6 +6,10 @@ node_modules/
 # Contiene informes clínicos reales de pacientes — nunca indexar (27/07/2026)
 MODELOS DE INFORMES/
 
+# PDFs reales de ecógrafos (fixtures del parser de eco) — datos de pacientes,
+# nunca versionar (25/09/2026). Formatos documentados en FORMATOS-ECO.md.
+INFORMES DE EQUIPOS/
+
 # Credenciales/secretos locales — nunca versionar (25/08/2026)
 .secrets/
 
