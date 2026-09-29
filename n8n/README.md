@@ -15,6 +15,20 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
 
+### `MYVETE - Ingesta` — Sub-fase 8.7c (2026-09-29)
+
+Interpretación diagnóstica (la calcula el SPA desde 8.7b, ver `CRITERIOS DE CLASIFICACION.md`). `PUT /workflows/lkOwTFmVTZu7EMoU`, **sin activar**. El prompt original apuntaba a `5gGWXOjY2BBOAfuw`, pero ese es el backup CORE ("NO TOCAR") y no tiene el nodo "Preparar Datos para PDF"; los backups `workflow_B.*` siempre fueron de `lkOwTFmVTZu7EMoU`. Solo se tocaron 2 nodos (conexiones sin cambios):
+
+*   **Insert Atención Cardiología:** suma 12 columnas desde `body.examen_clinico` (37 en total): `acvim_estadio`, `acvim_origen`, `mine2_puntaje` (integer o null), `mine2_clasificacion`, `hp_clasificacion`, `hp_sospecha` (boolean o null), `hp_signos` y `clasificacion_advertencias` (objeto o null), `hp_n_sitios` (integer o null), `morfo_aortica`, `morfo_pulmonar`, `eco_pulmonar_hallazgos` (array o null).
+*   **Preparar Datos para PDF:**
+    *   "SCORES / CLASIFICACION" se reemplaza por **INTERPRETACIÓN DIAGNÓSTICA**: estadio ACVIM (+ "indicado por el profesional" solo si `acvim_origen = 'manual'`), MINE 2 `n/11 - severidad` (+ "B2 avanzado"), HP (probabilidad, TRV y sitios; **no se informa** si `hp_sospecha` no es `true`), relación DVD/DVI sin unidad y morfologías aórtica y pulmonar.
+    *   Sección nueva **ECOGRAFÍA PULMONAR** (solo si `eco_pulmonar_hallazgos` trae hallazgos).
+    *   No se muestran disclaimers, `clasificacion_advertencias` ni el origen del valor.
+    *   `obtenerUnidad`: todas las velocidades en cm/s, AT/ET en ms, VD en mm; sin `hp_gradiente`. Etiquetas nuevas: TRV, gradiente tricuspídeo, AT, ET, AT:ET, Vel. RP, DVDd, DVDs, PLVDd, PLVDs, Ao/AP, VP/AP, RPAD, DVCCd.
+*   **Insert Datos Ecocardiografía:** sin cambios (verificado en vivo: reenvía el objeto entero con `Object.assign`).
+*   **Verificación:** los 2 nodos se probaron localmente con un payload real del SPA (generado en jsdom) y la versión viva se releyó por API: idéntica a la probada.
+*   **Backups:** `workflow_B.pre-8.7c.json` (antes del PUT) y `workflow_B.post-8.7c.json` (vivo después del PUT). Sin secretos.
+
 ### `MYVETE - Ingesta` — Sprint 8.0, Prompt 2c (2026-09-23)
 
 Adaptado al payload nuevo del SPA (`body.examen_clinico`, ver `SPRINT-08-ESTADO.md`). Cambio vía `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 40), **sin activar ni publicar**. Solo se tocaron 3 nodos:
