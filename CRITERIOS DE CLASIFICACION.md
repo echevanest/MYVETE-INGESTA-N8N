@@ -1,6 +1,6 @@
 # CRITERIOS DE CLASIFICACIÓN — MyVete
 
-Versión 1.3 — 2026-09-29.
+Versión 1.4 — 2026-09-29.
 - v1.1: corrección de la v1.0 tras la auditoría de la Sub-fase 8.7 (errores
   E3–E13, decisiones de Marcelo P2–P8).
 - v1.2: respuestas de Marcelo a las preguntas de la v1.1 (velocidades en cm/s,
@@ -11,6 +11,9 @@ Versión 1.3 — 2026-09-29.
   "hemitórax"; P4 sección "Corazón derecho" y cálculo del VD; P5 prellenado
   siempre presente, con casilla en el disclaimer; P7 prellenado coherente de
   MINE 2 y HP; P8 "2 de 3" = sitios; relación DVD/DVI).
+- v1.4: respuestas de Marcelo a las preguntas de la v1.3 (historial vía
+  n8n; DVD/DVI con corte único 0.7 que dispara alerta; coherencia de MINE 2
+  = promedio redondeado hacia arriba; ascitis desde la anamnesis).
 
 **Principio general (v1.3):** el SPA **siempre propone un valor** y el
 profesional corrige. No se busca perfección: es una sugerencia.
@@ -54,6 +57,10 @@ propone un valor, en este orden:
 2. **Última consulta**: falta algún dato → se toma el valor de la última
    consulta del paciente (ej.: era ACVIM B2 y falta LVIDDN → queda B2).
    **Prima la última consulta** sobre cualquier estimación.
+   - **Fuente (v1.4):** un webhook nuevo de n8n que devuelve la última
+     consulta del paciente. Ese webhook queda **fuera de 8.7b**. Las
+     funciones reciben `ctx.historial`, que **puede venir `null`**: en ese
+     caso se salta este paso y se va directo a "estimado".
 3. **Estimado**: no hay última consulta → el valor más probable con lo que
    hay (orientación parcial; ACVIM C: 1.4; HP: 3.1).
 
@@ -184,7 +191,7 @@ Si alguno no se cumple → B1.
 | 1 | Botón rápido de perfil | Perfil aplicado (`PERFILES_BASE` / perfiles guardados) | Existe el botón; **falta** un perfil de ICC que marque "sugiere C" |
 | 2 | Tos (no excluyente) | — | **Sin campo estructurado** (hoy solo en `anamnesis` texto libre) |
 | 3 | Taquipnea o distrés respiratorio | `fr` (frecuencia respiratoria) | Existe `fr`; **umbral de taquipnea pendiente**. Distrés: sin campo |
-| 4 | Colectas pleurales o abdominales asociadas a la cardiopatía | `efusion_pleural` (eco) | Pleural existe; **abdominal (ascitis) sin campo** |
+| 4 | Colectas pleurales o abdominales asociadas a la cardiopatía | `efusion_pleural` (eco) | Pleural existe; ascitis **desde la anamnesis** (1.4, v1.4) |
 | 5 | Ecografía pulmonar | `eco_pulmonar_hallazgos` (§5): hallazgos 1–7 | Existe (8.7a-bis). El 8 (nódulo) no suma |
 | 6 | Valores predictores de alta probabilidad de edema | Medidas de `datos_ecocardiografia` | **Pendiente:** qué variables y qué umbrales |
 
@@ -193,8 +200,13 @@ Si alguno no se cumple → B1.
   prellena **C**. Si no → el estadio más probable según los criterios
   ecográficos (1.3). **Si hay duda, el SPA elige el estadio más
   coincidente.** La regla va en una constante única, fácil de ajustar.
-  - Colecta pleural = `efusion_pleural` cargado. Ascitis: **sin campo**
-    todavía (§7); hasta que exista, no suma.
+  - Colecta pleural = `efusion_pleural` cargado.
+  - **Ascitis: se lee de la anamnesis** (v1.4; no se agrega columna). El
+    SPA busca en el texto de la anamnesis `ascitis`, `efusión abdominal`,
+    `efusion abdominal` o `líquido libre abdominal` (sin distinguir
+    mayúsculas ni tildes), y descarta la mención si en las 3 palabras
+    previas aparece `sin`, `no`, `niega` o `descarta`. Es una sugerencia: el
+    profesional corrige con el selector.
   - Los signos clínicos 1–4 de la tabla (perfil, tos, taquipnea, distrés)
     se muestran como apoyo, pero **no disparan C por sí solos** mientras no
     tengan campo y umbral (§7).
@@ -270,14 +282,11 @@ son los de la última consulta. Sin última consulta (**P7**, `origen =
 'estimado'`):
 
 - la variable faltante se puntúa **en coherencia con las disponibles**:
-  recibe el mismo puntaje que las variables presentes (si hay dos con
-  distinto puntaje, el promedio redondeado hacia arriba, sin superar el
-  máximo de la variable: 4 para LA/Ao y LVIDDn, 3 para E-vel);
-- si los disponibles son graves, el faltante también;
+  **promedio de los puntajes presentes, redondeado hacia arriba** (v1.4,
+  confirmado; ej.: 3 y 2 → el faltante recibe 3), sin superar el máximo de
+  la variable (4 para LA/Ao y LVIDDn, 3 para E-vel);
+- si los disponibles son graves, el faltante también (sale del promedio);
 - si no hay otra forma (ninguna variable disponible) → **1 punto**.
-
-(La fórmula del promedio es la implementación propuesta de "coherencia";
-confirmar.)
 
 ---
 
@@ -303,8 +312,9 @@ hypertension in dogs).
   - el SPA detecta un **signo de alerta numérico**: TRV > 3.0 m/s, o
     cualquier umbral numérico del sitio 2 de 3.3 (TP/Ao > 1.0, vel.
     regurgitación pulmonar > 250 cm/s, RPAD < 30 %, AT < 58 ms,
-    AT:ET < 0.30). Los parámetros del VD **no disparan alerta** hasta que
-    tengan umbrales (3.3, sitio 1).
+    AT:ET < 0.30), o **DVD/DVI ≥ 0.70** (3.3, sitio 1; v1.4). Los
+    parámetros absolutos del VD (DVDd, DVDs, PLVDd, PLVDs) **no disparan
+    alerta** hasta que tengan umbrales.
 - El profesional puede:
   - **deshabilitar toda la sección** → `hp_sospecha = false`, HP = `null`,
     aunque haya alertas;
@@ -370,21 +380,24 @@ mm (0.3). **PENDIENTE: umbrales absolutos** de DVDd/DVDs/PLVDd/PLVDs. Van en
 una constante vacía, lista para completarse; hasta entonces no disparan la
 alerta de 3.1.
 
-**Relación DVD/DVI** (decisión de Marcelo, 2026-09-29). Se calcula en
-diástole: `DVD/DVI = dvdd (mm) / (dvid (cm) × 10)`, redondeado a 2
-decimales (`dvid` está en cm y `dvdd` en mm: hay que convertir).
+**Relación DVD/DVI** (decisión de Marcelo, v1.4; reemplaza la tabla de
+tercios de la v1.3). Se calcula en diástole:
+`DVD/DVI = dvdd (mm) / (dvid (cm) × 10)`, redondeado a 2 decimales (`dvid`
+está en cm y `dvdd` en mm: hay que convertir).
 
-| DVD/DVI | Interpretación | Signo "Hipertrofia y/o dilatación del VD" |
-|---------|----------------|-------------------------------------------|
-| < 0.33 | Por debajo de lo normal | No cuenta |
-| ≥ 0.33 y ≤ 0.50 | Normal (1/3 – 1/2) | No cuenta |
-| > 0.50 y < 1.00 | **Zona gris** (Marcelo no la definió) | No cuenta (propuesta; confirmar) |
-| = 1.00 | Sospecha | Cuenta (sitio 1) |
-| > 1.00 | Sobrecarga del VD | Cuenta (sitio 1) |
+| DVD/DVI | Interpretación | Efecto |
+|---------|----------------|--------|
+| < 0.70 | Normal | No cuenta |
+| ≥ 0.70 | Sobrecarga sospechosa | **Signo del sitio 1** ("Hipertrofia y/o dilatación del VD") + **advertencia** en pantalla ("DVD/DVI ≥ 0.70: sobrecarga del VD sospechosa") + **alerta** que habilita "Corazón derecho" (3.1) |
 
-Con redondeo a 2 decimales, "= 1" es exactamente 1.00. DVD/DVI ≥ 1.00 **no**
-dispara la alerta de 3.1 (la alerta es solo de TRV y del sitio 2), salvo que
-se decida lo contrario (§7).
+- Es un signo numérico: cuenta aunque el signo visual no se haya marcado,
+  salvo que el profesional lo deshabilite (`sitio1.dvd_dvi` en
+  `hp_signos.deshabilitados`).
+- Faltan `dvdd` o `dvid` → no se calcula; `dvdd` entra al disclaimer con
+  casilla en mm (0.3).
+- La advertencia va a `clasificacion_advertencias.hp.advertencias`; como
+  todo disclaimer, **no sale en el informe**. El valor de DVD/DVI sí se
+  informa, sin unidad.
 
 **Sitio 2 — Tronco pulmonar**
 
@@ -541,22 +554,22 @@ v1.3 no agrega columnas: `origen` va en `clasificacion_advertencias` y en
 
 ---
 
-## 7. Pendientes (v1.3)
+## 7. Pendientes (v1.4)
 
 | # | Tema | Sección |
 |---|------|---------|
 | 1 | Qué variables y umbrales son "valores predictores de alta probabilidad de edema". | 1.4 |
-| 2 | Tos, distrés respiratorio y colecta abdominal no tienen campo estructurado: ¿se agregan checkboxes (y columnas) o se leen de la anamnesis? | 1.4 |
+| 2 | Tos y distrés respiratorio: sin campo estructurado. | 1.4 |
 | 3 | Umbral de taquipnea (`fr`). | 1.4 |
 | 4 | Perfil rápido de ICC que marque "sugiere C" (hoy solo hay "Chequeo Sano" y "MVD B2"). | 1.4 |
-| 5 | Ascitis: sin campo estructurado; hasta que exista no suma a "edema documentado". | 1.4 |
-| 6 | Umbrales absolutos de DVDd, DVDs, PLVDd, PLVDs (mm). | 3.3 |
-| 7 | DVD/DVI entre 0.50 y 1.00 (zona gris) y si DVD/DVI ≥ 1 debe disparar la alerta. | 3.3 |
-| 8 | Fórmula de "coherencia con los disponibles" en MINE 2 (propuesta: promedio redondeado hacia arriba). | 2.4 |
-| 9 | Mejora de la escala "Aortisada" (Tipos I y II). | 4 |
+| 5 | Umbrales absolutos de DVDd, DVDs, PLVDd, PLVDs (mm). | 3.3 |
+| 6 | Webhook n8n de "última consulta" (fuente de `ctx.historial`). | 0.3 |
+| 7 | Mejora de la escala "Aortisada" (Tipos I y II). | 4 |
 
-Resueltos en v1.3: P7 (prellenado de MINE 2 y HP), P8 ("2 de 3" = sitios),
-regla de edema documentado para C (P5), DVD/DVI.
+Todos quedan como **mejora futura** (v1.4). Resueltos en v1.3: P7, P8, regla
+de edema documentado, DVD/DVI. Resueltos en v1.4: fuente del historial (vía
+n8n), DVD/DVI con corte 0.70, coherencia de MINE 2, ascitis desde la
+anamnesis.
 
 ---
 
