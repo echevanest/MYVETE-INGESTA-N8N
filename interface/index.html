@@ -266,12 +266,13 @@
            2) los campos SIN valor se ocultan solos para dejar la UI limpia;
               "Editar campos" vuelve a mostrarlos todos y los habilita (eco y
               EKG), y al bloquear se re-ocultan los que quedaron vacíos;
-           3) al enviar, app.js arma `datos_ecocardiografia` con las 74 columnas
+           3) al enviar, app.js arma `datos_ecocardiografia` con todas las columnas de COLUMNAS_DATOS_ECO
               (null las vacías o sin campo) y `bloque_ekg` con los 4 campos EKG.
               `eco-epr` y `eco-tiempo_eyectivo` tienen columna propia desde el
               2026-09-13 y viajan igual que el resto.
            Unidades (la tabla es `numeric` sin unidad): lineales en cm, fracciones
-           en %, velocidades en m/s — misma convención que el extractor de app.js. -->
+           en %, velocidades en cm/s, tiempos en ms, VD en mm — misma convención
+           que el extractor de app.js (decisión 8.7, 2026-09-28). -->
       <details id="bloque-ecocardiografia" class="bloque-metrico">
         <summary>Estudios complementarios (Ecocardiograma / Electro)</summary>
 
@@ -449,32 +450,79 @@
         <fieldset class="grid-metricas">
           <legend>Doppler</legend>
           <label class="campo-label">
-            Velocidad E mitral (m/s)
-            <input type="number" step="0.01" id="eco-velocidad_e_mitral" class="input-control campo-eco" disabled />
+            Velocidad E mitral (cm/s)
+            <input type="number" step="0.1" id="eco-velocidad_e_mitral" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Colecta / efusión pleural
+            <input type="text" id="eco-efusion_pleural" class="input-control campo-eco" disabled />
+          </label>
+        </fieldset>
+
+        <!-- Corazón derecho / flujo pulmonar (8.7b). Alimentan la clasificación
+             de HP (app.js Sección 10). Velocidades en cm/s, tiempos en ms. -->
+        <fieldset class="grid-metricas">
+          <legend>Corazón derecho — flujo pulmonar y tricuspídeo</legend>
+          <label class="campo-label">
+            TRV — Vmax tricuspídea (cm/s)
+            <input type="number" step="0.1" id="eco-vmax_tricuspideo" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Gradiente tricuspídeo (mmHg)
+            <input type="number" step="0.1" id="eco-gp_tricuspideo" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Ao/AP
+            <input type="number" step="0.01" id="eco-ao_ap" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            VP/AP
+            <input type="number" step="0.01" id="eco-vp_ap" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            RPAD — distensibilidad AP derecha (%)
+            <input type="number" step="0.1" id="eco-dapd" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            DVCCd — vena cava caudal
+            <input type="number" step="0.01" id="eco-dvccd" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            Vel. regurgitación pulmonar (cm/s)
+            <input type="number" step="0.1" id="eco-vel_regurg_pulmonar" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            AT pulmonar (ms)
+            <input type="number" step="1" id="eco-at_pulmonar" class="input-control campo-eco" disabled />
+          </label>
+          <label class="campo-label">
+            ET pulmonar (ms)
+            <input type="number" step="1" id="eco-et_pulmonar" class="input-control campo-eco" disabled />
+          </label>
+          <!-- Si el PDF no lo trae, app.js lo calcula como AT/ET. -->
+          <label class="campo-label">
+            AT:ET pulmonar
+            <input type="number" step="0.01" id="eco-at_et_pulmonar" class="input-control campo-eco" disabled />
           </label>
         </fieldset>
 
         <fieldset class="grid-metricas">
-          <legend>Clasificación / scores</legend>
+          <legend>Ventrículo derecho (mm)</legend>
           <label class="campo-label">
-            MINE2 — puntaje
-            <input type="number" step="0.1" id="eco-mine2_puntaje" class="input-control campo-eco" disabled />
+            DVDd
+            <input type="number" step="0.1" id="eco-dvdd" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
-            MINE2 — clasificación
-            <input type="text" id="eco-mine2_clasificacion" class="input-control campo-eco" disabled />
+            DVDs
+            <input type="number" step="0.1" id="eco-dvds" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
-            Estadio ACVIM
-            <input type="text" id="eco-acvim_estadio" class="input-control campo-eco" disabled />
+            PLVDd
+            <input type="number" step="0.1" id="eco-plvdd" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
-            HP — gradiente (mmHg)
-            <input type="number" step="0.1" id="eco-hp_gradiente" class="input-control campo-eco" disabled />
-          </label>
-          <label class="campo-label">
-            HP — clasificación
-            <input type="text" id="eco-hp_clasificacion" class="input-control campo-eco" disabled />
+            PLVDs
+            <input type="number" step="0.1" id="eco-plvds" class="input-control campo-eco" disabled />
           </label>
         </fieldset>
 
@@ -505,6 +553,74 @@
           Observaciones del estudio
           <textarea id="eco-observaciones" class="textarea-control campo-eco" rows="3" disabled></textarea>
         </label>
+      </details>
+
+      <!-- Ecografía pulmonar (8.7b, CRITERIOS §5). Cerrada y vacía por defecto:
+           el profesional la activa si la quiere. Selección múltiple; se guarda
+           en atenciones_cardiologia.eco_pulmonar_hallazgos (null si no se activa). -->
+      <details id="bloque-eco-pulmonar" class="bloque-metrico">
+        <summary>Ecografía pulmonar</summary>
+        <label class="opcion-check">
+          <input type="checkbox" id="eco-pulmonar-activa" /> Activar ecografía pulmonar
+        </label>
+        <label class="campo-label campo-ancho">
+          Hallazgos (selección múltiple: Ctrl / ⌘ + clic)
+          <select id="eco-pulmonar-hallazgos" class="input-control" multiple size="8" disabled></select>
+        </label>
+      </details>
+
+      <!-- Interpretación diagnóstica (8.7b, CRITERIOS DE CLASIFICACION.md).
+           Resultados de solo lectura calculados por app.js (Sección 10), selector
+           manual de ACVIM, morfologías de flujo y sección "Corazón derecho".
+           Los disclaimers (datos faltantes, con una casilla por dato) son SOLO
+           de pantalla: el informe no los muestra. -->
+      <details id="bloque-interpretacion" class="bloque-metrico" open>
+        <summary>Interpretación diagnóstica</summary>
+        <pre id="interp-resultados" class="interp-resultados"></pre>
+        <div id="interp-disclaimers" class="interp-disclaimers"></div>
+
+        <div class="grid-constantes">
+          <label class="campo-label">
+            Estadio ACVIM (pisa el valor propuesto)
+            <select id="interp-acvim-manual" class="input-control">
+              <option value="">Automático</option>
+              <option value="B1">B1</option>
+              <option value="B2">B2</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </label>
+          <label class="campo-label">
+            Morfología del flujo aórtico
+            <select id="interp-morfo-aortica" class="input-control"></select>
+          </label>
+          <label class="campo-label">
+            Morfología del flujo pulmonar
+            <select id="interp-morfo-pulmonar" class="input-control"></select>
+          </label>
+        </div>
+
+        <!-- "Corazón derecho" (HP): vacía por defecto; se abre sola ante un
+             signo de alerta numérico, o a mano. Se puede deshabilitar entera o
+             ítem por ítem ("No coincide"). -->
+        <details id="bloque-corazon-derecho" class="bloque-corazon-derecho">
+          <summary>Corazón derecho (HP)</summary>
+          <label class="campo-label">
+            Estado de la sección
+            <select id="hp-seccion-estado" class="input-control">
+              <option value="auto">Automática (se habilita por alerta)</option>
+              <option value="habilitada">Habilitada</option>
+              <option value="deshabilitada">Deshabilitada</option>
+            </select>
+          </label>
+          <p id="hp-alerta" class="aviso-tutor" role="status" hidden></p>
+          <fieldset id="hp-signos-visuales" class="grid-metricas">
+            <legend>Signos visuales (sí / no / sin evaluar)</legend>
+          </fieldset>
+          <fieldset id="hp-signos-numericos" class="signos-numericos-hp">
+            <legend>Signos numéricos (salen de las medidas)</legend>
+          </fieldset>
+        </details>
       </details>
 
       <!-- 18. Presión arterial — sin default, se carga a mano. -->

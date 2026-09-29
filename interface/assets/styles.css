@@ -560,3 +560,68 @@ section {
     border-radius: 0;
   }
 }
+
+/* --- Interpretación diagnóstica (8.7b) --------------------------------- */
+
+.interp-resultados {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #f4f6f8;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+/* Disclaimer de datos faltantes: solo en pantalla, nunca en el informe. */
+.interp-disclaimer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  color: #7a4a00;
+  background: #fff4e0;
+  border: 1px solid #f0c675;
+  border-radius: 4px;
+}
+
+.interp-disclaimer p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.interp-disclaimer .input-control {
+  max-width: 9rem;
+}
+
+.bloque-corazon-derecho {
+  margin-top: 0.75rem;
+}
+
+.signos-numericos-hp {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid #d8dde3;
+  border-radius: 6px;
+}
+
+.fila-signo-hp {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.valor-signo-hp {
+  color: #555;
+}
+
+@media (max-width: 600px) {
+  .fila-signo-hp {
+    grid-template-columns: 1fr;
+  }
+}

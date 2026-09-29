@@ -364,6 +364,39 @@ Resumen completo, decisiones y pendientes en `SPRINT-08-ESTADO.md`.
     *   Backups `n8n/workflow_v7_pre-2c.json` y `workflow_v7_post-2c.json`.
 *   **Falta:** prueba E2E real con el workflow publicado.
 
+### M. Sub-fase 8.7b — Interpretación diagnóstica en el SPA (2026-09-29)
+
+*   **Fuente de umbrales:** `CRITERIOS DE CLASIFICACION.md` v1.4 (única).
+*   **`app.js` Sección 10:**
+    *   10a, funciones puras entre `// >>> CLASIFICACION-PURA` y `// <<<`:
+        `calcularACVIM`, `calcularMINE2`, `calcularHP`, `calcularClasificaciones`.
+        Cada una devuelve `null` (no aplica) o `{ valor, origen, datos_usados,
+        faltantes, advertencias }`, con `origen` ∈ calculado / ultima_consulta /
+        estimado / manual.
+    *   10b, UI: resultados de solo lectura, disclaimer con una casilla por dato
+        faltante (el valor va a su campo `eco-*` y se recalcula), selector ACVIM,
+        morfologías aórtica y pulmonar, sección "Corazón derecho" (vacía por
+        defecto, se abre por alerta numérica, deshabilitable entera o por ítem).
+    *   `ctx.historial` = `window.historialUltimaConsulta` (hoy siempre `null`;
+        lo va a cargar un webhook n8n futuro).
+*   **`index.html`:** sin "Clasificación / scores" en el bloque eco; inputs
+    nuevos de corazón derecho (TRV, GP tricuspídeo, Ao/AP, VP/AP, RPAD, DVCCd,
+    vel. RP, AT, ET, AT:ET) y VD en mm (DVDd, DVDs, PLVDd, PLVDs), más
+    `eco-efusion_pleural` (la regla de edema la usa). Bloques nuevos "Ecografía
+    pulmonar" (multiselección, cerrado y desactivado por defecto) e
+    "Interpretación diagnóstica".
+*   **Unidades:** todas las velocidades en cm/s. El extractor convierte m/s →
+    cm/s y reconoce `E Vel VM` (Mindray).
+*   **Payload:** `datos_ecocardiografia` sin las 5 columnas deprecadas y con las
+    8 de 8.7a-bis. `examen_clinico` suma `acvim_estadio`, `acvim_origen`,
+    `mine2_puntaje`, `mine2_clasificacion`, `hp_clasificacion`, `hp_sospecha`,
+    `hp_signos`, `hp_n_sitios`, `clasificacion_advertencias`, `morfo_aortica`,
+    `morfo_pulmonar`, `eco_pulmonar_hallazgos`.
+*   **Tests:** `node --test tests/clasificacion.test.mjs` (31 casos, corre también
+    en el CI `verificar.yml`). Prueba de humo del panel en jsdom sin errores. **No
+    probado en navegador real.**
+*   **n8n / Supabase:** sin cambios en 8.7b (el mapeo va en 8.7c).
+
 ---
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)

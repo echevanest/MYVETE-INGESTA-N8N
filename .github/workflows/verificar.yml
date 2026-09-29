@@ -9,11 +9,13 @@ on:
     paths:
       - "bookmarklet/**"
       - "interface/**"
+      - "tests/**"
       - ".github/workflows/verificar.yml"
   pull_request:
     paths:
       - "bookmarklet/**"
       - "interface/**"
+      - "tests/**"
   workflow_dispatch: {}
 
 jobs:
@@ -26,3 +28,5 @@ jobs:
           node-version: "20"
       - name: node bookmarklet/verificar.mjs
         run: node bookmarklet/verificar.mjs
+      - name: tests de clasificación (8.7b)
+        run: node --test tests/clasificacion.test.mjs

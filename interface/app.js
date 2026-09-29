@@ -516,6 +516,10 @@ function aplicarFiliacion(payload, origen) {
       if (pesoSanitizado != null) document.getElementById('paciente-peso').value = pesoSanitizado;
     }
   }
+
+  // Especie y peso se fijan sin evento: se recalcula la interpretación (Sección
+  // 10) si ya está inicializada.
+  if (typeof window.recalcularClasificaciones === 'function') window.recalcularClasificaciones();
 }
 
 // Recepción de filiación raspada por el Bookmarklet de MyVete (modo iframe, o
@@ -710,7 +714,7 @@ function consolidarPayloadFinal() {
     examen_clinico: leerExamenClinico(),
     medicacion: leerMedicacion(),
     // Bloque para la tabla Supabase `datos_ecocardiografia` (Sección 8). Objeto
-    // con las 72 columnas (null las vacías) o null si no se cargó ningún dato;
+    // con todas las columnas de COLUMNAS_DATOS_ECO (null las vacías) o null si no se cargó ningún dato;
     // n8n lo inserta recién después de crear la atención, con atencion_id = id
     // de esa atención. leerBloqueEcocardiografia / leerBloqueEKG son function
     // declarations (hoisted): disponibles aunque se definan más abajo.
@@ -913,8 +917,10 @@ document.querySelectorAll('.btn-dictado').forEach((boton) => {
 // mapeo UI → columna es directo y no hay una segunda tabla de nombres.
 //
 // Unidades (la tabla es `numeric` sin unidad): lineales en cm (el extractor
-// convierte mm → cm), fracciones en %, velocidades en m/s (cm/s → m/s). Es una
-// convención elegida acá, no un dato del schema.
+// convierte mm → cm), fracciones en %, TODAS las velocidades en cm/s (el
+// extractor convierte m/s → cm/s; decisión 8.7, 2026-09-28), tiempos en ms y
+// parámetros del VD (dvdd, dvds, plvdd, plvds) en mm. Es una convención elegida
+// acá, no un dato del schema.
 //
 // Correcciones ya incorporadas del módulo previo: separador sigla/número
 // opcional; unidad capturada dentro del regex (grupo 2) con ventana corta de
@@ -946,17 +952,23 @@ const COLUMNAS_DATOS_ECO = [
   'ai_indexado', 'ao_indexado', 'masa_vi_indexada', 'volumen_ai_indexado',
   'volumen_fdi_indexado', 'volumen_fsi_indexado', 'volumen_si_indexado', 'gasto_cardiaco_indexado',
   'volumen_vi_fd_indexado', 'volumen_vi_fs_indexado',
-  'acvim_estadio', 'mine2_puntaje', 'mine2_clasificacion', 'hp_gradiente', 'hp_clasificacion',
+  // 8.7a-bis (2026-09-28): flujo pulmonar (at/et en ms, vel. en cm/s) y VD (mm).
+  // Las 5 columnas de clasificación (acvim_estadio, mine2_puntaje,
+  // mine2_clasificacion, hp_gradiente, hp_clasificacion) quedaron deprecadas en
+  // 8.7a y ya no se envían: la interpretación viaja en payload.examen_clinico.
+  'at_pulmonar', 'et_pulmonar', 'at_et_pulmonar', 'vel_regurg_pulmonar',
+  'dvdd', 'dvds', 'plvdd', 'plvds',
 ];
 
 // Columnas `text` de la tabla (el resto son `numeric`).
 const COLUMNAS_DATOS_ECO_TEXTO = new Set([
   'efusion_pericardica', 'efusion_pleural', 'patron_llenado_vi', 'observaciones',
-  'acvim_estadio', 'mine2_clasificacion', 'hp_clasificacion',
 ]);
 
-// Heurística PDF → columna. `unidad` es la de DESTINO: solo 'cm' dispara
-// conversión desde mm y solo 'm/s' desde cm/s; el resto se toma tal cual.
+// >>> PARSER-ECO-PURO
+// Heurística PDF → columna. `unidad` es la de DESTINO: 'cm' dispara conversión
+// desde mm y 'cm/s' desde m/s (todas las velocidades se guardan en cm/s); el
+// resto se toma tal cual.
 // `siglas` alimenta el fallback cuando el regex principal no matchea.
 const MAPEO_EXTRACCION_PDF = [
   { columna: 'dvid', siglas: ['DIVId', 'LVIDd', 'LVEDD', 'DVId', 'DVI'],
@@ -983,8 +995,9 @@ const MAPEO_EXTRACCION_PDF = [
     regex: /\b(?:Ao\s?Diam|Di[áa]metro\s+aorta|Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
   { columna: 'ai_ao_lineal', siglas: ['AI/Ao', 'LA/Ao'],
     regex: /\b(?:AI\s*\/\s*Ao|LA\s*\/\s*Ao|Relaci[óo]n\s+AI\s*\/?\s*Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
-  { columna: 'velocidad_e_mitral', siglas: ['Onda E', 'Vel E', 'E mitral'],
-    regex: /\b(?:Onda\s*E|Vel\.?\s*E|E\s*mitral|Vmax\s*E)\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(m\/s|cm\/s)?/i, unidad: 'm/s' },
+  // "E Vel VM" = formato Mindray (FORMATOS-ECO.md §2.1), en cm/s.
+  { columna: 'velocidad_e_mitral', siglas: ['E Vel VM', 'Onda E', 'Vel E', 'E mitral'],
+    regex: /\b(?:E\s*Vel\.?\s*(?:VM|MV)|Onda\s*E|Vel\.?\s*E|E\s*mitral|Vmax\s*E)\b\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(cm\/s|m\/s)?/i, unidad: 'cm/s' },
   // Campos que venían del "Apéndice Métrico" y no estaban ya arriba (2026-09-08).
   { columna: 'ai_ao_area', siglas: ['AI/Ao area', 'AI/Ao área', 'LA/Ao area'],
     regex: /\b(?:AI|LA)\s*\/\s*Ao\s*(?:\(?\s*[áa]rea\s*\)?|2D)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
@@ -1019,13 +1032,17 @@ function ecoANumero(valorCrudo) {
 // Devuelve el número ya en la unidad de destino, o null si no es numérico.
 // Si la unidad no se detectó, se ASUME que ya viene en la de destino (RIESGO:
 // un valor real en mm sin unidad explícita queda 10x más chico — no hay forma
-// fiable de saberlo solo del texto).
+// fiable de saberlo solo del texto). Excepción para velocidades: sin unidad y
+// < 10 se toma como m/s (una velocidad cardíaca en cm/s no baja de 10; en m/s
+// casi nunca pasa de 7).
 function ecoNormalizarValor(valorCrudo, unidadDetectada, unidadDestino) {
   const num = ecoANumero(valorCrudo);
   if (isNaN(num)) return null;
   const u = String(unidadDetectada || '').toLowerCase();
   if (u === 'mm' && unidadDestino === 'cm') return Math.round((num / 10) * 1000) / 1000;
-  if (u === 'cm/s' && unidadDestino === 'm/s') return Math.round((num / 100) * 1000) / 1000;
+  if (unidadDestino === 'cm/s' && (u === 'm/s' || (u === '' && num < 10))) {
+    return Math.round(num * 100 * 1000) / 1000;
+  }
   return num;
 }
 
@@ -1077,6 +1094,7 @@ function extraerDatosEcocardiografia(texto) {
   }
   return resultados;
 }
+// <<< PARSER-ECO-PURO
 
 // Vuelca lo extraído en los inputs #eco-<columna> (solo los no-null que tengan
 // campo). Devuelve cuántos campos se llenaron.
@@ -1091,7 +1109,7 @@ function autollenarCamposEco(datos) {
   return llenos;
 }
 
-// Objeto con las 72 columnas de datos_ecocardiografia (null las vacías). Texto
+// Objeto con todas las columnas de datos_ecocardiografia (null las vacías). Texto
 // se manda trim; numéricos con Number (coma → punto). Devuelve null si no hay
 // ni un dato cargado, para que n8n no inserte una fila vacía.
 function leerBloqueEcocardiografia() {
@@ -1412,6 +1430,7 @@ if (btnExtraerEcoPdf) {
       const datos = extraerDatosEcocardiografia(textoCompleto);
       const llenos = autollenarCamposEco(datos);
       const indices = recalcularIndicesEcoDesdeFormulario();
+      if (typeof window.recalcularClasificaciones === 'function') window.recalcularClasificaciones();
 
       // El log lista SOLO lo que se pudo autollenar / calcular (2026-09-08): los
       // campos que el PDF no trae ya no aparecen como ruido.
@@ -1731,5 +1750,780 @@ function leerExamenClinico() {
     pad: leerEntero('clinica-pad'),
     diagnostico: leerTexto('consulta-diagnostico'),
     indicaciones: leerTexto('consulta-indicaciones'),
+    // Interpretación diagnóstica (8.7b, Sección 10). leerInterpretacion es una
+    // function declaration (hoisted).
+    ...leerInterpretacion(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// 10. Interpretación diagnóstica — ACVIM, MINE 2 y HP (Sub-fase 8.7b)
+// ---------------------------------------------------------------------------
+// Fuente única de umbrales: CRITERIOS DE CLASIFICACION.md (v1.4). Ningún umbral
+// que no esté en ese archivo se usa acá. La parte 10a son funciones PURAS (sin
+// DOM): tests/clasificacion.test.mjs la recorta entre los marcadores >>> / <<<
+// y la corre en Node. La 10b cablea la UI.
+//
+// Unidades: todas las velocidades se guardan en cm/s; MINE 2 y HP las pasan a
+// m/s solo para calcular. Tiempos en ms. Parámetros del VD en mm.
+
+// >>> CLASIFICACION-PURA
+const ESTADIOS_ACVIM = ['B1', 'B2', 'C', 'D'];
+
+// §1.3 — B2 si se cumplen los dos.
+const UMBRALES_ACVIM = { laAoB2: 1.60, lviddnB2: 1.70 };
+
+// §5 — hallazgos de ecografía pulmonar (orden = número del hallazgo).
+const HALLAZGOS_ECO_PULMONAR = [
+  'Síndrome alveolointersticial leve en región perihiliar',
+  'Síndrome alveolointersticial leve que excede la región perihiliar en hemitórax izquierdo',
+  'Síndrome alveolointersticial leve que excede la región perihiliar en hemitórax derecho',
+  'Síndrome alveolointersticial leve que excede la región perihiliar en ambos hemitórax',
+  'Síndrome alveolointersticial en todos los campos pulmonares con abundantes líneas B',
+  'Síndrome alveolointersticial coalescente (líneas B en cortina)',
+  'Síndrome alveolointersticial con signo de fragmentación',
+  'Signo de nódulo',
+];
+
+// §1.4 — regla de prellenado de C (una sola constante, fácil de ajustar).
+// Edema documentado = ecografía pulmonar 1–7, colecta pleural o ascitis.
+const REGLA_PRELLENADO_C = {
+  hallazgosEcoPulmonarQueSuman: HALLAZGOS_ECO_PULMONAR.slice(0, 7),
+  colectaPleural: true,
+  ascitisDesdeAnamnesis: true,
+};
+
+// §1.4 (v1.4) — ascitis leída de la anamnesis. Textos ya normalizados
+// (minúsculas, sin tildes). Una negación en las 3 palabras previas la descarta.
+const ASCITIS_TERMINOS = ['ascitis', 'efusion abdominal', 'liquido libre abdominal'];
+const ASCITIS_NEGACIONES = ['sin', 'no', 'niega', 'descarta'];
+
+// §2.2 / §2.3 — MINE 2.
+const MINE2_MAX_PUNTOS = { laAo: 4, lviddn: 4, eVel: 3 };
+const MINE2_ETIQUETAS = { laAo: 'LA/Ao', lviddn: 'LVIDDN', eVel: 'velocidad E mitral' };
+
+// §3.2 / §3.3 — HP.
+const UMBRALES_HP = {
+  trvBajo: 3.0,           // m/s — alerta y franja: TRV > 3.0
+  trvAlto: 3.4,           // m/s — franja: TRV > 3.4
+  tpAo: 1.0,              // TP/Ao > 1.0
+  velRegurgPulmonar: 2.5, // m/s (> 250 cm/s)
+  rpad: 30,               // RPAD < 30 %
+  at: 58,                 // AT < 58 ms
+  atEt: 0.30,             // AT:ET < 0.30
+  dvdDvi: 0.70,           // DVD/DVI ≥ 0.70 (v1.4)
+};
+// Umbrales absolutos de DVDd/DVDs/PLVDd/PLVDs (mm): PENDIENTES (§7). Vacía a
+// propósito; no disparan signo ni alerta hasta que se completen.
+const UMBRALES_VD_MM = {};
+const MORFO_NOTCHING = 'Aortisada Tipo III';
+const OPCIONES_MORFO_AORTICA = ['Conservada', 'En Daga'];
+const OPCIONES_MORFO_PULMONAR = [
+  'Conservada', 'Aortisada Tipo I', 'Aortisada Tipo II', 'Aortisada Tipo III', 'En Daga',
+];
+
+// Signos visuales (hp_signos). Ausente = no evaluado.
+const SIGNOS_HP_VISUALES = [
+  { sitio: 'sitio1', clave: 'aplanamiento_septal', etiqueta: 'Aplanamiento del septo interventricular' },
+  { sitio: 'sitio1', clave: 'llenado_insuficiente_vi', etiqueta: 'Llenado insuficiente del VI' },
+  { sitio: 'sitio1', clave: 'hipertrofia_dilatacion_vd', etiqueta: 'Hipertrofia y/o dilatación del VD' },
+  { sitio: 'sitio1', clave: 'disfuncion_sistolica_vd', etiqueta: 'Disfunción sistólica del VD' },
+  { sitio: 'sitio3', clave: 'dilatacion_ad', etiqueta: 'Dilatación del AD' },
+  { sitio: 'sitio3', clave: 'vena_cava_dilatada', etiqueta: 'Vena cava caudal dilatada (sin colapso respiratorio)' },
+];
+
+// Signos numéricos (salen de las medidas). `alerta` = habilita "Corazón derecho".
+const SIGNOS_HP_NUMERICOS = [
+  { sitio: 'sitio1', clave: 'dvd_dvi', etiqueta: 'DVD/DVI ≥ 0.70', alerta: true },
+  { sitio: 'sitio2', clave: 'tp_ao', etiqueta: 'TP/Ao > 1.0', alerta: true },
+  { sitio: 'sitio2', clave: 'vel_regurg_pulmonar', etiqueta: 'Vel. regurgitación pulmonar > 250 cm/s', alerta: true },
+  { sitio: 'sitio2', clave: 'rpad', etiqueta: 'RPAD < 30 %', alerta: true },
+  { sitio: 'sitio2', clave: 'at_pulmonar', etiqueta: 'AT < 58 ms', alerta: true },
+  { sitio: 'sitio2', clave: 'at_et_pulmonar', etiqueta: 'AT:ET < 0.30', alerta: true },
+  { sitio: 'sitio2', clave: 'notching', etiqueta: 'Muesca sistólica (Aortisada Tipo III)', alerta: false },
+];
+
+// Faltante → columna eco + unidad (casilla del disclaimer, §0.3).
+const DESTINO_FALTANTES = {
+  'LA/Ao': { columna: 'ai_ao_lineal', unidad: '' },
+  LVIDDN: { columna: 'dvid_indexado', unidad: '' },
+  'velocidad E mitral': { columna: 'velocidad_e_mitral', unidad: 'cm/s' },
+  TRV: { columna: 'vmax_tricuspideo', unidad: 'cm/s' },
+  DVDd: { columna: 'dvdd', unidad: 'mm' },
+  DVDs: { columna: 'dvds', unidad: 'mm' },
+  PLVDd: { columna: 'plvdd', unidad: 'mm' },
+  PLVDs: { columna: 'plvds', unidad: 'mm' },
+};
+
+// §0.4 — redondeo a 2 decimales (vía notación exponencial, para que 1.905 dé
+// 1.91 y no 1.9 por el error binario de coma flotante).
+function r2(x) {
+  return Number(`${Math.round(Number(`${x}e2`))}e-2`);
+}
+
+// null / '' / no numérico → null; si no, el número redondeado a 2 decimales.
+function num2(valor) {
+  if (valor == null || valor === '') return null;
+  const n = typeof valor === 'number' ? valor : parseFloat(String(valor).replace(',', '.'));
+  return Number.isFinite(n) ? r2(n) : null;
+}
+
+function normalizarTexto(texto) {
+  return String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// §1.4 — true si la anamnesis menciona ascitis sin negarla.
+function detectarAscitis(anamnesis) {
+  const texto = normalizarTexto(anamnesis);
+  if (!texto) return false;
+  return ASCITIS_TERMINOS.some((termino) => {
+    let desde = 0;
+    for (;;) {
+      const i = texto.indexOf(termino, desde);
+      if (i === -1) return false;
+      const previas = texto.slice(0, i).split(/[^a-z0-9ñ]+/).filter(Boolean).slice(-3);
+      if (!previas.some((p) => ASCITIS_NEGACIONES.includes(p))) return true;
+      desde = i + termino.length;
+    }
+  });
+}
+
+// `efusion_pleural` es text: cuenta si está cargado y no es una negación.
+function colectaPleuralPresente(valor) {
+  const t = normalizarTexto(valor).trim();
+  if (!t) return false;
+  return !/^(no\b|sin\b|ausente|negativ|-)/.test(t);
+}
+
+// §1.4 — edema documentado → { presente, fuentes[] }.
+function detectarEdemaDocumentado(ctx) {
+  const fuentes = [];
+  const hallazgos = (ctx.manual && ctx.manual.eco_pulmonar_hallazgos) || [];
+  if (hallazgos.some((h) => REGLA_PRELLENADO_C.hallazgosEcoPulmonarQueSuman.includes(h))) {
+    fuentes.push('ecografía pulmonar');
+  }
+  if (REGLA_PRELLENADO_C.colectaPleural && colectaPleuralPresente(ctx.eco && ctx.eco.efusion_pleural)) {
+    fuentes.push('colecta pleural');
+  }
+  if (REGLA_PRELLENADO_C.ascitisDesdeAnamnesis && detectarAscitis(ctx.anamnesis)) {
+    fuentes.push('ascitis (anamnesis)');
+  }
+  return { presente: fuentes.length > 0, fuentes };
+}
+
+function aplicaACVIM(ctx) {
+  return ctx.especie === 'canino' && (ctx.soplos || []).some((s) => s && s.foco === 'Mitral');
+}
+
+// §1 — ACVIM. Orden: manual → historial D → edema documentado (C) → historial C
+// (nunca baja a B) → B1/B2 calculado → última consulta → estimado.
+function calcularACVIM(ctx) {
+  if (!aplicaACVIM(ctx)) return null;
+  const eco = ctx.eco || {};
+  const laAo = num2(eco.ai_ao_lineal);
+  const lviddn = num2(eco.dvid_indexado);
+  const datosUsados = { 'LA/Ao': laAo, LVIDDN: lviddn };
+  const faltantesB = [];
+  if (laAo == null) faltantesB.push('LA/Ao');
+  if (lviddn == null) faltantesB.push('LVIDDN');
+  const advertencias = [];
+  const historial = ctx.historial && ESTADIOS_ACVIM.includes(ctx.historial.acvim_estadio)
+    ? ctx.historial.acvim_estadio : null;
+  const resultado = (valor, origen, faltantes = []) => ({
+    valor, origen, datos_usados: datosUsados, faltantes, advertencias,
+  });
+
+  const manual = ctx.manual && ESTADIOS_ACVIM.includes(ctx.manual.acvim_estadio)
+    ? ctx.manual.acvim_estadio : null;
+  if (manual) return resultado(manual, 'manual');
+
+  const edema = detectarEdemaDocumentado(ctx);
+  if (edema.presente) datosUsados.edema_documentado = edema.fuentes;
+  if (historial === 'D') {
+    advertencias.push('Estadio D tomado de la última consulta.');
+    return resultado('D', 'ultima_consulta');
+  }
+  if (edema.presente) {
+    advertencias.push(`Prellenado C por edema documentado: ${edema.fuentes.join(', ')}.`);
+    return resultado('C', 'estimado');
+  }
+  if (historial === 'C') {
+    advertencias.push('Estadio C tomado de la última consulta (no vuelve a B).');
+    return resultado('C', 'ultima_consulta');
+  }
+
+  if (!faltantesB.length) {
+    const b2 = laAo >= UMBRALES_ACVIM.laAoB2 && lviddn >= UMBRALES_ACVIM.lviddnB2;
+    return resultado(b2 ? 'B2' : 'B1', 'calculado');
+  }
+  if (historial) return resultado(historial, 'ultima_consulta', faltantesB);
+
+  // Estimado con un solo criterio: si el que hay no cumple → B1 (B2 exige los
+  // dos); si cumple → B2 (el estadio más coincidente); sin ninguno → B1.
+  let cumpleDisponible = false;
+  if (laAo != null) cumpleDisponible = laAo >= UMBRALES_ACVIM.laAoB2;
+  else if (lviddn != null) cumpleDisponible = lviddn >= UMBRALES_ACVIM.lviddnB2;
+  return resultado(cumpleDisponible ? 'B2' : 'B1', 'estimado', faltantesB);
+}
+
+function puntosLaAo(v) {
+  if (v < 1.70) return 1;
+  if (v <= 1.90) return 2;
+  if (v <= 2.50) return 3;
+  return 4;
+}
+
+function puntosLviddn(v) {
+  if (v < 1.70) return 1;
+  if (v <= 2.00) return 2;
+  if (v <= 2.30) return 3;
+  return 4;
+}
+
+function puntosEVel(vMs) {
+  if (vMs < 1.20) return 1;
+  if (vMs <= 1.50) return 2;
+  return 3;
+}
+
+function clasificacionMINE2(puntaje) {
+  if (puntaje == null) return null;
+  if (puntaje <= 4) return 'leve';
+  if (puntaje <= 6) return 'moderado';
+  if (puntaje <= 10) return 'severo';
+  return 'tardio';
+}
+
+function aplicaMINE2(ctx) {
+  return ctx.especie === 'canino' && (ctx.estadioACVIM === 'B1' || ctx.estadioACVIM === 'B2');
+}
+
+// §2 — MINE 2. ctx.estadioACVIM = estadio propuesto por calcularACVIM (si no
+// viene, se calcula acá).
+function calcularMINE2(ctx) {
+  const estadio = ctx.estadioACVIM !== undefined
+    ? ctx.estadioACVIM
+    : (calcularACVIM(ctx) || {}).valor;
+  if (!aplicaMINE2({ ...ctx, estadioACVIM: estadio })) return null;
+
+  const eco = ctx.eco || {};
+  const eCms = num2(eco.velocidad_e_mitral);
+  const valores = {
+    laAo: num2(eco.ai_ao_lineal),
+    lviddn: num2(eco.dvid_indexado),
+    eVel: eCms == null ? null : r2(eCms / 100), // cm/s → m/s solo para puntuar
+  };
+  const puntuar = { laAo: puntosLaAo, lviddn: puntosLviddn, eVel: puntosEVel };
+  const puntos = {};
+  const faltantes = [];
+  Object.keys(valores).forEach((k) => {
+    if (valores[k] == null) faltantes.push(MINE2_ETIQUETAS[k]);
+    else puntos[k] = puntuar[k](valores[k]);
+  });
+  const datosUsados = {
+    'LA/Ao': valores.laAo, LVIDDN: valores.lviddn, 'E (m/s)': valores.eVel, puntos,
+  };
+  const advertencias = [];
+  const resultado = (puntaje, origen, clasificacion) => {
+    const clas = clasificacion || clasificacionMINE2(puntaje);
+    return {
+      valor: puntaje,
+      clasificacion: clas,
+      b2_avanzado: estadio === 'B2' && clas === 'severo',
+      origen,
+      datos_usados: datosUsados,
+      faltantes,
+      advertencias,
+    };
+  };
+
+  if (!faltantes.length) {
+    return resultado(puntos.laAo + puntos.lviddn + puntos.eVel, 'calculado');
+  }
+
+  const h = ctx.historial;
+  if (h && Number.isInteger(h.mine2_puntaje)) {
+    return resultado(h.mine2_puntaje, 'ultima_consulta', h.mine2_clasificacion || null);
+  }
+
+  // P7 — coherencia: el faltante recibe el promedio de los presentes,
+  // redondeado hacia arriba, sin pasar el máximo de su variable. Sin ninguno → 1.
+  const presentes = Object.values(puntos);
+  const promedio = presentes.length
+    ? Math.ceil(presentes.reduce((a, b) => a + b, 0) / presentes.length)
+    : 1;
+  const completos = { ...puntos };
+  Object.keys(valores).forEach((k) => {
+    if (completos[k] == null) completos[k] = Math.min(promedio, MINE2_MAX_PUNTOS[k]);
+  });
+  datosUsados.puntos_estimados = completos;
+  advertencias.push('Puntaje estimado: los datos faltantes se puntuaron en coherencia con los disponibles.');
+  return resultado(completos.laAo + completos.lviddn + completos.eVel, 'estimado');
+}
+
+// §3.3 — evalúa cada signo HP. Devuelve { items, valores, alerta }.
+// items[sitio][clave] = true (presente) | false (evaluado: ausente o
+// deshabilitado) | undefined (no evaluado).
+function evaluarSignosHP(ctx) {
+  const eco = ctx.eco || {};
+  const manual = ctx.manual || {};
+  const signos = manual.hp_signos || {};
+  const deshabilitados = new Set(signos.deshabilitados || []);
+
+  const trvCms = num2(eco.vmax_tricuspideo);
+  const aoAp = num2(eco.ao_ap);
+  const velRpCms = num2(eco.vel_regurg_pulmonar);
+  const at = num2(eco.at_pulmonar);
+  const et = num2(eco.et_pulmonar);
+  let atEt = num2(eco.at_et_pulmonar);
+  if (atEt == null && at != null && et != null && et > 0) atEt = r2(at / et);
+  const dvdd = num2(eco.dvdd);
+  const dvid = num2(eco.dvid);
+
+  const valores = {
+    trv: trvCms == null ? null : r2(trvCms / 100),
+    tp_ao: aoAp != null && aoAp > 0 ? r2(1 / aoAp) : null,
+    vel_regurg_pulmonar: velRpCms == null ? null : r2(velRpCms / 100),
+    rpad: num2(eco.dapd),
+    at_pulmonar: at,
+    at_et_pulmonar: atEt,
+    // dvdd en mm y dvid en cm → dvid se pasa a mm.
+    dvd_dvi: dvdd != null && dvid != null && dvid > 0 ? r2(dvdd / (dvid * 10)) : null,
+    morfo_pulmonar: manual.morfo_pulmonar || null,
+  };
+
+  const evaluar = (v, presente) => (v == null ? undefined : presente(v));
+  const numericos = {
+    dvd_dvi: evaluar(valores.dvd_dvi, (v) => v >= UMBRALES_HP.dvdDvi),
+    tp_ao: evaluar(valores.tp_ao, (v) => v > UMBRALES_HP.tpAo),
+    vel_regurg_pulmonar: evaluar(valores.vel_regurg_pulmonar, (v) => v > UMBRALES_HP.velRegurgPulmonar),
+    rpad: evaluar(valores.rpad, (v) => v < UMBRALES_HP.rpad),
+    at_pulmonar: evaluar(valores.at_pulmonar, (v) => v < UMBRALES_HP.at),
+    at_et_pulmonar: evaluar(valores.at_et_pulmonar, (v) => v < UMBRALES_HP.atEt),
+    notching: evaluar(valores.morfo_pulmonar, (v) => v === MORFO_NOTCHING),
+  };
+
+  const items = { sitio1: {}, sitio2: {}, sitio3: {} };
+  SIGNOS_HP_VISUALES.forEach(({ sitio, clave }) => {
+    const v = signos[sitio] ? signos[sitio][clave] : undefined;
+    items[sitio][clave] = typeof v === 'boolean' ? v : undefined;
+  });
+  SIGNOS_HP_NUMERICOS.forEach(({ sitio, clave }) => {
+    items[sitio][clave] = numericos[clave];
+  });
+  // Deshabilitado por el profesional → evaluado, pero no cuenta.
+  Object.keys(items).forEach((sitio) => {
+    Object.keys(items[sitio]).forEach((clave) => {
+      if (deshabilitados.has(`${sitio}.${clave}`) && items[sitio][clave] !== undefined) {
+        items[sitio][clave] = false;
+      }
+    });
+  });
+
+  const alertaTrv = valores.trv != null && valores.trv > UMBRALES_HP.trvBajo
+    && !deshabilitados.has('trv');
+  const alertaSignos = SIGNOS_HP_NUMERICOS
+    .filter((s) => s.alerta)
+    .some((s) => items[s.sitio][s.clave] === true);
+  return { items, valores, alerta: alertaTrv || alertaSignos };
+}
+
+function matrizHP(trv, nSitios) {
+  if (trv == null || trv <= UMBRALES_HP.trvBajo) {
+    if (nSitios <= 1) return 'baja';
+    return nSitios === 2 ? 'intermedia' : 'alta';
+  }
+  if (trv <= UMBRALES_HP.trvAlto) return nSitios <= 1 ? 'intermedia' : 'alta';
+  return nSitios === 0 ? 'intermedia' : 'alta';
+}
+
+// hp_sospecha (§3.1): sección habilitada a mano, o por alerta numérica, y no
+// deshabilitada. manual.hp_seccion ∈ 'auto' | 'habilitada' | 'deshabilitada'.
+function hpSospecha(ctx, evaluacion) {
+  if (ctx.especie !== 'canino') return false;
+  const seccion = (ctx.manual && ctx.manual.hp_seccion) || 'auto';
+  if (seccion === 'deshabilitada') return false;
+  if (seccion === 'habilitada') return true;
+  return (evaluacion || evaluarSignosHP(ctx)).alerta;
+}
+
+// §3 — HP.
+function calcularHP(ctx) {
+  if (ctx.especie !== 'canino') return null;
+  const evaluacion = evaluarSignosHP(ctx);
+  if (!hpSospecha(ctx, evaluacion)) return null;
+
+  const { items, valores } = evaluacion;
+  const sitios = ['sitio1', 'sitio2', 'sitio3'];
+  const evaluados = sitios.filter((s) => Object.values(items[s]).some((v) => v !== undefined));
+  const conSigno = sitios.filter((s) => Object.values(items[s]).some((v) => v === true));
+  const nSitios = conSigno.length;
+
+  const faltantes = [];
+  if (valores.trv == null) faltantes.push('TRV');
+  const eco = ctx.eco || {};
+  [['DVDd', 'dvdd'], ['DVDs', 'dvds'], ['PLVDd', 'plvdd'], ['PLVDs', 'plvds']].forEach(([etiqueta, col]) => {
+    if (num2(eco[col]) == null) faltantes.push(etiqueta);
+  });
+
+  const advertencias = [];
+  if (items.sitio1.dvd_dvi === true) {
+    advertencias.push('DVD/DVI ≥ 0.70: sobrecarga del VD sospechosa.');
+  }
+  const base = {
+    n_sitios: nSitios,
+    sitios_evaluados: evaluados.length,
+    alerta: evaluacion.alerta,
+    datos_usados: { ...valores, sitios_con_signo: conSigno },
+    faltantes,
+    advertencias,
+  };
+
+  // Tabla de §3.1: TRV + 3 sitios evaluados → cerrado. Si no, prima la última
+  // consulta; sin ella, se estima con la matriz y lo disponible (sin nada → baja).
+  if (valores.trv != null && evaluados.length === 3) {
+    return { ...base, valor: matrizHP(valores.trv, nSitios), origen: 'calculado' };
+  }
+  const h = ctx.historial;
+  if (h && ['baja', 'intermedia', 'alta'].includes(h.hp_clasificacion)) {
+    return { ...base, valor: h.hp_clasificacion, origen: 'ultima_consulta' };
+  }
+  if (evaluados.length === 2) advertencias.push('Orientación con 2 de los 3 sitios evaluados.');
+  return { ...base, valor: matrizHP(valores.trv, nSitios), origen: 'estimado' };
+}
+
+// Orquestador: las tres clasificaciones con un mismo ctx.
+function calcularClasificaciones(ctx) {
+  const acvim = calcularACVIM(ctx);
+  const mine2 = calcularMINE2({ ...ctx, estadioACVIM: acvim ? acvim.valor : null });
+  const hp = calcularHP(ctx);
+  return { acvim, mine2, hp };
+}
+// <<< CLASIFICACION-PURA
+
+// --- 10b. UI -------------------------------------------------------------------
+// Historial de "última consulta": lo va a cargar un webhook nuevo de n8n (fuera
+// de 8.7b). Mientras tanto queda null y las funciones saltan ese paso.
+window.historialUltimaConsulta = window.historialUltimaConsulta || null;
+
+const ORIGEN_TEXTO = {
+  calculado: 'calculado',
+  ultima_consulta: 'última consulta',
+  estimado: 'estimado',
+  manual: 'manual',
+};
+
+const bloqueInterpretacion = document.getElementById('bloque-interpretacion');
+const interpResultados = document.getElementById('interp-resultados');
+const interpDisclaimers = document.getElementById('interp-disclaimers');
+const selectAcvimManual = document.getElementById('interp-acvim-manual');
+const selectMorfoAortica = document.getElementById('interp-morfo-aortica');
+const selectMorfoPulmonar = document.getElementById('interp-morfo-pulmonar');
+const chkEcoPulmonar = document.getElementById('eco-pulmonar-activa');
+const selectEcoPulmonar = document.getElementById('eco-pulmonar-hallazgos');
+const bloqueCorazonDerecho = document.getElementById('bloque-corazon-derecho');
+const selectHpSeccion = document.getElementById('hp-seccion-estado');
+const hpAlerta = document.getElementById('hp-alerta');
+const hpSignosVisuales = document.getElementById('hp-signos-visuales');
+const hpSignosNumericos = document.getElementById('hp-signos-numericos');
+
+function valorEco(columna) {
+  const campo = document.getElementById(`eco-${columna}`);
+  return campo ? String(campo.value).trim() : '';
+}
+
+// AT:ET (§3.3): si el PDF no lo trae y hay AT y ET, se calcula at/et. El campo
+// calculado lleva data-auto para recalcularlo (o vaciarlo) cuando cambian AT/ET;
+// un valor cargado a mano o del PDF no se pisa.
+function sincronizarAtEtPulmonar() {
+  const campo = document.getElementById('eco-at_et_pulmonar');
+  if (!campo) return;
+  const esAuto = campo.dataset.auto === '1';
+  if (campo.value !== '' && !esAuto) return;
+  const at = num2(valorEco('at_pulmonar'));
+  const et = num2(valorEco('et_pulmonar'));
+  const antes = campo.value;
+  if (at != null && et != null && et > 0) {
+    campo.value = r2(at / et);
+    campo.dataset.auto = '1';
+  } else if (esAuto) {
+    campo.value = '';
+    delete campo.dataset.auto;
+  }
+  if (campo.value !== antes) actualizarVisibilidadTodosEco();
+}
+
+function leerSignosHP() {
+  const signos = {};
+  if (hpSignosVisuales) {
+    hpSignosVisuales.querySelectorAll('select[data-sitio]').forEach((select) => {
+      if (select.value === '') return;
+      const { sitio, clave } = select.dataset;
+      signos[sitio] = signos[sitio] || {};
+      signos[sitio][clave] = select.value === 'si';
+    });
+  }
+  const deshabilitados = hpSignosNumericos
+    ? Array.from(hpSignosNumericos.querySelectorAll('input[data-item]:checked')).map((c) => c.dataset.item)
+    : [];
+  if (deshabilitados.length) signos.deshabilitados = deshabilitados;
+  return signos;
+}
+
+function leerContextoClasificacion() {
+  const hallazgos = chkEcoPulmonar && chkEcoPulmonar.checked && selectEcoPulmonar
+    ? Array.from(selectEcoPulmonar.selectedOptions).map((o) => o.value)
+    : null;
+  return {
+    especie: document.getElementById('paciente-especie').value || null,
+    soplos: leerSoplos(),
+    anamnesis: leerTexto('consulta-anamnesis'),
+    eco: leerBloqueEcocardiografia() || {},
+    manual: {
+      acvim_estadio: selectAcvimManual ? selectAcvimManual.value || null : null,
+      eco_pulmonar_hallazgos: hallazgos,
+      morfo_aortica: selectMorfoAortica ? selectMorfoAortica.value || null : null,
+      morfo_pulmonar: selectMorfoPulmonar ? selectMorfoPulmonar.value || null : null,
+      hp_signos: leerSignosHP(),
+      hp_seccion: selectHpSeccion ? selectHpSeccion.value : 'auto',
+    },
+    historial: window.historialUltimaConsulta || null,
+  };
+}
+
+function textoResultados(ctx, { acvim, mine2, hp }) {
+  const lineas = [];
+  lineas.push(acvim
+    ? `ACVIM: ${acvim.valor} (${ORIGEN_TEXTO[acvim.origen]})`
+    : 'ACVIM: no aplica (solo perros con soplo de foco mitral).');
+  if (mine2) {
+    const avanzado = mine2.b2_avanzado ? ' · B2 avanzado' : '';
+    lineas.push(`MINE 2: ${mine2.valor}/11 — ${mine2.clasificacion}${avanzado} (${ORIGEN_TEXTO[mine2.origen]})`);
+  } else {
+    lineas.push('MINE 2: no aplica (solo perros en estadio B1 o B2).');
+  }
+  if (hp) {
+    const trv = hp.datos_usados.trv == null ? 'no medible' : `${hp.datos_usados.trv} m/s`;
+    lineas.push(`HP: probabilidad ${hp.valor} · TRV ${trv} · ${hp.n_sitios} sitio(s) con signos (${ORIGEN_TEXTO[hp.origen]})`);
+  } else {
+    lineas.push(ctx.especie === 'canino'
+      ? 'HP: sección "Corazón derecho" sin habilitar.'
+      : 'HP: no aplica (solo perros).');
+  }
+  [acvim, mine2, hp].forEach((r) => {
+    if (r) r.advertencias.forEach((a) => lineas.push(`⚠️ ${a}`));
+  });
+  return lineas.join('\n');
+}
+
+// §0.3 — disclaimer con una casilla por dato faltante. Solo en pantalla.
+function renderizarDisclaimers(resultados) {
+  if (!interpDisclaimers) return;
+  interpDisclaimers.innerHTML = '';
+  const nombres = { acvim: 'ACVIM', mine2: 'MINE 2', hp: 'HP' };
+  const yaMostrados = new Set();
+  Object.entries(resultados).forEach(([clave, r]) => {
+    if (!r || !r.faltantes.length) return;
+    const caja = document.createElement('div');
+    caja.className = 'interp-disclaimer';
+    const texto = document.createElement('p');
+    texto.textContent = `${nombres[clave]}: falta ${r.faltantes.join(', ')} para clasificar.`;
+    caja.appendChild(texto);
+    r.faltantes.forEach((faltante) => {
+      const destino = DESTINO_FALTANTES[faltante];
+      if (!destino || yaMostrados.has(destino.columna)) return;
+      yaMostrados.add(destino.columna);
+      const label = document.createElement('label');
+      label.className = 'campo-label';
+      label.textContent = destino.unidad ? `${faltante} (${destino.unidad})` : faltante;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = 'any';
+      input.className = 'input-control';
+      input.dataset.columna = destino.columna;
+      label.appendChild(input);
+      caja.appendChild(label);
+    });
+    interpDisclaimers.appendChild(caja);
+  });
+}
+
+function textoItemNumerico(evaluacion, sitio, clave) {
+  const estado = evaluacion.items[sitio][clave];
+  const valor = clave === 'notching' ? evaluacion.valores.morfo_pulmonar : evaluacion.valores[clave];
+  if (estado === undefined) return 'sin dato';
+  return `${valor} → ${estado ? 'presente' : 'no cuenta'}`;
+}
+
+function renderizarSignosNumericos(evaluacion) {
+  if (!hpSignosNumericos) return;
+  hpSignosNumericos.querySelectorAll('[data-valor-item]').forEach((span) => {
+    const item = span.dataset.valorItem;
+    if (item === 'trv') {
+      const trv = evaluacion.valores.trv;
+      span.textContent = trv == null ? 'sin dato' : `${trv} m/s${trv > UMBRALES_HP.trvBajo ? ' → alerta' : ''}`;
+      return;
+    }
+    const [sitio, clave] = item.split('.');
+    span.textContent = textoItemNumerico(evaluacion, sitio, clave);
+  });
+}
+
+function recalcularClasificaciones() {
+  if (!bloqueInterpretacion) return null;
+  sincronizarAtEtPulmonar();
+  const ctx = leerContextoClasificacion();
+  const resultados = calcularClasificaciones(ctx);
+  const evaluacion = evaluarSignosHP(ctx);
+
+  // "Corazón derecho" vacía por defecto; una alerta numérica la abre sola
+  // (salvo que el profesional la haya deshabilitado).
+  const alertaActiva = ctx.especie === 'canino' && evaluacion.alerta
+    && ctx.manual.hp_seccion !== 'deshabilitada';
+  if (hpAlerta) {
+    hpAlerta.hidden = !alertaActiva;
+    hpAlerta.textContent = alertaActiva ? '⚠️ Signo de alerta numérico: se habilitó la sección.' : '';
+  }
+  if (alertaActiva && bloqueCorazonDerecho && ctx.manual.hp_seccion === 'auto') {
+    bloqueCorazonDerecho.open = true;
+  }
+
+  if (interpResultados) interpResultados.textContent = textoResultados(ctx, resultados);
+  renderizarDisclaimers(resultados);
+  renderizarSignosNumericos(evaluacion);
+  return resultados;
+}
+
+// Claves de la interpretación para payload.examen_clinico (n8n las mapea a
+// atenciones_cardiologia en 8.7c). Recalcula en el momento del envío.
+function leerInterpretacion() {
+  if (!bloqueInterpretacion) return {};
+  const ctx = leerContextoClasificacion();
+  const { acvim, mine2, hp } = calcularClasificaciones(ctx);
+  const traza = (r) => (r ? { origen: r.origen, faltantes: r.faltantes, advertencias: r.advertencias } : null);
+  const advertencias = { acvim: traza(acvim), mine2: traza(mine2), hp: traza(hp) };
+  const hayAdvertencias = Object.values(advertencias).some(Boolean);
+  return {
+    acvim_estadio: acvim ? acvim.valor : null,
+    acvim_origen: acvim ? acvim.origen : null,
+    mine2_puntaje: mine2 ? mine2.valor : null,
+    mine2_clasificacion: mine2 ? mine2.clasificacion : null,
+    hp_clasificacion: hp ? hp.valor : null,
+    hp_sospecha: ctx.especie === 'canino' ? Boolean(hp) : null,
+    hp_signos: hp ? ctx.manual.hp_signos : null,
+    hp_n_sitios: hp ? hp.n_sitios : null,
+    clasificacion_advertencias: hayAdvertencias ? advertencias : null,
+    morfo_aortica: ctx.manual.morfo_aortica,
+    morfo_pulmonar: ctx.manual.morfo_pulmonar,
+    eco_pulmonar_hallazgos: ctx.manual.eco_pulmonar_hallazgos,
+  };
+}
+
+// --- Armado de los controles ---------------------------------------------------
+if (selectMorfoAortica) poblarSelect(selectMorfoAortica, { opciones: OPCIONES_MORFO_AORTICA, default: '' });
+if (selectMorfoPulmonar) poblarSelect(selectMorfoPulmonar, { opciones: OPCIONES_MORFO_PULMONAR, default: '' });
+
+if (selectEcoPulmonar) {
+  HALLAZGOS_ECO_PULMONAR.forEach((texto, i) => {
+    const opcion = document.createElement('option');
+    opcion.value = texto;
+    opcion.textContent = `${i + 1}. ${texto}`;
+    selectEcoPulmonar.appendChild(opcion);
+  });
+}
+if (chkEcoPulmonar && selectEcoPulmonar) {
+  chkEcoPulmonar.addEventListener('change', () => {
+    selectEcoPulmonar.disabled = !chkEcoPulmonar.checked;
+    recalcularClasificaciones();
+  });
+}
+
+if (hpSignosVisuales) {
+  SIGNOS_HP_VISUALES.forEach(({ sitio, clave, etiqueta }) => {
+    const label = document.createElement('label');
+    label.className = 'campo-label';
+    label.textContent = etiqueta;
+    const select = document.createElement('select');
+    select.className = 'input-control';
+    select.dataset.sitio = sitio;
+    select.dataset.clave = clave;
+    [['', 'Sin evaluar'], ['si', 'Sí'], ['no', 'No']].forEach(([valor, texto]) => {
+      const opcion = document.createElement('option');
+      opcion.value = valor;
+      opcion.textContent = texto;
+      select.appendChild(opcion);
+    });
+    label.appendChild(select);
+    hpSignosVisuales.appendChild(label);
+  });
+}
+
+if (hpSignosNumericos) {
+  const items = [{ item: 'trv', etiqueta: 'TRV > 3.0 m/s' }]
+    .concat(SIGNOS_HP_NUMERICOS.map((s) => ({ item: `${s.sitio}.${s.clave}`, etiqueta: s.etiqueta })));
+  items.forEach(({ item, etiqueta }) => {
+    const fila = document.createElement('div');
+    fila.className = 'fila-signo-hp';
+    const nombre = document.createElement('span');
+    nombre.textContent = etiqueta;
+    const valor = document.createElement('span');
+    valor.className = 'valor-signo-hp';
+    valor.dataset.valorItem = item;
+    const label = document.createElement('label');
+    label.className = 'opcion-check';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.dataset.item = item;
+    label.append(check, ' No coincide (deshabilitar)');
+    fila.append(nombre, valor, label);
+    hpSignosNumericos.appendChild(fila);
+  });
+}
+
+// --- Disparadores de recálculo -------------------------------------------------
+if (bloqueInterpretacion) {
+  // Selector ACVIM, morfologías, estado de la sección, signos y deshabilitados.
+  bloqueInterpretacion.addEventListener('change', (evento) => {
+    const objetivo = evento.target;
+    if (objetivo.dataset && objetivo.dataset.columna) return; // casillas: abajo
+    // Marcar un signo visual a mano habilita la sección si estaba en automático.
+    if (objetivo.dataset && objetivo.dataset.sitio && objetivo.value !== ''
+        && selectHpSeccion && selectHpSeccion.value === 'auto') {
+      selectHpSeccion.value = 'habilitada';
+    }
+    recalcularClasificaciones();
+  });
+}
+
+// Casillas del disclaimer: el valor tipeado va a su campo eco (y de ahí al
+// payload, como si viniera del PDF) y se recalcula todo.
+if (interpDisclaimers) {
+  interpDisclaimers.addEventListener('change', (evento) => {
+    const input = evento.target;
+    if (!input.dataset || !input.dataset.columna || input.value === '') return;
+    const campo = document.getElementById(`eco-${input.dataset.columna}`);
+    if (!campo) return;
+    campo.value = input.value;
+    recalcularIndicesEcoDesdeFormulario();
+    recalcularClasificaciones();
+  });
+}
+
+if (selectEcoPulmonar) selectEcoPulmonar.addEventListener('change', recalcularClasificaciones);
+if (bloqueEcoInteractivo) bloqueEcoInteractivo.addEventListener('input', recalcularClasificaciones);
+if (campoPesoPaciente) campoPesoPaciente.addEventListener('input', recalcularClasificaciones);
+if (selectEspecie) selectEspecie.addEventListener('change', recalcularClasificaciones);
+if (listaSoplos) {
+  listaSoplos.addEventListener('change', recalcularClasificaciones);
+  listaSoplos.addEventListener('click', (evento) => {
+    if (evento.target.closest('.btn-eliminar-soplo')) recalcularClasificaciones();
+  });
+}
+if (btnAgregarSoplo) btnAgregarSoplo.addEventListener('click', recalcularClasificaciones);
+const campoAnamnesis = document.getElementById('consulta-anamnesis');
+if (campoAnamnesis) campoAnamnesis.addEventListener('input', recalcularClasificaciones);
+
+// Para los llamados desde secciones anteriores (filiación, PDF), que pueden
+// correr antes de que esta sección se haya inicializado.
+window.recalcularClasificaciones = recalcularClasificaciones;
+recalcularClasificaciones();
