@@ -672,6 +672,12 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
 
   const esNueva = estado === 'nueva';
   campoMedicamento.contentEditable = esNueva ? 'true' : 'false';
+  // El nombre es una sola línea: Enter pasa a la dosis en vez de cortar renglón.
+  campoMedicamento.addEventListener('keydown', (evento) => {
+    if (evento.key !== 'Enter') return;
+    evento.preventDefault();
+    campoDosis.focus();
+  });
   campoDosis.readOnly = !esNueva;
   campoFrecuencia.readOnly = !esNueva;
 

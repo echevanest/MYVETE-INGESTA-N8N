@@ -95,7 +95,14 @@
       <li class="fila-medicamento" data-estado="continua">
         <span class="estado-badge" hidden></span>
 
-        <span class="campo-medicamento" data-campo="medicamento"></span>
+        <!-- El nombre del fármaco es un <span> editable (no un <input>): con
+             rótulo, borde y placeholder propios para que se vea aunque esté
+             vacío (antes era un span sin estilo: existía pero no se veía). -->
+        <div class="campo-label campo-medicamento-grupo">
+          Medicamento
+          <span class="campo-medicamento" data-campo="medicamento" role="textbox"
+                aria-label="Medicamento" data-placeholder="Nombre del fármaco"></span>
+        </div>
 
         <label class="campo-label">
           Dosis
