@@ -12,8 +12,32 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
 | `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (31 nodos, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
-| `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7). |
+| `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sub-fase 8.7d (2026-10-01)
+
+Correcciones previas a repetir el E2E que falló el 2026-09-30 (ejecución 2992: el `profesional_id` del SPA ya no existía y el insert de la atención falló por la FK). `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 41 → 42), **sin activar**. Se tocaron 4 nodos; conexiones y credenciales sin cambios:
+
+*   **IF - ¿Trae Ecocardiografía?:** segunda condición (AND): `Insert Atención Cardiología` tiene que haber devuelto `id`. Antes bastaba con que el payload trajera eco, y el insert del eco se intentaba con `atencion_id` nulo aunque la atención hubiera fallado.
+*   **Preparar Datos para PDF:**
+    *   Unidades: todas las lineales se rotulan en **mm** (`dvid`, `dvs`, `sivd`, `sivs`, `ppvid`, `ppvis`, `ai_lineal`, `ao_lineal`, `dvccd`, `tapse`, `mapse`, además de las del VD). El nodo **no convierte**: el SPA ya manda mm. `DVD/DVI = dvdd / dvid`.
+    *   Fecha: sale arriba de "DATOS DEL PACIENTE" y se repite al pie, en la línea de la firma y sobre el margen opuesto (tabulaciones por defecto de Docs: 4 después de la imagen de la firma, 9 si no hay firma). Se calcula con `timeZone: 'America/Argentina/Buenos_Aires'`. `firma_index` sigue apuntando al inicio de esa línea.
+*   **Preparar alerta** y **Preparar alerta eco:** informan el estado real de cada nodo. Leían con `$(nodo).item`, que solo resuelve nodos de la propia rama; los de ramas paralelas (eco, Drive) daban `undefined` y la alerta decía "no aplica (sin eco en el payload)", "Guardar PDF Drive: FALLO" y "PDF: no disponible" aunque hubieran corrido bien. Ahora leen con `$(nodo).first(0)`. La alerta del eco ya no afirma que la atención se guardó. Se sumó la línea "Firma en el informe".
+*   **Verificación:** los 4 nodos se probaron localmente reproduciendo la ejecución 2992; el acceso con `first(0)` a un nodo de otra rama se confirmó en n8n Cloud con un workflow temporal (creado, llamado una vez y borrado); la versión viva se releyó por API: idéntica a la probada. **Sin verificar:** la posición de la fecha al pie en el PDF real (depende del render de Google Docs).
+*   **Acoplamiento con el SPA:** este nodo rotula en mm lo que recibe. Con un SPA anterior a 8.7d (que manda cm), el informe diría "3.11 mm". El SPA de 8.7d tiene que estar desplegado antes del E2E.
+*   **Backups:** `workflow_B.pre-8.7d.json` y `workflow_B.post-8.7d.json`. Sin secretos.
+
+### `MYVETE - Alta Profesional` — Sub-fase 8.7d (2026-10-01)
+
+Limpieza de la firma reemplazada, con `service_role`. `PUT /workflows/MlEGaxt7k6H9SAfP` (versionCounter 2 → 3). **OJO: en un workflow activo, el PUT republica solo** — la versión nueva quedó publicada en el acto (`activeVersionId` = `versionId`), sin llamar a `/activate`. Los 5 nodos originales no cambiaron; se sumaron 5:
+
+*   **Buscar firma previa** (HTTP GET, rama paralela desde `Validar payload`, ubicada arriba para que con `executionOrder: v1` corra antes que el upsert): lee la `firma_url` de la fila con la misma matrícula, que es la que el upsert va a pisar. `onError: continueRegularOutput`: si falla, el alta sigue igual.
+*   Después de `Respond OK` (el formulario ya recibió su respuesta): **Firma a limpiar** (Code: firma previa distinta de la nueva y dentro del bucket) → **¿Firma vieja en uso?** (HTTP GET a `profesionales` por `firma_url`) → **IF - ¿Firma huérfana?** (200 y cero filas) → **Borrar firma vieja** (HTTP DELETE a Storage).
+*   A prueba de fallos: si la búsqueda previa falla, si el upsert no devuelve `id` o si la consulta de uso no responde 200 con lista vacía, no se borra nada.
+*   **Verificación:** 6 casos con profesionales y archivos de prueba, primero en una copia temporal del workflow (borrada) y después contra el webhook de producción, antes y después de cerrar las policies: alta nueva, firma reemplazada (se borra la vieja), misma firma, firma vieja en uso por otro profesional (no se borra), firma vieja ya sin uso (se borra) y payload inválido (400). Filas y archivos de prueba borrados; las 7 firmas reales, intactas.
+*   **Al verificar un borrado:** la URL pública de Storage pasa por caché y puede seguir respondiendo 200 un rato. Mirar el listado del bucket o `storage.objects`.
+*   **Backups:** `workflow_alta_profesional.pre-8.7d.json` (antes) y `workflow_alta_profesional.json` (vivo después).
 
 ### `MYVETE - Ingesta` — Sub-fase 8.7c (2026-09-29)
 

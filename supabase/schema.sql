@@ -178,6 +178,14 @@ create trigger profesionales_set_updated_at
 -- cualquier portador de la key anon puede sobreescribir la firma de cualquier
 -- profesional. Es aceptable mientras la key anon no sea pública fuera del
 -- consultorio; si eso cambia, hay que mover la subida a n8n/service_role.
+--
+-- 8.7d (2026-10-01): se eliminaron firmas_update_anon y firmas_delete_anon
+-- (migración cerrar_policies_anon_delete_update_firmas_8_7d). Con la clave
+-- publicable ya no se puede pisar ni borrar la firma de nadie. Quedan INSERT
+-- (el formulario sube la firma, siempre con un nombre nuevo) y SELECT. La firma
+-- reemplazada la borra n8n ("MYVETE - Alta Profesional") con service_role, y
+-- solo si ningún profesional la sigue usando. Lo que sigue describe el estado
+-- anterior de las 4 policies.
 drop policy if exists "firmas_insert_anon" on storage.objects;
 create policy "firmas_insert_anon"
   on storage.objects
@@ -185,20 +193,13 @@ create policy "firmas_insert_anon"
   to anon
   with check (bucket_id = 'firmas');
 
+-- Eliminadas en 8.7d (2026-10-01). Para volver atrás, recrearlas así:
+--   create policy "firmas_update_anon" on storage.objects for update to anon
+--     using (bucket_id = 'firmas') with check (bucket_id = 'firmas');
+--   create policy "firmas_delete_anon" on storage.objects for delete to anon
+--     using (bucket_id = 'firmas');
 drop policy if exists "firmas_update_anon" on storage.objects;
-create policy "firmas_update_anon"
-  on storage.objects
-  for update
-  to anon
-  using (bucket_id = 'firmas')
-  with check (bucket_id = 'firmas');
-
 drop policy if exists "firmas_delete_anon" on storage.objects;
-create policy "firmas_delete_anon"
-  on storage.objects
-  for delete
-  to anon
-  using (bucket_id = 'firmas');
 
 drop policy if exists "firmas_select_anon" on storage.objects;
 create policy "firmas_select_anon"
@@ -346,7 +347,9 @@ create index idx_atenciones_hp_clas    on public.atenciones_cardiologia (hp_clas
 --
 -- ~72 columnas de datos (todas nullable), casi todas `numeric` sin unidad
 -- declarada. Convención de unidades fijada del lado del SPA (interface/app.js
--- Sección 8, y este comentario): lineales en cm, fracciones en %, velocidades
+-- Sección 8, y este comentario): lineales en mm (8.7d, 2026-10-01: antes las
+-- de Modo M iban en cm; la tabla tenía 0 filas, no hubo datos que convertir),
+-- fracciones en %, velocidades
 -- en m/s — OJO: decisión 8.7 (2026-09-28): TODAS las velocidades pasan a cm/s
 -- (MINE 2 y HP convierten a m/s solo para calcular); rige cuando 8.7b cambie el
 -- SPA. La tabla tenía 0 filas, no hubo datos que convertir. Las 7 columnas `text`: efusion_pericardica, efusion_pleural,
@@ -382,7 +385,7 @@ create table public.datos_ecocardiografia (
   -- dvccd = DVCCd (semántica confirmada por Marcelo, 2026-09-28).
   vp_ap numeric, ao_ap numeric, dapd numeric, dvccd numeric,
   -- 8.7a-bis (2026-09-28): flujo pulmonar y VD. at/et en ms; vel_regurg_pulmonar
-  -- en cm/s; dvdd/dvds/plvdd/plvds en mm (excepción a la convención de cm).
+  -- en cm/s; dvdd/dvds/plvdd/plvds en mm (como todas las lineales desde 8.7d).
   at_pulmonar numeric, et_pulmonar numeric, at_et_pulmonar numeric,
   vel_regurg_pulmonar numeric,
   dvdd numeric, dvds numeric, plvdd numeric, plvds numeric,

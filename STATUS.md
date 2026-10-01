@@ -1,6 +1,6 @@
 # 🗺️ ESTADO DEL PROYECTO: INTERFAZ LOCAL & n8n
 
-*   **Última actualización:** 2026-09-23 — ver Sección L (Sprint 8.0: examen clínico en Supabase + SPA + n8n + informe) y Sección K (Sprint 7: Identificación de Profesional, cerrado). **Nota sobre A-E:** esas secciones son históricas (julio-agosto 2026) y no se re-auditaron. La B ("Consulta de Hoy") quedó reemplazada por el bloque "Consulta y examen clínico" (Sección L), y la C/D describen el workflow CORE, hoy backup inactivo (ver `n8n/README.md` → "Estado actual"). Texto anterior de esta línea: 2026-09-12 — ver Sección J.3 (corrección de topología de workflows + Fix 1: migración de credencial Drive ARES→infoacivet en 7 nodos, **completo y verificado contra la API viva de n8n**). Sección J.2 (2026-09-10): Sprint 6 v2 (persistencia del PDF en Drive + índice en Sheets + alerta de fallo). Sección J (2026-09-09): primera versión del Sprint 6 (PDF + mail), también en STAGING. 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
+*   **Última actualización:** 2026-10-01 — ver Sección N (Sub-fase 8.7d: correcciones previas al E2E). Texto anterior de esta línea: 2026-09-23 — ver Sección L (Sprint 8.0: examen clínico en Supabase + SPA + n8n + informe) y Sección K (Sprint 7: Identificación de Profesional, cerrado). **Nota sobre A-E:** esas secciones son históricas (julio-agosto 2026) y no se re-auditaron. La B ("Consulta de Hoy") quedó reemplazada por el bloque "Consulta y examen clínico" (Sección L), y la C/D describen el workflow CORE, hoy backup inactivo (ver `n8n/README.md` → "Estado actual"). Texto anterior de esta línea: 2026-09-12 — ver Sección J.3 (corrección de topología de workflows + Fix 1: migración de credencial Drive ARES→infoacivet en 7 nodos, **completo y verificado contra la API viva de n8n**). Sección J.2 (2026-09-10): Sprint 6 v2 (persistencia del PDF en Drive + índice en Sheets + alerta de fallo). Sección J (2026-09-09): primera versión del Sprint 6 (PDF + mail), también en STAGING. 2026-09-08: Sección I (integración de datos ecocardiográficos SPA → n8n → Supabase). Secciones F-G del 2026-09-03. El resto del documento (Secciones A-E, pendientes) no se tocó desde 2026-08-25 y quedó desactualizado respecto a commits posteriores sobre el bookmarklet — no auditados.
 *   **Versión de la Arquitectura:** V5.0 — COMPLETADA Y VALIDADA E2E (Streaming de Dictado Interino + Conexión End-to-End n8n Cloud Validada + Nodo IA en producción + Fix de renderizado de `borrador_medico` + Bookmarklet de Filiación: extracción de mascota **y** de tutor validadas E2E contra MyVete real — cobertura de filiación 100%)
 *   **Control de versión:** Repositorio Git local inicializado (branch `master`). Commit `8634294` (V4.9 consolidado); extracción de tutor (V5.0), validada E2E, en curso de commit.
 *   **Nota sobre "ARCHIVO MAESTRO v5.2":** referenciado en conversación externa (Gemini/Arquitectura) como fuente de un DDL de Supabase — no se encontró ningún archivo con ese nombre en este repo ni en el Google Drive conectado al momento de escribir la Sección F. Si existe, no está compartido con esta sesión.
@@ -396,6 +396,40 @@ Resumen completo, decisiones y pendientes en `SPRINT-08-ESTADO.md`.
     en el CI `verificar.yml`). Prueba de humo del panel en jsdom sin errores. **No
     probado en navegador real.**
 *   **n8n / Supabase:** sin cambios en 8.7b (el mapeo va en 8.7c).
+
+### N. Sub-fase 8.7d — Correcciones previas al E2E (2026-10-01) — SIN E2E
+
+Origen: el E2E del 2026-09-30 falló porque el `profesional_id` guardado en el
+SPA ya no existía en Supabase (ejecución 2992 de n8n).
+
+*   **Unidades (SPA + n8n):** todas las medidas lineales se muestran y se
+    guardan en **mm** (antes las de Modo M iban en cm, por decisión del
+    2026-09-28). El parser convierte cm → mm; `calcularIndicesEco` pasa a cm
+    solo para calcular (Cornell, Devereux), así que los índices no cambian.
+    `DVD/DVI = dvdd / dvid`. `datos_ecocardiografia` tenía 0 filas: no hubo
+    datos que convertir. `CRITERIOS DE CLASIFICACION.md` pasa a v1.5.
+*   **Validación del profesional (`app.js` §0.bis):** al arrancar se consulta
+    `profesionales` con la clave publicable. Si el id no existe (o está
+    inactivo) se descarta lo guardado y se abre el alta; si existe, se refresca
+    lo guardado con los datos de la base (el informe usa `payload.profesional`);
+    si la consulta falla, no se bloquea.
+*   **Firma reemplazada (n8n, `MYVETE - Alta Profesional`):** al guardar un
+    alta con una firma nueva, el workflow borra la anterior con `service_role`,
+    solo si ningún profesional la sigue usando. `profesional.html` no cambia.
+    Publicado y probado en producción con profesionales de prueba (ver
+    `n8n/README.md`).
+*   **Policies del bucket `firmas`:** eliminadas `firmas_delete_anon` y
+    `firmas_update_anon`. Con la clave publicable solo se puede subir y leer.
+*   **n8n (`lkOwTFmVTZu7EMoU`, sin activar):** ver `n8n/README.md`, 8.7d.
+*   **Datos:** los 7 profesionales quedaron con la especialidad "Especialista
+    en cardiología clínica UBA" (decisión de Marcelo); 4 firmas huérfanas
+    borradas del bucket (copia local en
+    `.secrets/backup-firmas-huerfanas-2026-10-01/`, fuera de Git).
+*   **Tests:** `node --test tests/clasificacion.test.mjs` (35 casos: se suman el
+    parser en mm y los índices). Prueba de humo en jsdom de `index.html` y
+    `profesional.html`. **No probado en navegador real.**
+*   **Pendiente:** E2E de ingesta (lo corre Marcelo, con el SPA de 8.7d ya
+    desplegado).
 
 ---
 

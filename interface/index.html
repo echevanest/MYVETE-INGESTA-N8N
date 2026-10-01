@@ -270,9 +270,10 @@
               (null las vacías o sin campo) y `bloque_ekg` con los 4 campos EKG.
               `eco-epr` y `eco-tiempo_eyectivo` tienen columna propia desde el
               2026-09-13 y viajan igual que el resto.
-           Unidades (la tabla es `numeric` sin unidad): lineales en cm, fracciones
-           en %, velocidades en cm/s, tiempos en ms, VD en mm — misma convención
-           que el extractor de app.js (decisión 8.7, 2026-09-28). -->
+           Unidades (la tabla es `numeric` sin unidad): lineales en mm (8.7d,
+           2026-10-01; antes las de Modo M iban en cm), fracciones en %,
+           velocidades en cm/s, tiempos en ms — misma convención que el
+           extractor de app.js, que convierte por dentro para calcular. -->
       <details id="bloque-ecocardiografia" class="bloque-metrico">
         <summary>Estudios complementarios (Ecocardiograma / Electro)</summary>
 
@@ -288,7 +289,7 @@
         </div>
 
         <fieldset class="grid-metricas">
-          <legend>Modo M / lineales (cm)</legend>
+          <legend>Modo M / lineales (mm)</legend>
           <label class="campo-label">
             DVID — diám. VI diástole
             <input type="number" step="0.01" id="eco-dvid" class="input-control campo-eco" disabled />
@@ -484,7 +485,7 @@
             <input type="number" step="0.1" id="eco-dapd" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">
-            DVCCd — vena cava caudal
+            DVCCd — vena cava caudal (mm)
             <input type="number" step="0.01" id="eco-dvccd" class="input-control campo-eco" disabled />
           </label>
           <label class="campo-label">

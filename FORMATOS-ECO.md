@@ -1,6 +1,12 @@
 # FORMATOS DE INFORMES DE ECÓGRAFOS — parser de eco del SPA
 
 *   **Fecha:** 2026-09-25
+*   **Nota 2026-10-01 (8.7d):** el parser ahora guarda las lineales en **mm**
+    (convierte cm → mm). Donde este documento dice "convierte mm→cm" o "×10"
+    hay que leerlo al revés: con unidad no detectada se asume mm, así que el
+    caso Vinno (mm sin unidad visible) queda bien y el riesgo pasa a un PDF en
+    cm sin unidad visible (queda 10 veces más chico). El resto de la auditoría
+    sigue vigente.
 *   **Alcance:** auditoría de solo lectura del parser de PDF de eco
     (`interface/app.js` §8, `MAPEO_EXTRACCION_PDF`, líneas 961-1011) contra
     PDFs reales de ecógrafos. No se modificó el parser, n8n ni Supabase.

@@ -1,10 +1,12 @@
-// Tests de la interpretación diagnóstica (8.7b) y del parser de velocidades.
+// Tests de la interpretación diagnóstica (8.7b), del parser del PDF de eco y de
+// los índices calculados (unidades 8.7d: lineales en mm).
 // Corre con: node --test tests/
 //
 // app.js es un script de navegador (toca el DOM al cargar), así que acá se
 // recortan solo las secciones puras, entre los marcadores
-// `// >>> CLASIFICACION-PURA` / `// <<< CLASIFICACION-PURA` y
-// `// >>> PARSER-ECO-PURO` / `// <<< PARSER-ECO-PURO`, y se corren en un
+// `// >>> CLASIFICACION-PURA` / `// <<< CLASIFICACION-PURA`,
+// `// >>> PARSER-ECO-PURO` / `// <<< PARSER-ECO-PURO` e
+// `// >>> INDICES-ECO-PUROS` / `// <<< INDICES-ECO-PUROS`, y se corren en un
 // contexto aislado de `vm`. Los umbrales salen de CRITERIOS DE CLASIFICACION.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,10 +24,11 @@ function recortar(marca) {
 
 const contexto = vm.createContext({});
 vm.runInContext(recortar('PARSER-ECO-PURO'), contexto);
+vm.runInContext(recortar('INDICES-ECO-PUROS'), contexto);
 vm.runInContext(recortar('CLASIFICACION-PURA'), contexto);
 const {
   calcularACVIM, calcularMINE2, calcularHP, calcularClasificaciones,
-  evaluarSignosHP, detectarAscitis, extraerDatosEcocardiografia, r2,
+  evaluarSignosHP, detectarAscitis, extraerDatosEcocardiografia, calcularIndicesEco, r2,
 } = contexto;
 
 // ctx base: perro con soplo mitral, sin datos.
@@ -229,17 +232,17 @@ test('HP: morfología Tipo I no cuenta; Tipo III (notching) sí', () => {
   assert.equal(e.alerta, false, 'el notching no es alerta numérica');
 });
 
-test('HP: DVD/DVI 0.50…1.01 (dvid en cm, dvdd en mm)', () => {
-  // dvid = 4 cm = 40 mm → dvdd = ratio × 40.
+test('HP: DVD/DVI 0.50…1.01 (dvid y dvdd en mm)', () => {
+  // dvid = 40 mm → dvdd = ratio × 40.
   const casos = [[0.50, false], [0.51, false], [0.69, false], [0.70, true], [0.71, true],
     [0.99, true], [1.00, true], [1.01, true]];
   casos.forEach(([ratio, presente]) => {
-    const e = evaluarSignosHP(ctx({ eco: { dvid: 4, dvdd: r2(ratio * 40) } }));
+    const e = evaluarSignosHP(ctx({ eco: { dvid: 40, dvdd: r2(ratio * 40) } }));
     assert.equal(e.valores.dvd_dvi, ratio, `DVD/DVI ${ratio}`);
     assert.equal(e.items.sitio1.dvd_dvi, presente, `DVD/DVI ${ratio}`);
     assert.equal(e.alerta, presente, `alerta con DVD/DVI ${ratio}`);
   });
-  const r = hp({ dvid: 4, dvdd: 28 });
+  const r = hp({ dvid: 40, dvdd: 28 });
   assert.ok(r.advertencias.some((a) => a.includes('DVD/DVI ≥ 0.70')));
 });
 
@@ -308,4 +311,62 @@ test('Parser: "E Vel VM" (Mindray, cm/s) y conversión m/s → cm/s', () => {
   assert.equal(extraerDatosEcocardiografia('E Vel VM: 112 cm/s').velocidad_e_mitral, 112);
   assert.equal(extraerDatosEcocardiografia('Onda E: 0.95 m/s').velocidad_e_mitral, 95);
   assert.equal(extraerDatosEcocardiografia('Onda E: 0,95').velocidad_e_mitral, 95, 'sin unidad y < 10 → m/s');
+});
+
+// --- Parser: lineales en mm (8.7d) ----------------------------------------------
+test('Parser: lineales en mm; convierte desde cm', () => {
+  // Mindray M8 / Vetus E7: cm con la unidad pegada.
+  const cm = extraerDatosEcocardiografia('SIVd:0.35cm DIVId:3.11cm PPVId: 0.43 cm Diámetro AI:1.79cm Diámetro aorta:1.18cm');
+  assert.equal(cm.sivd, 3.5);
+  assert.equal(cm.dvid, 31.1);
+  assert.equal(cm.ppvid, 4.3);
+  assert.equal(cm.ai_lineal, 17.9);
+  assert.equal(cm.ao_lineal, 11.8);
+  // Mindray M6Vet / Cube-Teich: ya viene en mm, no se toca.
+  const mm = extraerDatosEcocardiografia('IVSd: 3.5mm LVIDd: 31.1mm LVIDs: 12mm');
+  assert.equal(mm.sivd, 3.5);
+  assert.equal(mm.dvid, 31.1);
+  assert.equal(mm.dvs, 12);
+  // Sin unidad detectable: se asume mm (la de destino).
+  assert.equal(extraerDatosEcocardiografia('LVIDd 31.1').dvid, 31.1);
+  // Coma decimal y redondeo sin ruido binario.
+  assert.equal(extraerDatosEcocardiografia('DIVId: 3,11 cm').dvid, 31.1);
+  assert.equal(extraerDatosEcocardiografia('DIVIs:1.2cm').dvs, 12);
+});
+
+// --- Índices: entran mm, se calcula en cm ---------------------------------------
+test('Índices: Cornell, Devereux, MVCF y EPR con lineales en mm', () => {
+  const peso = 7.5;
+  const r = plano(calcularIndicesEco(
+    { dvid: 31.1, dvs: 12, sivd: 3.5, sivs: 9.5, ppvid: 4.3, ppvis: 12, ai_lineal: 17.9, ao_lineal: 11.8, tiempo_eyectivo: 0.2 },
+    peso,
+  ));
+  const red3 = (x) => Math.round(x * 1000) / 1000;
+  // LVIDDN = DVId (cm) / peso^0.294 (Cornell 2004): el umbral ACVIM (1.70) es en cm.
+  assert.equal(r.dvid_indexado, red3(3.11 / peso ** 0.294));
+  assert.equal(r.dvs_indexado, red3(1.2 / peso ** 0.315));
+  assert.equal(r.sivd_indexado, red3(0.35 / peso ** 0.241));
+  assert.equal(r.ai_indexado, red3(1.79 / peso ** 0.273));
+  assert.equal(r.ao_indexado, red3(1.18 / peso ** 0.309));
+  // Devereux en cm → gramos.
+  const masa = red3(1.04 * ((3.11 + 0.35 + 0.43) ** 3 - 3.11 ** 3) + 0.6);
+  assert.equal(r.masa_vi, masa);
+  assert.ok(r.masa_vi > 20 && r.masa_vi < 40, 'masa VI en un rango fisiológico, no ×1000');
+  assert.equal(r.indice_masa_vi, red3(masa / (0.1017 * peso ** 0.6667)));
+  // Cocientes: no dependen de la unidad.
+  assert.equal(r.epr, red3((0.35 + 0.43) / 3.11));
+  assert.equal(r.mvcf, red3((3.11 - 1.2) / (3.11 * 0.2)));
+});
+
+test('Índices: los mismos valores en mm dan el mismo LVIDDN que antes en cm', () => {
+  // Caso de la ejecución 2992 (2026-09-30): DVId 3.11 cm → LVIDDN 1.207.
+  const peso = (3.11 / 1.207) ** (1 / 0.294);
+  assert.equal(calcularIndicesEco({ dvid: 31.1 }, peso).dvid_indexado, 1.207);
+});
+
+test('Índices: sin peso no hay índices por peso, pero sí masa y EPR', () => {
+  const r = plano(calcularIndicesEco({ dvid: 31.1, sivd: 3.5, ppvid: 4.3 }, ''));
+  assert.equal(r.dvid_indexado, undefined);
+  assert.ok(r.masa_vi > 0);
+  assert.ok(r.epr > 0);
 });

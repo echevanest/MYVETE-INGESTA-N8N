@@ -1,6 +1,8 @@
 # CRITERIOS DE CLASIFICACIÓN — MyVete
 
-Versión 1.4 — 2026-09-29.
+Versión 1.5 — 2026-10-01.
+- v1.5: unidades (8.7d). Todas las medidas lineales se muestran y se guardan
+  en mm; los cálculos convierten a cm por dentro. Ningún umbral cambia.
 - v1.1: corrección de la v1.0 tras la auditoría de la Sub-fase 8.7 (errores
   E3–E13, decisiones de Marcelo P2–P8).
 - v1.2: respuestas de Marcelo a las preguntas de la v1.1 (velocidades en cm/s,
@@ -90,8 +92,12 @@ Aunque haya prellenado, si falta algún dato el disclaimer **aparece igual**:
   `vmax_tricuspideo`, `vel_regurg_pulmonar`, etc.). MINE 2 y HP convierten a
   m/s **solo para el cálculo**: `v (m/s) = v (cm/s) / 100`.
 - Tiempos en ms (`at_pulmonar`, `et_pulmonar`).
-- Parámetros del VD (`dvdd`, `dvds`, `plvdd`, `plvds`) en **mm**. El resto de
-  las medidas lineales siguen en cm.
+- **Todas las medidas lineales se muestran y se guardan en mm** (v1.5): las
+  de Modo M (`dvid`, `dvs`, `sivd`, `sivs`, `ppvid`, `ppvis`), `ai_lineal`,
+  `ao_lineal`, `dvccd` y las del VD (`dvdd`, `dvds`, `plvdd`, `plvds`). Los
+  índices por peso y la masa VI se calculan en cm:
+  `medida (cm) = medida (mm) / 10`.
+- Gradientes en mmHg, fracciones en %, índices sin unidad.
 
 ### 0.4 Redondeo y cortes
 
@@ -164,7 +170,7 @@ Si alguno no se cumple → B1.
 - `ai_ao_lineal` es el LA/Ao **2D** en perros (decisión de Marcelo, E4).
   **No es modo M.** El modo M se usa solo en gatos, que no se clasifican.
 - LVIDDN se toma **siempre** de `dvid_indexado` (E10), que el SPA ya calcula
-  como `dvid (cm) / peso (kg)^0.294` (Cornell 2004, `interface/app.js`,
+  como `(dvid (mm) / 10) / peso (kg)^0.294` (Cornell 2004, `interface/app.js`,
   `CORNELL_EXP`). No se recalcula aparte. Si no hay peso válido,
   `dvid_indexado` no existe → falta "LVIDDN".
 - **VHS no se usa** (P4).
@@ -382,8 +388,8 @@ alerta de 3.1.
 
 **Relación DVD/DVI** (decisión de Marcelo, v1.4; reemplaza la tabla de
 tercios de la v1.3). Se calcula en diástole:
-`DVD/DVI = dvdd (mm) / (dvid (cm) × 10)`, redondeado a 2 decimales (`dvid`
-está en cm y `dvdd` en mm: hay que convertir).
+`DVD/DVI = dvdd (mm) / dvid (mm)`, redondeado a 2 decimales (desde la v1.5
+las dos medidas están en mm: no hay conversión).
 
 | DVD/DVI | Interpretación | Efecto |
 |---------|----------------|--------|

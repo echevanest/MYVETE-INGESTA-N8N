@@ -104,9 +104,69 @@ function esperarIdentificacionProfesional() {
   }, 1000);
 }
 
+// --- Validación contra Supabase (8.7d, 2026-10-01) ---------------------------
+// El profesional_id de localStorage puede haber dejado de existir en la base
+// (E2E del 2026-09-30: el profesional se había borrado y el insert de la
+// atención falló por la FK). Al arrancar se consulta `profesionales` con la
+// clave publicable (la misma de profesional.html; RLS deja a anon leer solo
+// activo = true):
+//   · no existe (o está inactivo) → se descarta lo guardado y se abre el alta;
+//   · existe → se refresca lo guardado con los datos de la base, porque el
+//     informe se arma con payload.profesional;
+//   · no se pudo consultar (sin red, proyecto pausado) → no se bloquea.
+const SUPABASE_URL = 'https://tuedigqvvkvgongpcnjx.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_TQmn488CoLDoMoM0wKLzpw_N_nAa7fZ';
+const COLUMNAS_PROFESIONAL = 'id,nombre,apellido,email,especialidad,matricula_tipo,matricula_numero,matricula_2_tipo,matricula_2_numero,firma_url';
+const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Fila del profesional; null si no existe; undefined si no se pudo consultar.
+async function buscarProfesionalEnSupabase(profesionalId) {
+  if (!REGEX_UUID.test(String(profesionalId))) return null;
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/profesionales?id=eq.${profesionalId}&select=${COLUMNAS_PROFESIONAL}`;
+    const respuesta = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    });
+    if (!respuesta.ok) return undefined;
+    const filas = await respuesta.json();
+    if (!Array.isArray(filas)) return undefined;
+    return filas[0] || null;
+  } catch (error) {
+    return undefined;
+  }
+}
+
+async function validarProfesionalGuardado() {
+  const guardado = window.profesionalActual;
+  if (!guardado || !guardado.profesional_id) return;
+  const idValidado = guardado.profesional_id;
+  const fila = await buscarProfesionalEnSupabase(idValidado);
+
+  // Si mientras tanto profesional.html guardó otro profesional, no se toca.
+  if (!window.profesionalActual || window.profesionalActual.profesional_id !== idValidado) return;
+
+  if (fila === undefined) {
+    console.warn('MyVete Panel: no se pudo validar el profesional contra Supabase; se sigue con el guardado.');
+    return;
+  }
+  if (fila === null) {
+    console.warn(`MyVete Panel: el profesional ${idValidado} no existe en Supabase; se pide el alta de nuevo.`);
+    localStorage.removeItem(CLAVE_PROFESIONAL);
+    window.profesionalActual = null;
+    abrirModalProfesional();
+    return;
+  }
+  const { id, ...datos } = fila;
+  const refrescado = { ...guardado, ...datos, profesional_id: id };
+  window.profesionalActual = refrescado;
+  localStorage.setItem(CLAVE_PROFESIONAL, JSON.stringify(refrescado));
+}
+
 const profesionalGuardado = localStorage.getItem(CLAVE_PROFESIONAL);
 if (!profesionalGuardado || !aplicarProfesional(profesionalGuardado)) {
   abrirModalProfesional();
+} else {
+  validarProfesionalGuardado();
 }
 esperarIdentificacionProfesional();
 
@@ -916,11 +976,13 @@ document.querySelectorAll('.btn-dictado').forEach((boton) => {
 // El id de cada input de dato es EXACTAMENTE `eco-<nombre_de_columna>`, así el
 // mapeo UI → columna es directo y no hay una segunda tabla de nombres.
 //
-// Unidades (la tabla es `numeric` sin unidad): lineales en cm (el extractor
-// convierte mm → cm), fracciones en %, TODAS las velocidades en cm/s (el
-// extractor convierte m/s → cm/s; decisión 8.7, 2026-09-28), tiempos en ms y
-// parámetros del VD (dvdd, dvds, plvdd, plvds) en mm. Es una convención elegida
-// acá, no un dato del schema.
+// Unidades (la tabla es `numeric` sin unidad): TODAS las lineales en mm (8.7d,
+// 2026-10-01: antes las de Modo M iban en cm; el extractor convierte cm → mm),
+// fracciones en %, TODAS las velocidades en cm/s (el extractor convierte
+// m/s → cm/s; decisión 8.7, 2026-09-28), tiempos en ms, gradientes en mmHg.
+// Se muestra y se guarda en esas unidades; los cálculos convierten por dentro
+// (lineales a cm en calcularIndicesEco, velocidades a m/s en la Sección 10).
+// Es una convención elegida acá, no un dato del schema.
 //
 // Correcciones ya incorporadas del módulo previo: separador sigla/número
 // opcional; unidad capturada dentro del regex (grupo 2) con ventana corta de
@@ -966,23 +1028,23 @@ const COLUMNAS_DATOS_ECO_TEXTO = new Set([
 ]);
 
 // >>> PARSER-ECO-PURO
-// Heurística PDF → columna. `unidad` es la de DESTINO: 'cm' dispara conversión
-// desde mm y 'cm/s' desde m/s (todas las velocidades se guardan en cm/s); el
-// resto se toma tal cual.
+// Heurística PDF → columna. `unidad` es la de DESTINO: 'mm' dispara conversión
+// desde cm (todas las lineales se guardan en mm) y 'cm/s' desde m/s (todas las
+// velocidades se guardan en cm/s); el resto se toma tal cual.
 // `siglas` alimenta el fallback cuando el regex principal no matchea.
 const MAPEO_EXTRACCION_PDF = [
   { columna: 'dvid', siglas: ['DIVId', 'LVIDd', 'LVEDD', 'DVId', 'DVI'],
-    regex: /\b(?:DIVId|LVIDd|LVEDD|DVId|DVI)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:DIVId|LVIDd|LVEDD|DVId|DVI)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'dvs', siglas: ['DIVIs', 'LVIDs', 'LVESD', 'DVIs', 'DVS'],
-    regex: /\b(?:DIVIs|LVIDs|LVESD|DVIs|DVS)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:DIVIs|LVIDs|LVESD|DVIs|DVS)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'sivd', siglas: ['SIVd', 'IVSd'],
-    regex: /\b(?:SIVd|IVSd)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:SIVd|IVSd)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'sivs', siglas: ['SIVs', 'IVSs'],
-    regex: /\b(?:SIVs|IVSs)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:SIVs|IVSs)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'ppvid', siglas: ['PPVId', 'LVPWd'],
-    regex: /\b(?:PPVId|LVPWd)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:PPVId|LVPWd)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'ppvis', siglas: ['PPVIs', 'LVPWs'],
-    regex: /\b(?:PPVIs|LVPWs)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:PPVIs|LVPWs)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'fe_modom', siglas: ['FE(Teich)', 'EF(Teich)', 'FE', 'EF'],
     regex: /\b(?:FE\(Teich\)|EF\(Teich\)|FE|EF)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(%)?/i, unidad: '%' },
   { columna: 'fs_modom', siglas: ['FS(Teich)', 'FS'],
@@ -990,9 +1052,9 @@ const MAPEO_EXTRACCION_PDF = [
   { columna: 'fe_simpson', siglas: ['FE Simpson', 'EF Simpson', 'Simpson'],
     regex: /\b(?:FE|EF)\s*\(?\s*Simpson\s*\)?\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(%)?/i, unidad: '%' },
   { columna: 'ai_lineal', siglas: ['Diámetro AI', 'Diametro AI', 'AI', 'LA'],
-    regex: /\b(?:Di[áa]metro\s+AI|AI|LA)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:Di[áa]metro\s+AI|AI|LA)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'ao_lineal', siglas: ['Ao Diam', 'Diámetro aorta', 'Diametro aorta', 'Ao'],
-    regex: /\b(?:Ao\s?Diam|Di[áa]metro\s+aorta|Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'cm' },
+    regex: /\b(?:Ao\s?Diam|Di[áa]metro\s+aorta|Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/i, unidad: 'mm' },
   { columna: 'ai_ao_lineal', siglas: ['AI/Ao', 'LA/Ao'],
     regex: /\b(?:AI\s*\/\s*Ao|LA\s*\/\s*Ao|Relaci[óo]n\s+AI\s*\/?\s*Ao)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i, unidad: null },
   // "E Vel VM" = formato Mindray (FORMATOS-ECO.md §2.1), en cm/s.
@@ -1031,7 +1093,7 @@ function ecoANumero(valorCrudo) {
 
 // Devuelve el número ya en la unidad de destino, o null si no es numérico.
 // Si la unidad no se detectó, se ASUME que ya viene en la de destino (RIESGO:
-// un valor real en mm sin unidad explícita queda 10x más chico — no hay forma
+// un valor real en cm sin unidad explícita queda 10x más chico — no hay forma
 // fiable de saberlo solo del texto). Excepción para velocidades: sin unidad y
 // < 10 se toma como m/s (una velocidad cardíaca en cm/s no baja de 10; en m/s
 // casi nunca pasa de 7).
@@ -1039,7 +1101,7 @@ function ecoNormalizarValor(valorCrudo, unidadDetectada, unidadDestino) {
   const num = ecoANumero(valorCrudo);
   if (isNaN(num)) return null;
   const u = String(unidadDetectada || '').toLowerCase();
-  if (u === 'mm' && unidadDestino === 'cm') return Math.round((num / 10) * 1000) / 1000;
+  if (u === 'cm' && unidadDestino === 'mm') return Math.round(num * 10 * 1000) / 1000;
   if (unidadDestino === 'cm/s' && (u === 'm/s' || (u === '' && num < 10))) {
     return Math.round(num * 100 * 1000) / 1000;
   }
@@ -1190,6 +1252,13 @@ function leerBloqueEKG() {
 // Regla general: si falta un crudo, esa clave no aparece en el objeto devuelto
 // (recalcular… no toca el campo). Si el peso es 0/negativo/no numérico no se
 // calcula ningún índice por peso; masa_vi y epr sí, que no dependen del peso.
+//
+// Unidades (8.7d): las lineales llegan en mm, que es como se muestran y se
+// guardan, y acá se pasan a cm SOLO para calcular: Cornell y Devereux están
+// definidos en cm. Los índices resultantes no cambian respecto de antes.
+// tests/clasificacion.test.mjs recorta este bloque entre los marcadores.
+
+// >>> INDICES-ECO-PUROS
 const BSA_K = 0.1017;
 const BSA_EXP = 0.6667;
 
@@ -1216,15 +1285,16 @@ function calcularIndicesEco(datos, peso) {
   const p = ecoANumero(peso);
   const pesoValido = Number.isFinite(p) && p > 0;
   const n = (clave) => ecoANumero(datos[clave]);
+  const cm = (clave) => n(clave) / 10; // lineal en mm → cm para calcular
 
-  const dvid = n('dvid');
-  const dvs = n('dvs');
-  const sivd = n('sivd');
-  const sivs = n('sivs');
-  const ppvid = n('ppvid');
-  const ppvis = n('ppvis');
-  const aiLineal = n('ai_lineal');
-  const aoLineal = n('ao_lineal');
+  const dvid = cm('dvid');
+  const dvs = cm('dvs');
+  const sivd = cm('sivd');
+  const sivs = cm('sivs');
+  const ppvid = cm('ppvid');
+  const ppvis = cm('ppvis');
+  const aiLineal = cm('ai_lineal');
+  const aoLineal = cm('ao_lineal');
   const volAi = n('volumen_ai_simp_simpson');
   const lvet = n('tiempo_eyectivo');
 
@@ -1275,6 +1345,7 @@ function calcularIndicesEco(datos, peso) {
 
   return indices;
 }
+// <<< INDICES-ECO-PUROS
 
 // Estado de "Editar campos" del bloque eco (lo alterna btnEditarEco, más abajo).
 // En true, actualizarVisibilidadTodosEco() muestra todos los campos aunque estén
@@ -1765,7 +1836,7 @@ function leerExamenClinico() {
 // y la corre en Node. La 10b cablea la UI.
 //
 // Unidades: todas las velocidades se guardan en cm/s; MINE 2 y HP las pasan a
-// m/s solo para calcular. Tiempos en ms. Parámetros del VD en mm.
+// m/s solo para calcular. Tiempos en ms. Todas las lineales en mm (8.7d).
 
 // >>> CLASIFICACION-PURA
 const ESTADIOS_ACVIM = ['B1', 'B2', 'C', 'D'];
@@ -2087,8 +2158,8 @@ function evaluarSignosHP(ctx) {
     rpad: num2(eco.dapd),
     at_pulmonar: at,
     at_et_pulmonar: atEt,
-    // dvdd en mm y dvid en cm → dvid se pasa a mm.
-    dvd_dvi: dvdd != null && dvid != null && dvid > 0 ? r2(dvdd / (dvid * 10)) : null,
+    // dvdd y dvid en mm (8.7d): el cociente no necesita conversión.
+    dvd_dvi: dvdd != null && dvid != null && dvid > 0 ? r2(dvdd / dvid) : null,
     morfo_pulmonar: manual.morfo_pulmonar || null,
   };
 
