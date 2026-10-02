@@ -11,9 +11,25 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
-| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (37 nodos desde 8.7f, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
+| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (42 nodos desde 8.7g, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sub-fase 8.7g (2026-10-02)
+
+Alerta de fallo de mail y verificación del rebote repetida hasta 10 minutos. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 43 → 44, 37 → 42 nodos), con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E: nada de esto corrió todavía en n8n.**
+
+*   **Loop del rebote:** `Enviar informe al tutor` → `Iniciar verificación de rebote` (Code, nuevo: guarda la hora del envío y si Gmail devolvió `id`) → `Esperar rebote` (Wait, 20 s) → `Buscar rebote inmediato` → `Evaluar rebote` (Code, nuevo; copia en `n8n/evaluar_rebote.8.7g.js`) → `IF - ¿Seguir esperando rebote?` (nuevo): verdadero vuelve a `Esperar rebote`, falso sigue a `Verificación final`.
+*   **Cuándo sale del loop:** Gmail no aceptó el mail (una sola vuelta), apareció un rebote, o la próxima vuelta ya no entra en los 10 minutos desde el envío (unas 29 vueltas). Sin rebote en 10 minutos, el mail se da por entregado. Si ninguna búsqueda anduvo, la planilla anota "no se pudo verificar el rebote", como antes.
+*   **`Buscar rebote inmediato`:** el `after:` de la búsqueda sale ahora de la hora del envío menos 2 minutos (antes, "hace 5 minutos" desde cada búsqueda, que con el loop habría dejado de cubrir el envío).
+*   **`Verificación final`:** lee el rebote de `Evaluar rebote` y arma `alerta_mail_asunto` / `alerta_mail_cuerpo`. Copia en `n8n/verificacion_final.8.7g.js`.
+*   **Alerta (nodos nuevos):** `IF - ¿Falló el mail?` (`mail_ok` falso: Gmail no devolvió `id` o hubo rebote) → `Alertar fallo mail`, a `echevanest@gmail.com, infoacivet@gmail.com`, credencial `Gmail - echevanest@gmail.com`, asunto "El informe NO se pudo enviar al tutor", cuerpo con paciente, tutor, error, link del PDF y del Google Doc. **Tutor sin email no dispara la alerta.**
+*   **Dónde cuelga la alerta:** de `Verificación final`, igual que `Alertar fallo Drive`, y no directamente de `Buscar rebote inmediato`. Si el fallo saliera antes de `Verificación final`, esa ejecución no registraría la fila `FALLO` en la planilla.
+*   **Duración:** con tutor con email y sin rebote, la ejecución queda abierta unos 10 minutos (29 esperas de 20 s) y la planilla, el borrado del Doc y las alertas llegan al final. `Respond to Webhook` sale antes, en otra rama: el SPA no espera. El workflow no tiene timeout configurado.
+*   **Verificación:** los 3 nodos Code se probaron localmente con los datos de la ejecución 3050 y 6 casos (sin rebote, rebote en la 4.ª vuelta, Gmail no acepta, todas las búsquedas fallan, tutor sin email, búsqueda fallida seguida de rebote). La versión viva se releyó por API: idéntica a la probada. **Sin verificar en n8n:** el loop en sí (vuelta del IF al Wait) y la lectura de corridas anteriores con `first(0, runIndex)`; el rebote se decide con la entrada directa del nodo, que no depende de eso.
+*   **Backups:** `workflow_B.pre-8.7g.json` (antes del PUT) y `workflow_B.post-8.7g.json` (vivo después del PUT). Sin secretos.
+
+**Cuenta de Google — auditoría del 2026-10-02 (solo lectura).** Los 9 nodos de Drive/Docs usan `Google Drive - infoacivet (MYVETE)` (`4ugwVBPjLZ0Me9JS`); los 2 del mail al tutor, `Gmail account INFOACIVET`; las 3 alertas (4 desde 8.7g), `Gmail - echevanest@gmail.com`; la planilla, `Google Sheets account`. Son 4 credenciales OAuth2 distintas; la API pública no muestra el `client_id` de ninguna. El 403 de la ejecución 3050 fue del límite `defaultPerMinutePerProject` (12.000 pedidos por minuto para todo el proyecto `498586711441`), y en esa ventana esta instancia corrió una sola ejecución: el proyecto lo comparten muchos usuarios, no es propio. Que sea la app OAuth de n8n Cloud es lo más probable y no está probado; se confirma abriendo la credencial en n8n (si no muestra Client ID, es la de n8n). De las credenciales de Gmail y Sheets no hay ningún dato de proyecto.
 
 ### `MYVETE - Ingesta` — Sub-fase 8.7f (2026-10-02)
 
