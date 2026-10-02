@@ -75,8 +75,11 @@ abajo.
 - **Workflows de este proyecto:** ver la tabla de `n8n/README.md`. **Un `PUT`
   sobre un workflow activo lo republica en el acto** (verificado 2026-10-01 con
   `MlEGaxt7k6H9SAfP`); sobre uno inactivo queda sin publicar.
-- **Workflow de este proyecto:** id `5gGWXOjY2BBOAfuw`
-  (`MYVETE - Ingesta Filiación & Orquestador Core`).
+- **Workflow de este proyecto:** id `lkOwTFmVTZu7EMoU` (`MYVETE - Ingesta`,
+  path `ingesta-filiacion`; publicado al 2026-10-02, verificado por `GET`).
+  **`5gGWXOjY2BBOAfuw` es el backup, no el activo**
+  (`MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]`, `active: false`, path
+  `ingesta-filiacion-v4`): no modificarlo ni tomarlo como referencia.
 - Llamadas típicas: `GET /workflows/{id}` (leer, incluye `nodes`/`connections`
   reales), `PUT /workflows/{id}` (actualizar — ver gotcha #2), `POST /credentials`
   / `DELETE /credentials/{id}` (crear/borrar — **no hay update**, ver gotcha #2),

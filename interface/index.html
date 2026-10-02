@@ -73,7 +73,9 @@
       comportamiento de edición por excepción especificado en ESPECIFICACIÓN-MEDICACION-V2.9.md).
       Cada <li> representa un fármaco y lleva su estado en data-estado:
       "continua" | "nueva" | "modificada" (ver CONTRATO-DE-DATOS-V2.7.md, Sección 2.1).
-      Un fármaco que se corta se elimina de la lista (botón ✕): no hay estado "suspendida".
+      Un fármaco que se corta se elimina con el botón ✕: no hay estado "suspendida".
+      La fila eliminada queda atenuada (data-eliminada), no viaja en el payload y
+      el botón pasa a ↺ ("Rehacer") para recuperarla.
       El estado "continua" es el default silencioso — no se muestra insignia para no
       romper la premisa de "el médico solo interactúa con lo que cambia".
     -->
@@ -113,7 +115,8 @@
         </label>
 
         <!-- Dosis e intervalo se editan con solo pararse adentro (8.7e): no hay
-             botón de editar. La ✕ elimina la fila: no viaja en el payload. -->
+             botón de editar. La ✕ elimina la fila (no viaja en el payload) y
+             pasa a ↺ para rehacer; el texto del botón lo alterna app.js. -->
         <div class="acciones-fila">
           <button type="button" class="btn-icono btn-eliminar" title="Eliminar medicamento" aria-label="Eliminar">✕</button>
         </div>

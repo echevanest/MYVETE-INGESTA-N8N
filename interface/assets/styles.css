@@ -231,6 +231,32 @@ section {
   background: #fbe4e2;
 }
 
+/* Fila eliminada (8.7e): sigue en pantalla, atenuada y tachada, hasta el envío;
+   no viaja en el payload. El botón, ya como "Rehacer" (↺), queda a plena
+   opacidad para que se vea que se puede recuperar. */
+.fila-medicamento[data-eliminada="true"] > :not(.acciones-fila) {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.fila-medicamento[data-eliminada="true"] .campo-medicamento,
+.fila-medicamento[data-eliminada="true"] .campo-dosis,
+.fila-medicamento[data-eliminada="true"] .campo-frecuencia {
+  text-decoration: line-through;
+  border-color: transparent;
+  background: transparent;
+  color: #1a1a1a;
+}
+
+.fila-medicamento[data-eliminada="true"] .btn-eliminar {
+  border-color: #d8dde3;
+  color: #33475b;
+}
+
+.fila-medicamento[data-eliminada="true"] .btn-eliminar:hover {
+  background: #f0f2f5;
+}
+
 .btn {
   font-family: inherit;
   font-size: 0.85rem;

@@ -132,9 +132,9 @@ Había dos formas de tratar un fármaco que el médico corta en esta consulta:
 1. **Omitirlo del arreglo:** el tratamiento cortado simplemente no aparece más en `tratamientoCronico`.
 2. **Incluirlo explícitamente con `estado: "suspendida"`:** la fila queda, pero marcada.
 
-Este contrato proponía la opción 2. **Marcelo eligió la opción 1 (2026-10-02, sub-fase 8.7e):** cada fila tiene un botón "Eliminar" (✕ roja); al apretarlo la fila se borra de la pantalla y **no viaja en el payload** (tampoco como "eliminada"). Los estados posibles quedan en `continua` / `nueva` / `modificada`.
+Este contrato proponía la opción 2. **Marcelo eligió la opción 1 (2026-10-02, sub-fase 8.7e):** cada fila tiene un botón "Eliminar" (✕ roja); al apretarlo la fila queda atenuada y tachada y **no viaja en el payload** (tampoco como "eliminada"). Los estados posibles quedan en `continua` / `nueva` / `modificada`.
 
-Consecuencia a tener presente: el payload ya no registra *que* se cortó un fármaco ni *cuándo*. Si más adelante se necesita ese dato, se obtiene comparando el tratamiento de dos atenciones consecutivas. La eliminación no se puede deshacer en pantalla: si fue un error, el médico vuelve a agregar el fármaco (entra como `nueva`).
+Consecuencia a tener presente: el payload ya no registra *que* se cortó un fármaco ni *cuándo*. Si más adelante se necesita ese dato, se obtiene comparando el tratamiento de dos atenciones consecutivas. La eliminación se puede deshacer antes de enviar: al eliminar, el botón de la fila pasa a "Rehacer" (↺) y, sin cartel de confirmación, devuelve la fila tal como estaba (mismo estado y valores).
 
 ---
 

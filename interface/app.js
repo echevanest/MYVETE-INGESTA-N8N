@@ -684,6 +684,12 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
     campo.addEventListener('focus', () => { campo.readOnly = false; });
   });
 
+  const etiquetarBotonEliminar = (eliminada) => {
+    btnEliminar.textContent = eliminada ? '↺' : '✕';
+    btnEliminar.title = eliminada ? 'Rehacer (recuperar el medicamento)' : 'Eliminar medicamento';
+    btnEliminar.setAttribute('aria-label', eliminada ? 'Rehacer' : 'Eliminar');
+  };
+
   const marcarSiModificada = () => {
     if (fila.dataset.estado !== 'continua') return;
     const cambioDosis = campoDosis.value !== campoDosis.dataset.original;
@@ -696,10 +702,24 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   campoDosis.addEventListener('blur', marcarSiModificada);
   campoFrecuencia.addEventListener('blur', marcarSiModificada);
 
-  // 8.7e: "Eliminar" saca la fila del DOM (reemplaza al viejo estado
-  // "suspendida"). leerMedicacion() recorre el DOM, así que la fila eliminada
-  // no viaja en el payload: no existe un estado "eliminado".
-  btnEliminar.addEventListener('click', () => { fila.remove(); });
+  // 8.7e: "Eliminar" (✕) reemplaza al viejo estado "suspendida". La fila no
+  // sale del DOM: queda marcada con data-eliminada (atenuada y tachada, sin
+  // edición) y el mismo botón pasa a "Rehacer" (↺), que la deja como estaba,
+  // con su estado y sus valores. Sin cartel de confirmación. leerMedicacion()
+  // saltea las marcadas: no viajan en el payload ni existe un estado
+  // "eliminado".
+  btnEliminar.addEventListener('click', () => {
+    const eliminada = fila.dataset.eliminada !== 'true';
+    if (eliminada) {
+      fila.dataset.eliminada = 'true';
+    } else {
+      delete fila.dataset.eliminada;
+    }
+    campoDosis.disabled = eliminada;
+    campoFrecuencia.disabled = eliminada;
+    campoMedicamento.contentEditable = !eliminada && fila.dataset.estado === 'nueva' ? 'true' : 'false';
+    etiquetarBotonEliminar(eliminada);
+  });
 
   actualizarBadge(fila);
   return fila;
@@ -714,9 +734,12 @@ if (btnAgregarMedicamento) {
   });
 }
 
-// Solo las filas presentes en el DOM: las eliminadas no se envían.
+// Las filas eliminadas (data-eliminada, a la espera de un posible "Rehacer")
+// no se envían.
 function leerMedicacion() {
-  return Array.from(listaMedicacion.querySelectorAll('.fila-medicamento')).map((fila) => ({
+  return Array.from(
+    listaMedicacion.querySelectorAll('.fila-medicamento:not([data-eliminada="true"])'),
+  ).map((fila) => ({
     medicamento: fila.querySelector('.campo-medicamento').textContent.trim(),
     dosis: fila.querySelector('.campo-dosis').value.trim(),
     frecuencia: fila.querySelector('.campo-frecuencia').value.trim(),
@@ -779,8 +802,10 @@ window.consolidarPayloadFinal = consolidarPayloadFinal;
 // ---------------------------------------------------------------------------
 // 6. Envío del formulario — Fase 2: POST directo al webhook de n8n
 // ---------------------------------------------------------------------------
-// Workflow "MYVETE - Ingesta Filiación & Orquestador Core" (id 5gGWXOjY2BBOAfuw)
-// publicado y activo en n8n Cloud el 28/07/2026 — ver n8n/README.md. El nodo
+// Workflow "MYVETE - Ingesta" (id lkOwTFmVTZu7EMoU, path "ingesta-filiacion")
+// — ver n8n/README.md. El id 5gGWXOjY2BBOAfuw es el backup ("MYVETE - Ingesta
+// (CORE) [BACKUP - NO TOCAR]", inactivo, path "ingesta-filiacion-v4"), no el
+// workflow que atiende esta URL. El nodo
 // "IA - Estructurar Anamnesis" (31/07/2026) devuelve el borrador en la clave
 // `borrador_medico` de la respuesta del webhook.
 const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion';
