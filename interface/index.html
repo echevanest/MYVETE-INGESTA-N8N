@@ -109,12 +109,14 @@
           <input class="campo-dosis" data-campo="dosis" type="text" readonly />
         </label>
 
+        <!-- Intervalo: desplegable sin opción por defecto (8.7f). Las opciones
+             las pone app.js (OPCIONES_INTERVALO). -->
         <label class="campo-label">
           Intervalo
-          <input class="campo-frecuencia" data-campo="frecuencia" type="text" readonly />
+          <select class="campo-frecuencia" data-campo="frecuencia"></select>
         </label>
 
-        <!-- Dosis e intervalo se editan con solo pararse adentro (8.7e): no hay
+        <!-- La dosis se edita con solo pararse adentro (8.7e): no hay
              botón de editar. La ✕ elimina la fila (no viaja en el payload) y
              pasa a ↺ para rehacer; el texto del botón lo alterna app.js. -->
         <div class="acciones-fila">
@@ -270,7 +272,8 @@
            ignora por ahora — igual que hacía con el difunto `bloque_metrico`.
 
            Flujo (decidido 2026-09-08, ampliado ese mismo día):
-           1) cargar PDF + "Extraer datos del PDF" → autollena los campos y
+           1) elegir el PDF → la extracción arranca sola (8.7f: ya no hay
+              botón "Extraer datos del PDF"), autollena los campos y
               app.js (§8) calcula los índices derivados (por peso, con el
               exponente de Cornell 2004 propio de cada lineal de Modo M; masa VI
               Devereux; índice de masa VI; MVCF; EPR);
@@ -292,9 +295,6 @@
 
         <div class="eco-pdf-carga">
           <input type="file" id="eco-pdf-input" accept=".pdf" />
-          <button type="button" id="btn-extraer-eco-pdf" class="btn btn-secundario">
-            📄 Extraer datos del PDF
-          </button>
           <button type="button" id="btn-mostrar-vacios-eco" class="btn btn-secundario">
             ➕ Mostrar campos vacíos
           </button>
@@ -570,16 +570,15 @@
       </details>
 
       <!-- Ecografía pulmonar (8.7b, CRITERIOS §5). Cerrada y vacía por defecto:
-           el profesional la activa si la quiere. Selección múltiple; se guarda
-           en atenciones_cardiologia.eco_pulmonar_hallazgos (null si no se activa). -->
+           se activa al abrir el bloque (8.7f: sin casilla "Activar").
+           Selección múltiple; se guarda en
+           atenciones_cardiologia.eco_pulmonar_hallazgos (null si el bloque
+           nunca se abrió). -->
       <details id="bloque-eco-pulmonar" class="bloque-metrico">
         <summary>Ecografía pulmonar</summary>
-        <label class="opcion-check">
-          <input type="checkbox" id="eco-pulmonar-activa" /> Activar ecografía pulmonar
-        </label>
         <label class="campo-label campo-ancho">
           Hallazgos (selección múltiple: Ctrl / ⌘ + clic)
-          <select id="eco-pulmonar-hallazgos" class="input-control" multiple size="8" disabled></select>
+          <select id="eco-pulmonar-hallazgos" class="input-control" multiple size="8"></select>
         </label>
       </details>
 

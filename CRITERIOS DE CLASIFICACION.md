@@ -494,11 +494,12 @@ Se capturan con **dropdowns** en el SPA.
 
 Sección nueva del SPA (P2):
 
-- **Vacía y cerrada por defecto.** El profesional la activa si la quiere.
+- **Vacía y cerrada por defecto.** Se activa al abrir el bloque (8.7f,
+  2026-10-02: se quitó la casilla "Activar ecografía pulmonar").
 - **Dropdown de selección múltiple** con los hallazgos de la tabla; sin
   selección por defecto.
 - Se guarda en `atenciones_cardiologia.eco_pulmonar_hallazgos` (jsonb, array
-  con los textos elegidos). Sección no activada → `null`.
+  con los textos elegidos). Bloque nunca abierto → `null`.
 - Es uno de los signos que más pesan en el prellenado de ACVIM C (1.4).
 
 | # | Hallazgo |

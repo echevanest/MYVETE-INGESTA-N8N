@@ -119,7 +119,7 @@ Es el único dato que viaja por este canal. Todo lo demás espera al handshake d
 **`consulta`** — el bloque de texto clínico propiamente dicho. Se separa en tres campos (`anamnesis`, `diagnostico`, `indicaciones`) en lugar de un único bloque de texto libre, siguiendo el pedido explícito de simetría del punto 3 de la instrucción. Cualquiera de los tres puede llegar vacío si el formulario no distingue esas subsecciones en su primera versión — pero la estructura del contrato ya los deja separados para no forzar un cambio de esquema cuando la interfaz sí los distinga.
 
 **`tratamientoCronico`** — un arreglo, no un objeto único, porque un paciente puede tener múltiples fármacos activos simultáneamente. Cada entrada lleva:
-- `medicamento`, `dosis`, `frecuencia`: los tres datos clínicos mínimos, simétricos a los pedidos en el punto 4 de la instrucción.
+- `medicamento`, `dosis`, `frecuencia`: los tres datos clínicos mínimos, simétricos a los pedidos en el punto 4 de la instrucción. Desde 8.7f (2026-10-02) `frecuencia` se elige de un desplegable de 15 opciones (`OPCIONES_INTERVALO` en `app.js`: "Cada 12 hs", "Cada 8 hs", …), sin valor por defecto; viaja el texto de la opción, o cadena vacía si no se eligió ninguna.
 - `estado`: el campo que reemplaza directamente al mecanismo descartado en la Sección 2.1 del informe de arquitectura (la vieja inferencia de continuidad por IA). Acá el estado no lo decide un modelo de lenguaje interpretando texto ambiguo — lo decide el médico al interactuar con el bloque de medicación (Sección 2.2), y viaja ya resuelto:
   - `continua`: fila precargada del historial, sin edición.
   - `nueva`: fila agregada en esta consulta, sin antecedente en el historial recuperado.

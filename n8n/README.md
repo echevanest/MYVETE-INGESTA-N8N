@@ -7,13 +7,27 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 - Plantillas JSON exportadas de cada workflow (respaldo ante cambios o errores en la nube).
 - Notas de configuración de nodos que no queden claras solo con el JSON (credenciales referenciadas, nombres de hojas de cálculo, direcciones de correo de destino).
 
-## Estado actual (2026-09-23)
+## Estado actual (2026-10-02)
 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
-| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (31 nodos, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
+| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (37 nodos desde 8.7f, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sub-fase 8.7f (2026-10-02)
+
+Correcciones posteriores al E2E del 2026-10-02 (ejecución 3050): la subida del PDF a Drive falló con **403 por cuota de Google** (`Quota exceeded for quota metric 'Queries'… project_number:498586711441`), el resto siguió de largo (`onError: continueRegularOutput`), la ejecución terminó "Succeeded", la planilla dijo `OK` sin `nombre_pdf` ni `link_pdf` y el Google Doc se borró igual. El mail sí salió. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 42 → 43, 31 → 37 nodos), con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E: nada de esto corrió todavía en n8n.**
+
+*   **Reintentos en Drive:** `Guardar PDF en Drive (subir)`, `Nombrar y mover PDF`, `Buscar colisiones PDF` y `Renombrar PDF (colisión)` llevan `retryOnFail`, 3 intentos, 4 s entre intentos. Siguen con `onError: continueRegularOutput`: si los 3 fallan, el error sigue de largo y lo detecta la verificación final.
+*   **Verificación del mail (nodos nuevos):** después de `Enviar informe al tutor` van `Esperar rebote` (Wait, 20 s) y `Buscar rebote inmediato` (HTTP GET a `gmail/v1/users/me/messages`, credencial `Gmail account INFOACIVET`, que es la casilla que envía). Busca `from:mailer-daemon@googlemail.com subject:"Delivery Status Notification (Failure)" "<email del tutor>" after:<hace 5 min>`. Los `(Delay)` no se miran. Si la búsqueda falla, el mail se da por enviado y la planilla lo anota.
+*   **`Verificación final` (Code, nuevo):** lee la salida de los nodos de Drive, del mail y del rebote y resuelve `pdf_ok`, `mail_ok`, `persistio`, `estado_final` y `observaciones`. Copia del código en `n8n/verificacion_final.8.7f.js`. Reglas: el PDF está guardado si la subida devolvió `id` y hay `webViewLink`; el mail está bien si Gmail devolvió `id` y no hubo rebote; **tutor sin email no cuenta como fallo** (se anota en observaciones).
+*   **`IF - ¿Se envió el mail Y se guardó el PDF?` (nuevo):** solo por la rama verdadera corre `Eliminar Google Doc`. Si no, el Doc queda en el Drive de infoacivet y su link va a `observaciones` y a la alerta.
+*   **`IF - ¿Persistió PDF en Drive?` + `Alertar fallo Drive` (nuevos):** mail a `echevanest@gmail.com, infoacivet@gmail.com` (credencial `Gmail - echevanest@gmail.com`, la de las otras alertas), asunto "El PDF del informe no se pudo guardar en Drive", cuerpo con paciente, error y link al Google Doc.
+*   **`Registrar en Índice`:** `estado_persistencia` pasa a ser `OK` solo si se guardó la atención **y** se envió el mail **y** se guardó el PDF; si no, `FALLO`, con el motivo en `observaciones` (antes siempre vacía). Todas las columnas salen de `Verificación final`.
+*   **Cambio de topología:** de `Exportar PDF (autenticado)` salen ahora dos ramas (antes tres): Drive y mail. `Eliminar Google Doc`, `Registrar en Índice` e `IF - ¿Persistió en Supabase?` cuelgan de `Verificación final`, al final de la rama del mail. **La rama de Drive tiene que quedar arriba de la del mail en el lienzo:** con `executionOrder: v1` es lo que hace que termine antes. Si alguien las reordena, la verificación lee Drive como "no ejecutado" y marca `FALLO` (no borra el Doc).
+*   **Cuenta de Google:** el proyecto `498586711441` del error no se pudo identificar por la API de n8n (no expone el client ID de la credencial). Si es la app OAuth compartida de n8n Cloud, la cuota la consumen otros clientes y la salida de fondo es un cliente OAuth propio. Pendiente de Marcelo.
+*   **Backups:** `workflow_B.pre-8.7f.json` (antes del PUT) y `workflow_B.post-8.7f.json` (vivo después del PUT). Sin secretos.
 
 ### `MYVETE - Ingesta` — Sub-fase 8.7d (2026-10-01)
 

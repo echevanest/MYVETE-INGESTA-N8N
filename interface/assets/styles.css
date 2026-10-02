@@ -60,7 +60,7 @@ section {
      Medicamento lleva un mínimo de 12.5rem: sin él, en el panel embebido
      (520px) Dosis e Intervalo se quedaban con todo el ancho, la columna caía a
      0 y el nombre se cortaba letra por letra (se veía vertical). */
-  grid-template-columns: 6.25rem minmax(12.5rem, 1.5fr) minmax(5rem, 1fr) minmax(5rem, 1fr) auto;
+  grid-template-columns: 6.25rem minmax(12.5rem, 1.5fr) minmax(5rem, 1fr) minmax(7rem, 1.2fr) auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
@@ -161,24 +161,33 @@ section {
   color: #1a1a1a;
 }
 
-.campo-dosis:read-only,
-.campo-frecuencia:read-only {
+.campo-dosis:read-only {
   border-color: transparent;
   background: transparent;
 }
 
-.campo-dosis:not(:read-only),
-.campo-frecuencia:not(:read-only) {
+.campo-dosis:not(:read-only) {
   border-color: #4f8ef7;
   background: #ffffff;
 }
 
-/* Se editan con solo pararse adentro (8.7e): el borde al pasar el mouse avisa
+/* Se edita con solo pararse adentro (8.7e): el borde al pasar el mouse avisa
    que el campo se puede tocar. */
-.campo-dosis:read-only:hover,
-.campo-frecuencia:read-only:hover {
+.campo-dosis:read-only:hover {
   border-color: #d8dde3;
   cursor: text;
+}
+
+/* El intervalo es un desplegable (8.7f): siempre con borde, para que se vea
+   que se elige de una lista. */
+select.campo-frecuencia {
+  border-color: #d8dde3;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+select.campo-frecuencia:focus {
+  border-color: #4f8ef7;
 }
 
 /* Panel embebido (520px) y pantallas angostas: la fila pasa a dos renglones,

@@ -637,6 +637,43 @@ const ETIQUETAS_ESTADO = {
   modificada: 'Modificada',
 };
 
+// 8.7f (2026-10-02): el intervalo es un desplegable (lista de Marcelo, en este
+// orden), sin opción elegida por defecto. El texto elegido viaja tal cual en
+// payload.medicacion[].frecuencia.
+const OPCIONES_INTERVALO = [
+  'Cada 12 hs',
+  'Cada 8 hs',
+  'Cada 6 hs',
+  'Cada 4 hs',
+  'Lun, Mierc y Vier cada 12 hs',
+  'Lun, Mierc y Vier cada 24 hs',
+  'Dosis inyectable interpolada',
+  'Todas las mañanas',
+  'Todas las noches',
+  'Todas las tardes',
+  '2 veces al día',
+  '3 veces al día',
+  '4 veces al día',
+  'Lunes y Jueves',
+  'Dosis única nocturna',
+];
+
+// Llena el <select> de intervalo. Un valor que no está en la lista (fila
+// precargada de una consulta vieja, de cuando el campo era texto libre) se
+// agrega como opción propia para no perderlo.
+function poblarIntervalo(select, valor) {
+  const agregar = (texto, etiqueta) => {
+    const opcion = document.createElement('option');
+    opcion.value = texto;
+    opcion.textContent = etiqueta || texto;
+    select.appendChild(opcion);
+  };
+  agregar('', '—');
+  OPCIONES_INTERVALO.forEach((texto) => agregar(texto));
+  if (valor && !OPCIONES_INTERVALO.includes(valor)) agregar(valor);
+  select.value = valor || '';
+}
+
 function actualizarBadge(fila) {
   const badge = fila.querySelector('.estado-badge');
   const estado = fila.dataset.estado;
@@ -659,7 +696,7 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   fila.dataset.estado = estado;
   campoMedicamento.textContent = medicamento;
   campoDosis.value = dosis;
-  campoFrecuencia.value = frecuencia;
+  poblarIntervalo(campoFrecuencia, frecuencia);
 
   const esNueva = estado === 'nueva';
   campoMedicamento.contentEditable = esNueva ? 'true' : 'false';
@@ -670,7 +707,6 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
     campoDosis.focus();
   });
   campoDosis.readOnly = !esNueva;
-  campoFrecuencia.readOnly = !esNueva;
 
   // Snapshot para detectar ediciones reales sobre filas "continua" (Sección 2.1
   // del contrato: "modificada" es la fila que existía y cuya dosis/frecuencia
@@ -678,11 +714,9 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   campoDosis.dataset.original = dosis;
   campoFrecuencia.dataset.original = frecuencia;
 
-  // 8.7e: dosis e intervalo se editan con solo pararse adentro (clic o Tab),
-  // sin botón de editar.
-  [campoDosis, campoFrecuencia].forEach((campo) => {
-    campo.addEventListener('focus', () => { campo.readOnly = false; });
-  });
+  // 8.7e: la dosis se edita con solo pararse adentro (clic o Tab), sin botón
+  // de editar. El intervalo es un <select> (8.7f): siempre se puede cambiar.
+  campoDosis.addEventListener('focus', () => { campoDosis.readOnly = false; });
 
   const etiquetarBotonEliminar = (eliminada) => {
     btnEliminar.textContent = eliminada ? '↺' : '✕';
@@ -700,7 +734,7 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
     }
   };
   campoDosis.addEventListener('blur', marcarSiModificada);
-  campoFrecuencia.addEventListener('blur', marcarSiModificada);
+  campoFrecuencia.addEventListener('change', marcarSiModificada);
 
   // 8.7e: "Eliminar" (✕) reemplaza al viejo estado "suspendida". La fila no
   // sale del DOM: queda marcada con data-eliminada (atenuada y tachada, sin
@@ -1492,17 +1526,17 @@ if (bloqueEcoInteractivo) {
 // revelan al pulsar "Mostrar campos vacíos" o al extraer el PDF.
 actualizarVisibilidadTodosEco();
 
-const btnExtraerEcoPdf = document.getElementById('btn-extraer-eco-pdf');
-if (btnExtraerEcoPdf) {
-  btnExtraerEcoPdf.addEventListener('click', async () => {
-    const input = document.getElementById('eco-pdf-input');
+// 8.7f (2026-10-02): la extracción arranca sola al elegir el archivo; ya no
+// hay botón "Extraer datos del PDF". Elegir otro archivo vuelve a extraer.
+// Cancelar el selector deja el input sin archivo y no hace nada.
+const inputEcoPdf = document.getElementById('eco-pdf-input');
+if (inputEcoPdf) {
+  inputEcoPdf.addEventListener('change', async () => {
+    const input = inputEcoPdf;
     const log = document.getElementById('eco-pdf-log');
     const escribirLog = (txt) => { log.textContent = txt; log.hidden = false; };
 
-    if (!input || !input.files || input.files.length === 0) {
-      escribirLog('⚠️ Elegí un PDF primero.');
-      return;
-    }
+    if (!input.files || input.files.length === 0) return;
     if (typeof pdfjsLib === 'undefined') {
       escribirLog('❌ PDF.js no cargó (revisá la conexión o los <script> de index.html).');
       return;
@@ -2355,7 +2389,11 @@ const interpDisclaimers = document.getElementById('interp-disclaimers');
 const selectAcvimManual = document.getElementById('interp-acvim-manual');
 const selectMorfoAortica = document.getElementById('interp-morfo-aortica');
 const selectMorfoPulmonar = document.getElementById('interp-morfo-pulmonar');
-const chkEcoPulmonar = document.getElementById('eco-pulmonar-activa');
+// 8.7f: la ecografía pulmonar ya no tiene casilla "Activar". Queda activada
+// al abrir el bloque por primera vez (y sigue activada aunque se lo vuelva a
+// cerrar, para no perder lo elegido).
+const bloqueEcoPulmonar = document.getElementById('bloque-eco-pulmonar');
+let ecoPulmonarActivada = false;
 const selectEcoPulmonar = document.getElementById('eco-pulmonar-hallazgos');
 const bloqueCorazonDerecho = document.getElementById('bloque-corazon-derecho');
 const selectHpSeccion = document.getElementById('hp-seccion-estado');
@@ -2407,7 +2445,7 @@ function leerSignosHP() {
 }
 
 function leerContextoClasificacion() {
-  const hallazgos = chkEcoPulmonar && chkEcoPulmonar.checked && selectEcoPulmonar
+  const hallazgos = ecoPulmonarActivada && selectEcoPulmonar
     ? Array.from(selectEcoPulmonar.selectedOptions).map((o) => o.value)
     : null;
   return {
@@ -2567,9 +2605,10 @@ if (selectEcoPulmonar) {
     selectEcoPulmonar.appendChild(opcion);
   });
 }
-if (chkEcoPulmonar && selectEcoPulmonar) {
-  chkEcoPulmonar.addEventListener('change', () => {
-    selectEcoPulmonar.disabled = !chkEcoPulmonar.checked;
+if (bloqueEcoPulmonar && selectEcoPulmonar) {
+  bloqueEcoPulmonar.addEventListener('toggle', () => {
+    if (!bloqueEcoPulmonar.open || ecoPulmonarActivada) return;
+    ecoPulmonarActivada = true;
     recalcularClasificaciones();
   });
 }

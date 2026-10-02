@@ -92,8 +92,10 @@ nombre de la mascota):
    veces).
 2. Si `encontrada`: por cada fármaco,
    `lista.appendChild(crearFilaMedicamento({ ...farmaco, estado: 'continua' }))`.
-   Las filas `continua` nacen de solo lectura; un clic en dosis o intervalo
-   las habilita y, si el valor cambia, pasan a `modificada`; la ✕ elimina la
+   Las filas `continua` nacen con la dosis de solo lectura (un clic la
+   habilita) y el intervalo en un desplegable (8.7f); si algún valor cambia,
+   pasan a `modificada`. Un intervalo precargado que no esté en la lista se
+   agrega como opción propia; la ✕ elimina la
    fila (ya implementado, 8.7e).
 3. **No pisar lo que el profesional ya cargó:** si la lista ya tiene filas
    cuando llega la respuesta, las precargadas se insertan antes y las del
