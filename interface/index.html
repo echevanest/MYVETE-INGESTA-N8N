@@ -23,59 +23,57 @@
     </header>
 
     <!-- Bloque Filiación — Tutor / Mascota (Sección 2.2, fila 1).
-         Mismo patrón Modo Lectura/Edición que Medicación: precarga bloqueada,
-         un clic en "Editar" habilita los campos y fija bloqueFiliacionEditado = true
-         (Contrato de Datos V2.7, Sección 2.1) de forma permanente para este envío,
-         aunque el médico vuelva a bloquear los campos después. -->
-    <section id="bloque-filiacion" data-modo="lectura">
+         Los campos llegan precargados y se editan con solo pararse adentro
+         (8.7e, 2026-10-01: ya no hay botón "Editar"). Cuando el profesional
+         cambia alguno, app.js fija bloqueFiliacionEditado = true (Contrato de
+         Datos V2.7, Sección 2.1) de forma permanente para este envío. -->
+    <section id="bloque-filiacion">
       <h2>Tutor y mascota</h2>
       <div class="grid-filiacion">
         <label class="campo-label">
           Nombre de la mascota
-          <input type="text" id="paciente-nombre" class="input-control" placeholder="Ej: Tyson" disabled required />
+          <input type="text" id="paciente-nombre" class="input-control" placeholder="Ej: Tyson" required />
         </label>
         <label class="campo-label">
           Especie
-          <select id="paciente-especie" class="input-control" disabled required>
+          <select id="paciente-especie" class="input-control" required>
             <option value="canino">Canino</option>
             <option value="felino">Felino</option>
           </select>
         </label>
         <label class="campo-label">
           Raza
-          <input type="text" id="paciente-raza" class="input-control" placeholder="Ej: Boxer" disabled required />
+          <input type="text" id="paciente-raza" class="input-control" placeholder="Ej: Boxer" required />
         </label>
         <label class="campo-label">
           Peso (kg)
-          <input type="number" step="0.1" id="paciente-peso" class="input-control" placeholder="Ej: 28.5" disabled required />
+          <input type="number" step="0.1" id="paciente-peso" class="input-control" placeholder="Ej: 28.5" required />
         </label>
         <label class="campo-label">
           Nombre del tutor
-          <input type="text" id="tutor-nombre" class="input-control" placeholder="Ej: Juan Pérez" disabled required />
+          <input type="text" id="tutor-nombre" class="input-control" placeholder="Ej: Juan Pérez" required />
         </label>
         <label class="campo-label">
           Teléfono del tutor
-          <input type="tel" id="tutor-telefono" class="input-control" placeholder="Ej: 11 2345-6789" disabled />
+          <input type="tel" id="tutor-telefono" class="input-control" placeholder="Ej: 11 2345-6789" />
         </label>
         <label class="campo-label">
           E-mail del tutor
-          <input type="email" id="tutor-email" class="input-control" placeholder="Ej: juan@mail.com" disabled />
+          <input type="email" id="tutor-email" class="input-control" placeholder="Ej: juan@mail.com" />
         </label>
       </div>
       <!-- Aviso de recuperación automática del tutor (lo pobla app.js al recibir
            payload.tutorAutoFallo del bookmarklet: MyVete no devolvió los datos
            del tutor por ninguna vía automática). Oculto salvo que haga falta. -->
       <p id="aviso-tutor-auto" class="aviso-tutor" role="status" hidden></p>
-      <button type="button" id="btn-editar-filiacion" class="btn btn-secundario">
-        ✏️ Editar
-      </button>
     </section>
 
     <!--
       Bloque Clínica — Tratamiento crónico (Sección 2.2, fila 2 del informe;
       comportamiento de edición por excepción especificado en ESPECIFICACIÓN-MEDICACION-V2.9.md).
       Cada <li> representa un fármaco y lleva su estado en data-estado:
-      "continua" | "nueva" | "modificada" | "suspendida" (ver CONTRATO-DE-DATOS-V2.7.md, Sección 2.1).
+      "continua" | "nueva" | "modificada" (ver CONTRATO-DE-DATOS-V2.7.md, Sección 2.1).
+      Un fármaco que se corta se elimina de la lista (botón ✕): no hay estado "suspendida".
       El estado "continua" es el default silencioso — no se muestra insignia para no
       romper la premisa de "el médico solo interactúa con lo que cambia".
     -->
@@ -114,9 +112,10 @@
           <input class="campo-frecuencia" data-campo="frecuencia" type="text" readonly />
         </label>
 
+        <!-- Dosis e intervalo se editan con solo pararse adentro (8.7e): no hay
+             botón de editar. La ✕ elimina la fila: no viaja en el payload. -->
         <div class="acciones-fila">
-          <button type="button" class="btn-icono btn-editar" title="Editar dosis / intervalo" aria-label="Editar">✏️</button>
-          <button type="button" class="btn-icono btn-suspender" title="Suspender tratamiento" aria-label="Suspender">🛑</button>
+          <button type="button" class="btn-icono btn-eliminar" title="Eliminar medicamento" aria-label="Eliminar">✕</button>
         </div>
       </li>
     </template>
@@ -172,11 +171,13 @@
 
       <!-- 3. FC + soplos. Los ids clinica-fc / clinica-fr se conservan porque los
            usan los perfiles clínicos (CAMPOS_PERFIL en app.js). Los renglones de
-           soplo los arma app.js (Sección 9) desde #plantilla-fila-soplo. -->
+           soplo los arma app.js (Sección 9) desde #plantilla-fila-soplo.
+           data-referencia (8.7e): valor del que parten las flechas ↑↓ cuando el
+           campo está vacío (app.js Sección 9); no es un valor cargado. -->
       <div class="grid-constantes">
         <label class="campo-label">
           Frecuencia cardíaca (lpm)
-          <input type="number" id="clinica-fc" class="input-control" value="120" min="0" step="1" inputmode="numeric" />
+          <input type="number" id="clinica-fc" class="input-control" value="120" min="0" step="1" inputmode="numeric" data-referencia="120" />
         </label>
       </div>
       <div class="campo-ancho bloque-soplos">
@@ -189,7 +190,7 @@
       <div class="grid-constantes">
         <label class="campo-label">
           Frecuencia respiratoria (rpm)
-          <input type="number" id="clinica-fr" class="input-control" value="20" min="0" step="1" inputmode="numeric" />
+          <input type="number" id="clinica-fr" class="input-control" value="20" min="0" step="1" inputmode="numeric" data-referencia="20" />
         </label>
         <label class="campo-label">
           Tipo de respiración
@@ -271,8 +272,10 @@
               exponente de Cornell 2004 propio de cada lineal de Modo M; masa VI
               Devereux; índice de masa VI; MVCF; EPR);
            2) los campos SIN valor se ocultan solos para dejar la UI limpia;
-              "Editar campos" vuelve a mostrarlos todos y los habilita (eco y
-              EKG), y al bloquear se re-ocultan los que quedaron vacíos;
+              los visibles se corrigen con solo pararse adentro (8.7e: ya no
+              hay que habilitarlos). "Mostrar campos vacíos" muestra todos (eco
+              y EKG) para cargarlos a mano, y "Ocultar campos vacíos" vuelve a
+              esconder los que quedaron sin valor;
            3) al enviar, app.js arma `datos_ecocardiografia` con todas las columnas de COLUMNAS_DATOS_ECO
               (null las vacías o sin campo) y `bloque_ekg` con los 4 campos EKG.
               `eco-epr` y `eco-tiempo_eyectivo` tienen columna propia desde el
@@ -289,8 +292,8 @@
           <button type="button" id="btn-extraer-eco-pdf" class="btn btn-secundario">
             📄 Extraer datos del PDF
           </button>
-          <button type="button" id="btn-editar-eco" class="btn btn-secundario">
-            ✏️ Editar campos
+          <button type="button" id="btn-mostrar-vacios-eco" class="btn btn-secundario">
+            ➕ Mostrar campos vacíos
           </button>
           <pre id="eco-pdf-log" class="eco-pdf-log" hidden></pre>
         </div>
@@ -299,39 +302,39 @@
           <legend>Modo M / lineales (mm)</legend>
           <label class="campo-label">
             DVID — diám. VI diástole
-            <input type="number" step="0.01" id="eco-dvid" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-dvid" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             DVS — diám. VI sístole
-            <input type="number" step="0.01" id="eco-dvs" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-dvs" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             SIVd
-            <input type="number" step="0.01" id="eco-sivd" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-sivd" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             SIVs
-            <input type="number" step="0.01" id="eco-sivs" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-sivs" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             PPVId
-            <input type="number" step="0.01" id="eco-ppvid" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ppvid" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             PPVIs
-            <input type="number" step="0.01" id="eco-ppvis" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ppvis" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             AI (lineal)
-            <input type="number" step="0.01" id="eco-ai_lineal" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ai_lineal" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Ao (lineal)
-            <input type="number" step="0.01" id="eco-ao_lineal" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ao_lineal" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Relación AI/Ao (lineal)
-            <input type="number" step="0.01" id="eco-ai_ao_lineal" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ai_ao_lineal" class="input-control campo-eco" />
           </label>
         </fieldset>
 
@@ -339,29 +342,29 @@
           <legend>Función sistólica</legend>
           <label class="campo-label">
             FE — Modo M (%)
-            <input type="number" step="0.1" id="eco-fe_modom" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-fe_modom" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             FS — Modo M (%)
-            <input type="number" step="0.1" id="eco-fs_modom" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-fs_modom" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             FE — Simpson (%)
-            <input type="number" step="0.1" id="eco-fe_simpson" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-fe_simpson" class="input-control campo-eco" />
           </label>
           <!-- Tiempo eyectivo del VI (LVET) EN SEGUNDOS. NO tiene columna en
                datos_ecocardiografia: es dato de apoyo para que app.js (§8)
                calcule MVCF. No viaja en el payload. -->
           <label class="campo-label">
             Tiempo eyectivo VI — LVET (s)
-            <input type="number" step="0.001" id="eco-tiempo_eyectivo" class="input-control campo-eco" disabled />
+            <input type="number" step="0.001" id="eco-tiempo_eyectivo" class="input-control campo-eco" />
           </label>
           <!-- Masa VI: si están DVID, SIVd y PPVId, app.js (§8) la calcula sola
                por Devereux y pisa este campo; si falta alguno, queda para carga
                manual. -->
           <label class="campo-label">
             Masa VI (g)
-            <input type="number" step="0.01" id="eco-masa_vi" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-masa_vi" class="input-control campo-eco" />
           </label>
         </fieldset>
 
@@ -369,27 +372,27 @@
           <legend>Volúmenes (mL)</legend>
           <label class="campo-label">
             Vol. FDI — Modo M
-            <input type="number" step="0.01" id="eco-volumen_fdi_modom" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-volumen_fdi_modom" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Vol. FSI — Modo M
-            <input type="number" step="0.01" id="eco-volumen_fsi_modom" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-volumen_fsi_modom" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Vol. sistólico — Modo M
-            <input type="number" step="0.01" id="eco-volumen_si_modom" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-volumen_si_modom" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Gasto cardíaco — Modo M
-            <input type="number" step="0.01" id="eco-gasto_cardiaco_modom" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-gasto_cardiaco_modom" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Vol. AI ESV — Simpson
-            <input type="number" step="0.01" id="eco-volumen_ai_esv_simpson" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-volumen_ai_esv_simpson" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Vol. AI — Simpson (LAV)
-            <input type="number" step="0.01" id="eco-volumen_ai_simp_simpson" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-volumen_ai_simp_simpson" class="input-control campo-eco" />
           </label>
         </fieldset>
 
@@ -399,59 +402,59 @@
           <legend>Índices / normalizados (cálculo automático)</legend>
           <label class="campo-label">
             Relación AI/Ao (área, planimetría 2D)
-            <input type="number" step="0.01" id="eco-ai_ao_area" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ai_ao_area" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             LVIDDn — DVID indexado (/ peso^0.294)
-            <input type="number" step="0.01" id="eco-dvid_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-dvid_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             DVS indexado (/ peso^0.315)
-            <input type="number" step="0.01" id="eco-dvs_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-dvs_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             SIVd indexado (/ peso^0.241)
-            <input type="number" step="0.01" id="eco-sivd_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-sivd_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             SIVs indexado (/ peso^0.228)
-            <input type="number" step="0.01" id="eco-sivs_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-sivs_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             PPVId indexado (/ peso^0.232)
-            <input type="number" step="0.01" id="eco-ppvid_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ppvid_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             PPVIs indexado (/ peso^0.224)
-            <input type="number" step="0.01" id="eco-ppvis_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ppvis_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             AI indexado (/ peso^0.273)
-            <input type="number" step="0.01" id="eco-ai_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ai_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Ao indexado (/ peso^0.309)
-            <input type="number" step="0.01" id="eco-ao_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ao_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             LAVI (Vol. AI indexado, mL/kg)
-            <input type="number" step="0.01" id="eco-volumen_ai_indexado" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-volumen_ai_indexado" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Masa VI indexada (g/m²)
-            <input type="number" step="0.01" id="eco-masa_vi_indexada" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-masa_vi_indexada" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Índice de Masa VI (g/m²)
-            <input type="number" step="0.01" id="eco-indice_masa_vi" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-indice_masa_vi" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             MVCF (circ/s)
-            <input type="number" step="0.001" id="eco-mvcf" class="input-control campo-eco" disabled />
+            <input type="number" step="0.001" id="eco-mvcf" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             EPR — engrosamiento relativo de pared
-            <input type="number" step="0.01" id="eco-epr" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-epr" class="input-control campo-eco" />
           </label>
         </fieldset>
 
@@ -459,11 +462,11 @@
           <legend>Doppler</legend>
           <label class="campo-label">
             Velocidad E mitral (cm/s)
-            <input type="number" step="0.1" id="eco-velocidad_e_mitral" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-velocidad_e_mitral" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Colecta / efusión pleural
-            <input type="text" id="eco-efusion_pleural" class="input-control campo-eco" disabled />
+            <input type="text" id="eco-efusion_pleural" class="input-control campo-eco" />
           </label>
         </fieldset>
 
@@ -473,44 +476,44 @@
           <legend>Corazón derecho — flujo pulmonar y tricuspídeo</legend>
           <label class="campo-label">
             TRV — Vmax tricuspídea (cm/s)
-            <input type="number" step="0.1" id="eco-vmax_tricuspideo" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-vmax_tricuspideo" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Gradiente tricuspídeo (mmHg)
-            <input type="number" step="0.1" id="eco-gp_tricuspideo" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-gp_tricuspideo" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Ao/AP
-            <input type="number" step="0.01" id="eco-ao_ap" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-ao_ap" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             VP/AP
-            <input type="number" step="0.01" id="eco-vp_ap" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-vp_ap" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             RPAD — distensibilidad AP derecha (%)
-            <input type="number" step="0.1" id="eco-dapd" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-dapd" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             DVCCd — vena cava caudal (mm)
-            <input type="number" step="0.01" id="eco-dvccd" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-dvccd" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Vel. regurgitación pulmonar (cm/s)
-            <input type="number" step="0.1" id="eco-vel_regurg_pulmonar" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-vel_regurg_pulmonar" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             AT pulmonar (ms)
-            <input type="number" step="1" id="eco-at_pulmonar" class="input-control campo-eco" disabled />
+            <input type="number" step="1" id="eco-at_pulmonar" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             ET pulmonar (ms)
-            <input type="number" step="1" id="eco-et_pulmonar" class="input-control campo-eco" disabled />
+            <input type="number" step="1" id="eco-et_pulmonar" class="input-control campo-eco" />
           </label>
           <!-- Si el PDF no lo trae, app.js lo calcula como AT/ET. -->
           <label class="campo-label">
             AT:ET pulmonar
-            <input type="number" step="0.01" id="eco-at_et_pulmonar" class="input-control campo-eco" disabled />
+            <input type="number" step="0.01" id="eco-at_et_pulmonar" class="input-control campo-eco" />
           </label>
         </fieldset>
 
@@ -518,48 +521,48 @@
           <legend>Ventrículo derecho (mm)</legend>
           <label class="campo-label">
             DVDd
-            <input type="number" step="0.1" id="eco-dvdd" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-dvdd" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             DVDs
-            <input type="number" step="0.1" id="eco-dvds" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-dvds" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             PLVDd
-            <input type="number" step="0.1" id="eco-plvdd" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-plvdd" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             PLVDs
-            <input type="number" step="0.1" id="eco-plvds" class="input-control campo-eco" disabled />
+            <input type="number" step="0.1" id="eco-plvds" class="input-control campo-eco" />
           </label>
         </fieldset>
 
-        <!-- Electrocardiograma — mismos ids `eco-ekg_*` para que "Editar campos" y
-             el autollenado los alcancen, pero NO son columnas de
+        <!-- Electrocardiograma — mismos ids `eco-ekg_*` para que "Mostrar campos
+             vacíos" y el autollenado los alcancen, pero NO son columnas de
              datos_ecocardiografia: app.js los separa a payload.bloque_ekg. -->
         <fieldset class="grid-metricas">
           <legend>Electrocardiograma</legend>
           <label class="campo-label">
             FC electro (lpm)
-            <input type="number" id="eco-ekg_fc" class="input-control campo-eco" disabled />
+            <input type="number" id="eco-ekg_fc" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Ritmo
-            <input type="text" id="eco-ekg_ritmo" class="input-control campo-eco" disabled />
+            <input type="text" id="eco-ekg_ritmo" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Eje eléctrico (°)
-            <input type="number" id="eco-ekg_eje" class="input-control campo-eco" disabled />
+            <input type="number" id="eco-ekg_eje" class="input-control campo-eco" />
           </label>
           <label class="campo-label">
             Duración P (ms)
-            <input type="number" id="eco-ekg_p_ms" class="input-control campo-eco" disabled />
+            <input type="number" id="eco-ekg_p_ms" class="input-control campo-eco" />
           </label>
         </fieldset>
 
         <label class="campo-label campo-ancho">
           Observaciones del estudio
-          <textarea id="eco-observaciones" class="textarea-control campo-eco" rows="3" disabled></textarea>
+          <textarea id="eco-observaciones" class="textarea-control campo-eco" rows="3"></textarea>
         </label>
       </details>
 
@@ -631,19 +634,21 @@
         </details>
       </details>
 
-      <!-- 18. Presión arterial — sin default, se carga a mano. -->
+      <!-- 18. Presión arterial — sin default, se carga a mano (un valor no medido
+           no debe salir en el informe). Con el campo vacío, las flechas parten
+           de data-referencia en vez de arrancar en 1. -->
       <div class="grid-constantes">
         <label class="campo-label">
           PAS (mmHg)
-          <input type="number" id="clinica-pas" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 120" />
+          <input type="number" id="clinica-pas" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 120" data-referencia="120" />
         </label>
         <label class="campo-label">
           PAM (mmHg)
-          <input type="number" id="clinica-pam" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 90" />
+          <input type="number" id="clinica-pam" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 90" data-referencia="90" />
         </label>
         <label class="campo-label">
           PAD (mmHg)
-          <input type="number" id="clinica-pad" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 70" />
+          <input type="number" id="clinica-pad" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 70" data-referencia="70" />
         </label>
       </div>
 

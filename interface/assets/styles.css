@@ -55,9 +55,12 @@ section {
 
 .fila-medicamento {
   display: grid;
-  /* Primera columna de ancho fijo (la insignia más larga, "SUSPENDIDA"), para
-     que Medicamento / Dosis / Intervalo queden alineados entre filas. */
-  grid-template-columns: 6.25rem 1.5fr 1fr 1fr auto;
+  /* Primera columna de ancho fijo (la insignia más larga, "MODIFICADA"), para
+     que Medicamento / Dosis / Intervalo queden alineados entre filas.
+     Medicamento lleva un mínimo de 12.5rem: sin él, en el panel embebido
+     (520px) Dosis e Intervalo se quedaban con todo el ancho, la columna caía a
+     0 y el nombre se cortaba letra por letra (se veía vertical). */
+  grid-template-columns: 6.25rem minmax(12.5rem, 1.5fr) minmax(5rem, 1fr) minmax(5rem, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
@@ -70,19 +73,6 @@ section {
 .fila-medicamento.en-edicion {
   border-color: #4f8ef7;
   background: #f0f6ff;
-}
-
-/* Sección 1, punto 3 de ESPECIFICACIÓN-MEDICACION-V2.9:
-   opacidad reducida + texto tachado, sin salir del DOM. */
-/* app.js marca la suspensión con data-estado (la clase .suspendido no se usa). */
-.fila-medicamento.suspendido,
-.fila-medicamento[data-estado="suspendida"] {
-  opacity: 0.4;
-}
-
-.fila-medicamento.suspendido .campo-medicamento,
-.fila-medicamento[data-estado="suspendida"] .campo-medicamento {
-  text-decoration: line-through;
 }
 
 .estado-badge {
@@ -108,11 +98,6 @@ section {
   color: #92620a;
 }
 
-.fila-medicamento[data-estado="suspendida"] .estado-badge {
-  background: #fbe4e2;
-  color: #b3261e;
-}
-
 /* Columnas fijas: con la insignia oculta (estado "continua") el medicamento no
    se corre a la primera columna. */
 .fila-medicamento .estado-badge {
@@ -121,9 +106,14 @@ section {
 
 .campo-medicamento-grupo {
   grid-column: 2;
+}
+
+/* Los rótulos y sus campos se achican con la columna en vez de desbordarla. */
+.fila-medicamento .campo-label {
   min-width: 0;
 }
 
+/* Una sola línea, como Dosis e Intervalo: el nombre no corta renglón. */
 .campo-medicamento {
   display: block;
   min-height: 1.95rem;
@@ -133,7 +123,9 @@ section {
   color: #1a1a1a;
   border: 1px solid transparent;
   border-radius: 4px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .campo-medicamento[contenteditable="true"] {
@@ -158,6 +150,8 @@ section {
 
 .campo-dosis,
 .campo-frecuencia {
+  width: 100%;
+  min-width: 0;
   font-size: 0.9rem;
   font-family: inherit;
   padding: 0.3rem 0.4rem;
@@ -177,6 +171,28 @@ section {
 .campo-frecuencia:not(:read-only) {
   border-color: #4f8ef7;
   background: #ffffff;
+}
+
+/* Se editan con solo pararse adentro (8.7e): el borde al pasar el mouse avisa
+   que el campo se puede tocar. */
+.campo-dosis:read-only:hover,
+.campo-frecuencia:read-only:hover {
+  border-color: #d8dde3;
+  cursor: text;
+}
+
+/* Panel embebido (520px) y pantallas angostas: la fila pasa a dos renglones,
+   Medicamento a todo el ancho arriba y Dosis / Intervalo / acciones abajo. */
+@media (max-width: 720px) {
+  .fila-medicamento {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
+  }
+
+  .fila-medicamento .estado-badge,
+  .campo-medicamento-grupo {
+    grid-column: 1 / -1;
+  }
 }
 
 .acciones-fila {
@@ -202,6 +218,17 @@ section {
 .btn-icono:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* X roja: elimina la fila del tratamiento crónico (8.7e). */
+.btn-eliminar {
+  border-color: #f0c2be;
+  color: #b3261e;
+  font-weight: 700;
+}
+
+.btn-eliminar:hover {
+  background: #fbe4e2;
 }
 
 .btn {

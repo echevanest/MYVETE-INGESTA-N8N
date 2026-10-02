@@ -102,7 +102,7 @@ Es el único dato que viaja por este canal. Todo lo demás espera al handshake d
       "medicamento": "string",
       "dosis": "string",
       "frecuencia": "string",
-      "estado": "continua | nueva | modificada | suspendida"
+      "estado": "continua | nueva | modificada"
     }
   ]
 }
@@ -112,7 +112,7 @@ Es el único dato que viaja por este canal. Todo lo demás espera al handshake d
 
 **`meta`** — no es un bloque clínico, es el bloque de auditoría del propio envío:
 - `historialEncontrado` distingue explícitamente el caso "paciente nuevo" (Sección 4.2 del informe) de "paciente recurrente sin cambios". Es información que n8n necesita para decidir si está creando el primer registro de control o agregando uno a una serie existente — no debería tener que inferirlo comparando contra la hoja de cálculo.
-- `bloqueFiliacionEditado` / `bloqueMedicacionEditado` son booleanos derivados directamente de si el médico tocó el botón "Editar" de cada bloque (Sección 2.2 del informe). Se incluyen porque son gratis de capturar en la interfaz y valiosos para el registro de control: permiten, por ejemplo, detectar con qué frecuencia se editan datos de contacto sin tener que diffear texto contra el envío anterior.
+- `bloqueFiliacionEditado` / `bloqueMedicacionEditado` son booleanos que indican si el médico **cambió de verdad algún campo** del bloque. Desde la sub-fase 8.7e (2026-10-01) no existe el botón "Editar": los campos se editan con solo pararse adentro (clic o Tab), y el booleano pasa a `true` con el primer cambio real (eventos `input` / `change`), no al habilitar la edición. La precarga automática no lo activa. En el payload implementado, el de filiación viaja como `filiacion.editado`; n8n no lo lee para decidir nada, solo queda guardado dentro de `atenciones_cardiologia.datos_filiacion` (verificado el 2026-10-02 en el workflow `lkOwTFmVTZu7EMoU`). Se incluyen porque son gratis de capturar en la interfaz y valiosos para el registro de control: permiten, por ejemplo, detectar con qué frecuencia se editan datos de contacto sin tener que diffear texto contra el envío anterior.
 
 **`tutor` / `mascota`** — mantienen exactamente los mismos nombres de campo que el Payload de Apertura (Sección 1.2), con una diferencia deliberada de obligatoriedad: acá `tutor.nombre` y `mascota.nombre` pasan a ser **obligatorios** (ya no `| null`), porque en el momento del envío el formulario ya tuvo la oportunidad de completarlos —vía precarga confirmada o vía edición manual— y no corresponde que n8n reciba un registro sin nombre de tutor o de mascota. La simetría de nombres entre ambos contratos es intencional: simplifica el código que arma el payload de salida, que en el caso general (sin ediciones) es prácticamente una copia del payload de apertura ya resuelto.
 
@@ -123,15 +123,18 @@ Es el único dato que viaja por este canal. Todo lo demás espera al handshake d
 - `estado`: el campo que reemplaza directamente al mecanismo descartado en la Sección 2.1 del informe de arquitectura (la vieja inferencia de continuidad por IA). Acá el estado no lo decide un modelo de lenguaje interpretando texto ambiguo — lo decide el médico al interactuar con el bloque de medicación (Sección 2.2), y viaja ya resuelto:
   - `continua`: fila precargada del historial, sin edición.
   - `nueva`: fila agregada en esta consulta, sin antecedente en el historial recuperado.
-  - `modificada`: fila que existía en el historial pero cuya dosis o frecuencia se editó hoy.
-  - `suspendida`: fila que existía en el historial y el médico eliminó/marcó como cortada en esta consulta.
+  - `modificada`: fila que existía en el historial pero cuya dosis o frecuencia se editó hoy. La edición es directa: un clic (o Tab) en el campo lo habilita, sin botón "Editar"; la fila pasa a `modificada` solo si el valor quedó distinto del original.
 
-### 2.2 Decisión a validar — tratamiento de las filas `suspendida`
-Hay dos formas de tratar un fármaco que el médico corta en esta consulta:
-1. **Omitirlo del arreglo** (como se hacía, con matices, en el modelo de IA descartado): el tratamiento cortado simplemente no aparece más en `tratamientoCronico`.
-2. **Incluirlo explícitamente con `estado: "suspendida"`** (lo que propone este contrato): la fila queda, pero marcada.
+No existe el estado `suspendida` (ver 2.2).
 
-Se propone la opción 2 porque preserva trazabilidad clínica real: le permite a n8n registrar en la hoja de control que en la fecha de hoy se decidió cortar tal droga —dato con valor legal/clínico propio (por ejemplo, ante una consulta futura de "¿cuándo se suspendió tal tratamiento?")— en vez de que esa información desaparezca silenciosamente entre una consulta y la siguiente. Si se prefiere la opción 1 por simplicidad de payload, es un cambio de una sola línea en este contrato, pero se señala como punto a confirmar antes de que `app.js` empiece a construir el arreglo.
+### 2.2 Decisión tomada — fármacos que se cortan: botón "Eliminar"
+Había dos formas de tratar un fármaco que el médico corta en esta consulta:
+1. **Omitirlo del arreglo:** el tratamiento cortado simplemente no aparece más en `tratamientoCronico`.
+2. **Incluirlo explícitamente con `estado: "suspendida"`:** la fila queda, pero marcada.
+
+Este contrato proponía la opción 2. **Marcelo eligió la opción 1 (2026-10-02, sub-fase 8.7e):** cada fila tiene un botón "Eliminar" (✕ roja); al apretarlo la fila se borra de la pantalla y **no viaja en el payload** (tampoco como "eliminada"). Los estados posibles quedan en `continua` / `nueva` / `modificada`.
+
+Consecuencia a tener presente: el payload ya no registra *que* se cortó un fármaco ni *cuándo*. Si más adelante se necesita ese dato, se obtiene comparando el tratamiento de dos atenciones consecutivas. La eliminación no se puede deshacer en pantalla: si fue un error, el médico vuelve a agregar el fármaco (entra como `nueva`).
 
 ---
 

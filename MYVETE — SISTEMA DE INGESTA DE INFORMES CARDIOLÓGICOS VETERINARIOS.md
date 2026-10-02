@@ -229,7 +229,8 @@ Features actuales (verificadas al 2026-09-15):
   - Perfiles clínicos (PERFILES_BASE) con persistencia en localStorage.
   - Sección clínica: constantes fisiológicas, anamnesis, diagnóstico,
     indicaciones.
-  - Bloque de medicación con estados (continua/nueva/modificada/suspendida).
+  - Bloque de medicación con estados (continua/nueva/modificada) y botón
+    "Eliminar" por fila (la fila eliminada no viaja en el payload).
   - Estudios complementarios: ecocardiograma con 72 columnas + autollenado
     desde PDF vía PDF.js + cálculo de 13 índices (incluye epr y mvcf,
     ahora sí persistidos).

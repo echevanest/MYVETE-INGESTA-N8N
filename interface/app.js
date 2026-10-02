@@ -385,8 +385,12 @@ if (btnGuardarPerfil) {
 renderizarPerfiles(); // estado inicial (especie por defecto del <select>)
 
 // ---------------------------------------------------------------------------
-// 2. Bloque Filiación — modo lectura / edición
+// 2. Bloque Filiación — precarga editable
 // ---------------------------------------------------------------------------
+// 8.7e (2026-10-01): los campos se editan con solo pararse adentro; ya no hay
+// botón "Editar". bloqueFiliacionEditado pasa a true cuando el profesional
+// cambia de verdad algún campo: la precarga (aplicarFiliacion) asigna .value
+// sin disparar eventos, así que no lo activa.
 let bloqueFiliacionEditado = false;
 
 // ID de tutor de MyVete (segmento numérico de /customers/{id}). Este archivo
@@ -398,22 +402,11 @@ let bloqueFiliacionEditado = false;
 // `tutores`.
 let idTutorMyVete = new URLSearchParams(window.location.search).get('idTutor') || null;
 
-const btnEditarFiliacion = document.getElementById('btn-editar-filiacion');
-const camposFiliacion = [
-  'paciente-nombre', 'paciente-especie', 'paciente-raza', 'paciente-peso',
-  'tutor-nombre', 'tutor-telefono', 'tutor-email',
-];
-
-if (btnEditarFiliacion) {
-  btnEditarFiliacion.addEventListener('click', () => {
-    bloqueFiliacionEditado = true;
-    camposFiliacion.forEach((id) => {
-      const campo = document.getElementById(id);
-      if (campo) campo.disabled = false;
-    });
-    document.getElementById('bloque-filiacion').dataset.modo = 'edicion';
-    btnEditarFiliacion.disabled = true;
-  });
+const bloqueFiliacion = document.getElementById('bloque-filiacion');
+if (bloqueFiliacion) {
+  const marcarFiliacionEditada = () => { bloqueFiliacionEditado = true; };
+  bloqueFiliacion.addEventListener('input', marcarFiliacionEditada);
+  bloqueFiliacion.addEventListener('change', marcarFiliacionEditada);
 }
 
 // Asigna un valor a un <select> comparando sin distinguir mayúsculas/acentos
@@ -634,7 +627,7 @@ function leerFiliacionDesdeHash() {
 leerFiliacionDesdeHash();
 
 // ---------------------------------------------------------------------------
-// 3. Bloque Medicación — filas dinámicas con estado (continua/nueva/modificada/suspendida)
+// 3. Bloque Medicación — filas dinámicas con estado (continua/nueva/modificada)
 // ---------------------------------------------------------------------------
 const listaMedicacion = document.getElementById('lista-medicacion');
 const plantillaFilaMedicamento = document.getElementById('plantilla-fila-medicamento');
@@ -642,7 +635,6 @@ const plantillaFilaMedicamento = document.getElementById('plantilla-fila-medicam
 const ETIQUETAS_ESTADO = {
   nueva: 'Nueva',
   modificada: 'Modificada',
-  suspendida: 'Suspendida',
 };
 
 function actualizarBadge(fila) {
@@ -662,8 +654,7 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   const campoMedicamento = fila.querySelector('.campo-medicamento');
   const campoDosis = fila.querySelector('.campo-dosis');
   const campoFrecuencia = fila.querySelector('.campo-frecuencia');
-  const btnEditar = fila.querySelector('.btn-editar');
-  const btnSuspender = fila.querySelector('.btn-suspender');
+  const btnEliminar = fila.querySelector('.btn-eliminar');
 
   fila.dataset.estado = estado;
   campoMedicamento.textContent = medicamento;
@@ -687,10 +678,10 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   campoDosis.dataset.original = dosis;
   campoFrecuencia.dataset.original = frecuencia;
 
-  btnEditar.addEventListener('click', () => {
-    campoDosis.readOnly = false;
-    campoFrecuencia.readOnly = false;
-    campoDosis.focus();
+  // 8.7e: dosis e intervalo se editan con solo pararse adentro (clic o Tab),
+  // sin botón de editar.
+  [campoDosis, campoFrecuencia].forEach((campo) => {
+    campo.addEventListener('focus', () => { campo.readOnly = false; });
   });
 
   const marcarSiModificada = () => {
@@ -705,19 +696,10 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   campoDosis.addEventListener('blur', marcarSiModificada);
   campoFrecuencia.addEventListener('blur', marcarSiModificada);
 
-  btnSuspender.addEventListener('click', () => {
-    if (fila.dataset.estado === 'suspendida') {
-      fila.dataset.estado = fila.dataset.estadoPrevio || 'continua';
-      campoDosis.readOnly = fila.dataset.estado !== 'nueva';
-      campoFrecuencia.readOnly = fila.dataset.estado !== 'nueva';
-    } else {
-      fila.dataset.estadoPrevio = fila.dataset.estado;
-      fila.dataset.estado = 'suspendida';
-      campoDosis.readOnly = true;
-      campoFrecuencia.readOnly = true;
-    }
-    actualizarBadge(fila);
-  });
+  // 8.7e: "Eliminar" saca la fila del DOM (reemplaza al viejo estado
+  // "suspendida"). leerMedicacion() recorre el DOM, así que la fila eliminada
+  // no viaja en el payload: no existe un estado "eliminado".
+  btnEliminar.addEventListener('click', () => { fila.remove(); });
 
   actualizarBadge(fila);
   return fila;
@@ -732,6 +714,7 @@ if (btnAgregarMedicamento) {
   });
 }
 
+// Solo las filas presentes en el DOM: las eliminadas no se envían.
 function leerMedicacion() {
   return Array.from(listaMedicacion.querySelectorAll('.fila-medicamento')).map((fila) => ({
     medicamento: fila.querySelector('.campo-medicamento').textContent.trim(),
@@ -969,9 +952,10 @@ document.querySelectorAll('.btn-dictado').forEach((boton) => {
 //
 //  a) Extraer valores del PDF del ecocardiograma (PDF.js ya cargado en
 //     index.html) con heurística de regex y AUTOLLENAR los campos #eco-* del
-//     bloque "Datos Ecocardiográficos". Los campos arrancan disabled; el botón
-//     "Editar campos" los habilita para corrección manual (decisión 2026-09-08:
-//     el PDF prellena, el profesional revisa/edita, después envía).
+//     bloque "Datos Ecocardiográficos". El PDF prellena, el profesional revisa
+//     y corrige con solo pararse en el campo (8.7e, 2026-10-01: ya no hay que
+//     habilitarlos), después envía. El botón "Mostrar campos vacíos" solo
+//     decide si se ven los campos sin valor.
 //
 //  b) leerBloqueEcocardiografia(): arma el objeto con TODAS las columnas de la
 //     tabla Supabase `datos_ecocardiografia` (menos atencion_id/created_at, que
@@ -1353,10 +1337,10 @@ function calcularIndicesEco(datos, peso) {
 }
 // <<< INDICES-ECO-PUROS
 
-// Estado de "Editar campos" del bloque eco (lo alterna btnEditarEco, más abajo).
-// En true, actualizarVisibilidadTodosEco() muestra todos los campos aunque estén
-// vacíos, para poder cargarlos a mano.
-let ecoModoEdicion = false;
+// Estado de "Mostrar campos vacíos" del bloque eco (lo alterna
+// btnMostrarVaciosEco, más abajo). En true, actualizarVisibilidadTodosEco()
+// muestra todos los campos aunque estén vacíos, para poder cargarlos a mano.
+let ecoMostrarVacios = false;
 
 // Ids de los inputs con el valor CRUDO que alimenta algún índice. Escribir en
 // cualquiera de ellos dispara un recálculo (listener delegado en §8.bis).
@@ -1396,14 +1380,13 @@ if (campoPesoPaciente) {
   campoPesoPaciente.addEventListener('input', recalcularIndicesEcoDesdeFormulario);
 }
 
-const btnEditarEco = document.getElementById('btn-editar-eco');
-if (btnEditarEco) {
-  btnEditarEco.addEventListener('click', () => {
-    ecoModoEdicion = !ecoModoEdicion;
-    document.querySelectorAll('.campo-eco').forEach((c) => { c.disabled = !ecoModoEdicion; });
-    btnEditarEco.textContent = ecoModoEdicion ? '🔒 Bloquear campos' : '✏️ Editar campos';
-    // Al entrar en edición se muestran todos los campos (también los vacíos);
-    // al bloquear se re-ocultan los que quedaron sin valor.
+// 8.7e: los campos del eco están siempre habilitados; el botón ya no los
+// habilita ni los bloquea, solo muestra u oculta los que no tienen valor.
+const btnMostrarVaciosEco = document.getElementById('btn-mostrar-vacios-eco');
+if (btnMostrarVaciosEco) {
+  btnMostrarVaciosEco.addEventListener('click', () => {
+    ecoMostrarVacios = !ecoMostrarVacios;
+    btnMostrarVaciosEco.textContent = ecoMostrarVacios ? '➖ Ocultar campos vacíos' : '➕ Mostrar campos vacíos';
     actualizarVisibilidadTodosEco();
   });
 }
@@ -1414,13 +1397,14 @@ if (btnEditarEco) {
 // Pedido 2026-09-08: tras autollenar el PDF y calcular los índices, el bloque de
 // estudios complementarios muestra decenas de campos vacíos que ensucian la
 // lectura. Reglas:
-//   · modo lectura (campos bloqueados): se oculta el <label> de cada input
-//     .campo-eco sin valor, y el <fieldset> que quedó entero vacío;
-//   · modo edición ("Editar campos", ecoModoEdicion=true): se muestran TODOS,
-//     también los vacíos, para poder cargar a mano; al bloquear se re-ocultan
-//     los que quedaron sin valor;
-//   · en vivo: escribir un valor lo muestra; borrarlo lo vuelve a ocultar al
-//     salir de edición.
+//   · por defecto: se oculta el <label> de cada input .campo-eco sin valor, y
+//     el <fieldset> que quedó entero vacío;
+//   · "Mostrar campos vacíos" (ecoMostrarVacios=true): se muestran TODOS,
+//     también los vacíos, para poder cargar a mano; "Ocultar campos vacíos"
+//     re-oculta los que quedaron sin valor;
+//   · en vivo: escribir un valor lo muestra; un campo que se vacía mientras se
+//     edita sigue visible hasta que pierde el foco (si no, desaparecería al
+//     borrar el valor para corregirlo).
 //
 // Se usa element.style.display y NO el atributo `hidden` porque
 // .campo-label { display: flex } (assets/styles.css) le gana a la regla de
@@ -1443,17 +1427,17 @@ function actualizarVisibilidadTodosEco() {
   bloque.querySelectorAll('.campo-eco').forEach((campo) => {
     const cont = contenedorCampoEco(campo);
     if (!cont) return;
-    const visible = ecoModoEdicion || campoEcoTieneValor(campo);
+    const visible = ecoMostrarVacios || campoEcoTieneValor(campo) || campo === document.activeElement;
     cont.style.display = visible ? '' : 'none';
   });
 
-  // Un <fieldset> con todos sus campos ocultos también se oculta (salvo edición).
+  // Un <fieldset> con todos sus campos ocultos también se oculta.
   bloque.querySelectorAll('fieldset.grid-metricas').forEach((fs) => {
     const campos = fs.querySelectorAll('.campo-eco');
     if (!campos.length) return;
     const algunoVisible = Array.from(campos)
       .some((c) => contenedorCampoEco(c).style.display !== 'none');
-    fs.style.display = (ecoModoEdicion || algunoVisible) ? '' : 'none';
+    fs.style.display = (ecoMostrarVacios || algunoVisible) ? '' : 'none';
   });
 }
 
@@ -1470,10 +1454,17 @@ if (bloqueEcoInteractivo) {
       actualizarVisibilidadTodosEco();
     }
   });
+  // Al salir de un campo que quedó vacío, se oculta (ver reglas de arriba). El
+  // setTimeout espera a que document.activeElement ya sea el campo siguiente.
+  bloqueEcoInteractivo.addEventListener('focusout', (evento) => {
+    const campo = evento.target;
+    if (!campo.classList || !campo.classList.contains('campo-eco')) return;
+    setTimeout(actualizarVisibilidadTodosEco, 0);
+  });
 }
 
 // Estado inicial: bloque colapsado y sin datos → todos los campos ocultos. Se
-// revelan al pulsar "Editar campos" o al extraer el PDF.
+// revelan al pulsar "Mostrar campos vacíos" o al extraer el PDF.
 actualizarVisibilidadTodosEco();
 
 const btnExtraerEcoPdf = document.getElementById('btn-extraer-eco-pdf');
@@ -1511,7 +1502,7 @@ if (btnExtraerEcoPdf) {
 
       // El log lista SOLO lo que se pudo autollenar / calcular (2026-09-08): los
       // campos que el PDF no trae ya no aparecen como ruido.
-      let resumen = `📊 ${llenos} campo(s) autollenado(s) desde el PDF. Revisá y usá "Editar campos" si hay que corregir.\n\n`;
+      let resumen = `📊 ${llenos} campo(s) autollenado(s) desde el PDF. Revisá y corregí directamente en cada campo; "Mostrar campos vacíos" muestra los que el PDF no trajo.\n\n`;
       const extraidos = Object.entries(datos).filter(([, valor]) => valor != null);
       if (extraidos.length) {
         resumen += 'Campos extraídos del PDF:\n';
@@ -1786,6 +1777,49 @@ if (btnAgregarSoplo && listaSoplos && plantillaFilaSoplo) {
     fila.querySelector('select').focus();
   });
 }
+
+// --- Flechas de los campos numéricos con valor de referencia (8.7e) ----------
+// Con el campo vacío, el navegador arranca las flechas (↑↓ del teclado o del
+// control) desde `min`: PAS pasaba de vacío a 1. Los campos con data-referencia
+// (FC, FR, PAS, PAM, PAD) parten de ese valor: vacío + ↑ = referencia + paso,
+// vacío + ↓ = referencia − paso. Con valor cargado, las flechas siguen siendo
+// las nativas. La referencia NO es un valor cargado: si el profesional no toca
+// el campo, viaja null.
+const valorPrevioNumerico = new WeakMap();
+
+function pasoDesdeReferencia(campo, sentido) {
+  const paso = Number(campo.step) || 1;
+  let valor = Number(campo.dataset.referencia) + sentido * paso;
+  if (campo.min !== '') valor = Math.max(valor, Number(campo.min));
+  return String(valor);
+}
+
+document.querySelectorAll('input[type="number"][data-referencia]').forEach((campo) => {
+  const recordar = () => valorPrevioNumerico.set(campo, campo.value);
+  campo.addEventListener('focus', recordar);
+  campo.addEventListener('pointerdown', recordar);
+
+  // Teclado: se intercepta antes de que el navegador dé el paso.
+  campo.addEventListener('keydown', (evento) => {
+    if (campo.value !== '' || (evento.key !== 'ArrowUp' && evento.key !== 'ArrowDown')) return;
+    evento.preventDefault();
+    campo.value = pasoDesdeReferencia(campo, evento.key === 'ArrowUp' ? 1 : -1);
+    recordar();
+    campo.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  // Flechas del control (mouse): no se pueden interceptar, así que se corrige
+  // el paso ya dado. Se distingue del tipeo porque el evento no trae inputType.
+  // Desde vacío el navegador deja min + paso al subir y min al bajar.
+  campo.addEventListener('input', (evento) => {
+    const estabaVacio = valorPrevioNumerico.get(campo) === '';
+    if (estabaVacio && !evento.inputType && campo.value !== '') {
+      const minimo = campo.min === '' ? 0 : Number(campo.min);
+      campo.value = pasoDesdeReferencia(campo, Number(campo.value) > minimo ? 1 : -1);
+    }
+    recordar();
+  });
+});
 
 // --- Lectura para el payload -------------------------------------------------
 // Los números son integer en Supabase: se redondean (un 120.5 rompería el

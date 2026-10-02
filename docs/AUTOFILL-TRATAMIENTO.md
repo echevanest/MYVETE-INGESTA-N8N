@@ -8,7 +8,7 @@ que, al abrir el panel sobre un paciente con consultas previas, el bloque
 
 | Pieza | Estado |
 |---|---|
-| UI del bloque (`index.html`, `app.js` §3) | Existe y funciona: filas con medicamento, dosis, intervalo y estado (`continua` / `nueva` / `modificada` / `suspendida`). `crearFilaMedicamento()` ya acepta una fila `continua` con datos. |
+| UI del bloque (`index.html`, `app.js` §3) | Existe y funciona: filas con medicamento, dosis, intervalo y estado (`continua` / `nueva` / `modificada`). Un fármaco cortado se elimina de la lista (✕) y no viaja en el payload (8.7e). `crearFilaMedicamento()` ya acepta una fila `continua` con datos. |
 | Payload | `payload.medicacion` viaja en cada envío: `[{ medicamento, dosis, frecuencia, estado }]`. |
 | n8n (`lkOwTFmVTZu7EMoU`) | **Ningún nodo lee `medicacion`.** Se descarta. |
 | Supabase | **No hay columna** para el tratamiento en `atenciones_cardiologia` ni en otra tabla. |
@@ -51,7 +51,7 @@ SPA (recibe la filiación)  ──POST──▶  n8n "MYVETE - Última consulta"
 
 3. **n8n — `Preparar Datos para PDF`:** sección nueva **TRATAMIENTO**, una
    línea por fármaco (`Pimobendan - 0,25 mg/kg - c/12 h`), con la marca
-   `(nuevo)`, `(modificado)` o `(suspendido)` cuando no es `continua`.
+   `(nuevo)` o `(modificado)` cuando no es `continua`.
    Ubicación propuesta: después de INDICACIONES. *A confirmar por Marcelo.*
 
 El orden importa: primero la columna, después el nodo (si el nodo manda una
@@ -77,8 +77,8 @@ Workflow **nuevo** `MYVETE - Última consulta` (no se toca el de ingesta):
   }
   ```
 
-  - `medicacion` sale **sin las suspendidas** y **sin `estado`**: lo que quedó
-    vigente pasa a ser `continua` en la consulta nueva.
+  - `medicacion` sale **sin `estado`** (las eliminadas nunca se guardaron): lo
+    que quedó vigente pasa a ser `continua` en la consulta nueva.
   - Sin atención previa: `{ "encontrada": false }` (HTTP 200).
 - **Solo lectura.** Nunca escribe.
 
@@ -92,8 +92,9 @@ nombre de la mascota):
    veces).
 2. Si `encontrada`: por cada fármaco,
    `lista.appendChild(crearFilaMedicamento({ ...farmaco, estado: 'continua' }))`.
-   Las filas `continua` nacen de solo lectura; ✏️ las pasa a `modificada` y 🛑
-   a `suspendida` (ya implementado).
+   Las filas `continua` nacen de solo lectura; un clic en dosis o intervalo
+   las habilita y, si el valor cambia, pasan a `modificada`; la ✕ elimina la
+   fila (ya implementado, 8.7e).
 3. **No pisar lo que el profesional ya cargó:** si la lista ya tiene filas
    cuando llega la respuesta, las precargadas se insertan antes y las del
    profesional quedan.
@@ -116,12 +117,12 @@ nombre de la mascota):
    cambian el nombre o hay dos mascotas con el mismo nombre para un tutor, la
    última consulta no se encuentra o se cruza. No hay hoy un id de mascota de
    MyVete en `mascotas`.
-3. **Qué es "vigente".** Propuesta: todo lo no suspendido de la última
-   atención. ¿O hay que mirar más atrás si la última no tocó el tratamiento?
+3. **Qué es "vigente".** Propuesta: todo el tratamiento de la última
+   atención (lo eliminado no se guarda). ¿O hay que mirar más atrás si la última no tocó el tratamiento?
    (Con el diseño propuesto no hace falta: cada atención guarda el tratamiento
    completo.)
-4. **Tratamiento en el informe:** ¿se muestra? ¿dónde? ¿se listan los
-   suspendidos?
+4. **Tratamiento en el informe:** ¿se muestra? ¿dónde? (Los fármacos
+   eliminados no llegan a n8n: no se pueden listar.)
 5. **Otros profesionales:** ¿la última consulta es la del paciente, sin
    importar qué profesional la cargó? (Propuesta: sí.)
 
@@ -134,7 +135,7 @@ nombre de la mascota):
 | 3 | E2E de ingesta: el tratamiento queda en Supabase y en el PDF | Lo corre Marcelo |
 | 4 | Workflow `Última consulta` | Copia temporal + paciente de prueba, como en 8.7d |
 | 5 | SPA: precarga + historial de clasificaciones | jsdom y navegador, con paciente con y sin historia |
-| 6 | E2E completo: consulta 1 (carga tratamiento) → consulta 2 (llega precargado; modificar uno, suspender otro) → consulta 3 (el suspendido ya no viene) | Lo corre Marcelo |
+| 6 | E2E completo: consulta 1 (carga tratamiento) → consulta 2 (llega precargado; modificar uno, eliminar otro) → consulta 3 (el eliminado ya no viene) | Lo corre Marcelo |
 
 Fuera de alcance: leer el tratamiento desde MyVete con el bookmarklet (no se
 sabe si MyVete lo tiene estructurado; la fuente de verdad pasa a ser Supabase).

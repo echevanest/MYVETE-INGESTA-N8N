@@ -305,7 +305,8 @@ Features actuales (verificadas al 2026-09-22):
     reservados: imágenes eco/Doppler, trazado ECG, fotos del eco.
     Opciones y defaults centralizados en CATALOGO_EXAMEN / CATALOGO_SOPLO
     (app.js, Sección 9). Opción vacía "—" en todos los desplegables.
-  - Bloque de medicación con estados (continua/nueva/modificada/suspendida).
+  - Bloque de medicación con estados (continua/nueva/modificada) y botón
+    "Eliminar" por fila (la fila eliminada no viaja en el payload).
   - Estudios complementarios: ecocardiograma con 72 columnas + autollenado
     desde PDF vía PDF.js + cálculo de 13 índices (incluye epr y mvcf).
   - Auto-ocultamiento de campos eco vacíos.

@@ -33,7 +33,7 @@ No todos los campos deben volverse `<datalist>`. Clasifico los campos existentes
 | `clinica-mucosas` | `<select>` (4 opciones) | → `<input list>` + `<datalist>` | El informe da el ejemplo textual ("Mucosas: Rosadas y húmedas") — la clínica real combina matices que un select fijo no cubre |
 | `paciente-raza` | `<input text>` libre, sin sugerencias | → `<input list>` + `<datalist>` | Ya es texto libre; agregarle sugerencias no le quita nada, solo acelera tipeo repetido |
 | Veterinario derivante | **No existe todavía como campo** | Nuevo `<input list>` + `<datalist>` | El informe lo cita como ejemplo explícito del ciclo de aprendizaje — hay que agregarlo al formulario |
-| `estado` de cada fármaco (continua/nueva/modificada/suspendida) | Interno, fijado por lógica de botones | Sin cambios | No lo tipea el médico; lo resuelve la interacción con Editar/Suspender (`app.js:77-140`) — no es candidato a datalist |
+| `estado` de cada fármaco (continua/nueva/modificada) | Interno, fijado por la interacción con la fila | Sin cambios | No lo tipea el médico; lo resuelve la edición directa de dosis/intervalo (`crearFilaMedicamento()` en `app.js`). Desde 8.7e no hay botones Editar/Suspender: el fármaco cortado se elimina de la lista — no es candidato a datalist |
 | `anamnesis` / `diagnostico` / `indicaciones` | `<textarea>` de texto libre y largo | Ver Sección 5, pregunta abierta | Son párrafos, no un valor corto — el patrón datalist calza mal ahí tal cual está hoy |
 
 ### 1.1 Patrón de implementación

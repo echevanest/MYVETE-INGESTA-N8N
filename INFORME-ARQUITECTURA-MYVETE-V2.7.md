@@ -52,12 +52,14 @@ Esto traslada la decisión clínica de un modelo de lenguaje interpretando texto
 ### 2.2 Estados del Formulario (Sencillez de un Clic)
 La interfaz del formulario externo maneja dos estados nativos por cada sección de información, pensados para velocidad de uso en el consultorio:
 
-| Bloque de Datos | Comportamiento por Defecto (Sin Clic) | Acción al Activar "Editar" |
+| Bloque de Datos | Comportamiento por Defecto (Sin Clic) | Edición directa (clic en el campo) |
 |---|---|---|
-| **Filiación (Tutor/Mascota)** | Muestra los datos precargados. Campos bloqueados en modo lectura para evitar errores de tipeo accidentales. | Habilita los inputs para actualizar datos de contacto modificados en tiempo real (ej. cambio de e-mail o teléfono del propietario). |
-| **Clínica (Medicamentos)** | Precarga el tratamiento exacto de la consulta anterior recuperado desde la fuente de historial. Se asume continuidad automática sin necesidad de clics. | Permite modificar dosis/intervalos de drogas activas, agregar nuevos fármacos o eliminar un renglón por suspensión de tratamiento. |
+| **Filiación (Tutor/Mascota)** | Muestra los datos precargados. | Los campos se editan con solo pararse adentro, para actualizar datos de contacto en tiempo real (ej. cambio de e-mail o teléfono del propietario). |
+| **Clínica (Medicamentos)** | Precarga el tratamiento exacto de la consulta anterior recuperado desde la fuente de historial. Se asume continuidad automática sin necesidad de clics. | Un clic en dosis o intervalo permite modificarlos. "+ Agregar medicamento" suma un fármaco nuevo. El botón "Eliminar" (✕ roja) de cada fila la borra: el fármaco cortado no viaja en el payload. |
 
-Cada bloque es independiente en su estado: el médico puede editar filiación sin tocar medicación, y viceversa. El estado "bloqueado" no es de solo lectura absoluto — es un estado de confianza en la continuidad, reversible con un clic, no una restricción de permisos.
+Cada bloque es independiente en su estado: el médico puede editar filiación sin tocar medicación, y viceversa.
+
+> **Actualización 8.7e (2026-10-02):** la versión original de esta sección describía un botón "Editar" por bloque y un estado "suspendida" para los fármacos cortados. Los dos se quitaron: la edición es directa y el fármaco cortado se elimina de la lista. Ver `CONTRATO-DE-DATOS-V2.7.md`, Secciones 2.1 y 2.2.
 
 ### 2.3 Contrato de Datos de Entrada (Payload Hacia n8n)
 El formulario de la interfaz empaqueta y envía a n8n un JSON **completamente resuelto, limpio y estructurado** — es decir, ya libre de ambigüedad sobre continuidad o suspensión, porque esa resolución ya ocurrió en pantalla por decisión del médico. Esto libera a n8n de tener que realizar deducciones lógicas complejas sobre texto libre; el rol de n8n pasa a ser de estructuración y distribución (generar el informe, enviar el mail, escribir el registro de control), no de arbitraje clínico.
@@ -66,7 +68,7 @@ El contrato debe incluir, como mínimo conceptual (sin fijar nombres de campo de
 - Identificador del paciente.
 - Datos de filiación vigentes al momento del envío (editados o confirmados sin cambios).
 - Texto clínico de la consulta de hoy.
-- Listado definitivo de fármacos ya validado por el médico, con su estado resultante de la interacción en pantalla (continúa / nuevo / modificado / suspendido), sin que n8n deba volver a inferir esa clasificación desde texto.
+- Listado definitivo de fármacos ya validado por el médico, con su estado resultante de la interacción en pantalla (continúa / nuevo / modificado; el fármaco cortado no figura en el listado), sin que n8n deba volver a inferir esa clasificación desde texto.
 
 ---
 
