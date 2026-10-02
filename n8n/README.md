@@ -11,11 +11,24 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
-| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (42 nodos desde 8.7g, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
+| `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (43 nodos desde 8.7h, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
 
+### `MYVETE - Ingesta` — Sub-fase 8.7h (2026-10-02)
+
+Ventana del rebote a 2 minutos, salidas rápidas del loop y validación del e-mail. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 44 → 45, 42 → 43 nodos), con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E: nada de esto corrió todavía en n8n.**
+
+*   **Ventana:** `Evaluar rebote` corta a los 2 minutos desde el envío (antes 10): unas 6 vueltas de 20 s. Sin rebote en la ventana, el mail se da por entregado. Copia en `n8n/evaluar_rebote.8.7h.js`.
+*   **Gmail no aceptó el mail:** nodo nuevo `IF - ¿Gmail aceptó el mail?` después de `Iniciar verificación de rebote`. Verdadero entra al loop; falso va directo a `Verificación final` (antes daba una vuelta de 20 s y una búsqueda).
+*   **La búsqueda del rebote falla:** con 400, 401 o 403 que no sea de cuota, sale en la primera vuelta; con cuota, 429, 5xx o error de red, sale a los 3 fallos seguidos (cerca de un minuto y medio, porque cada búsqueda fallida reintenta 3 veces). Una búsqueda buena en el medio reinicia la cuenta. Si ninguna búsqueda anduvo, la planilla anota "Mail enviado; no se pudo verificar el rebote (motivo)"; no cuenta como fallo del mail. El código HTTP sale del principio de `error.cause.message` ("403 - …"), que es donde lo deja n8n (visto en la ejecución 3050).
+*   **E-mail mal formado:** `IF - ¿Tutor con email?` suma una tercera condición, el formato `algo@algo.algo` sin espacios (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`). Si no cumple, no se envía. `Verificación final` (copia en `n8n/verificacion_final.8.7h.js`) distingue los dos casos de esa rama falsa: sin e-mail o `N/D` no es fallo; mal formado es fallo del mail (`mail_ok` falso, planilla `FALLO`, `Alertar fallo mail` con el e-mail recibido). La misma regla está en el SPA (`EMAIL_VALIDO` en `interface/app.js`), que no deja enviar; la de n8n queda como segunda barrera.
+*   **Verificación:** la rama del mail entera (los 4 IF y los 3 nodos Code) se simuló localmente con los datos de la ejecución 3050 y 13 casos, incluido el 403 de cuota real de esa ejecución. La versión viva se releyó por API: idéntica a la probada. **Sin verificar en n8n:** el loop, la expresión con la expresión regular dentro del IF y la cuenta de fallos seguidos (depende de leer corridas anteriores con `first(0, runIndex)`; si eso no anduviera, la salida por 3 fallos no se dispara y el loop corta igual a los 2 minutos).
+*   **Backups:** `workflow_B.pre-8.7h.json` (antes del PUT) y `workflow_B.post-8.7h.json` (vivo después del PUT). Sin secretos.
+
 ### `MYVETE - Ingesta` — Sub-fase 8.7g (2026-10-02)
+
+**La ventana de 10 minutos de esta sub-fase pasó a 2 minutos en 8.7h.**
 
 Alerta de fallo de mail y verificación del rebote repetida hasta 10 minutos. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 43 → 44, 37 → 42 nodos), con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E: nada de esto corrió todavía en n8n.**
 

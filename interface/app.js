@@ -844,6 +844,10 @@ window.consolidarPayloadFinal = consolidarPayloadFinal;
 // `borrador_medico` de la respuesta del webhook.
 const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion';
 
+// Formato mínimo de e-mail: algo@algo.algo, sin espacios. La misma regla está
+// en n8n ('IF - ¿Tutor con email?' y 'Verificación final').
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const btnSubmitFormulario = document.getElementById('btn-submit-formulario');
 const avisoFormulario = document.getElementById('aviso-formulario');
 const bloqueResumen = document.getElementById('bloque-resumen');
@@ -875,6 +879,16 @@ if (btnSubmitFormulario) {
     const diagnostico = document.getElementById('consulta-diagnostico').value.trim();
     if (!diagnostico) {
       mostrarAviso('Completá el diagnóstico antes de enviar la consulta.');
+      return;
+    }
+
+    // 8.7h: un e-mail mal formado no se envía a n8n (el informe no podría
+    // salir). Vacío sí se permite: tutor sin e-mail, informe sin mail.
+    const campoEmailTutor = document.getElementById('tutor-email');
+    const emailTutor = campoEmailTutor.value.trim();
+    if (emailTutor && !EMAIL_VALIDO.test(emailTutor)) {
+      mostrarAviso('El e-mail del tutor no tiene un formato válido (ej: juan@mail.com). Corregilo, o dejalo vacío para enviar sin mail al tutor.');
+      campoEmailTutor.focus();
       return;
     }
     avisoFormulario.hidden = true;
