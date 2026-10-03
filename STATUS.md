@@ -461,6 +461,18 @@ Decisiones de Marcelo sobre el análisis del loop: ventana de 2 minutos y valida
 *   **Efecto:** con tutor con e-mail y sin rebote, la ejecución dura unos 2 minutos.
 *   **Sin validar:** los cambios de n8n no corrieron nunca en n8n (lógica probada localmente, 13 casos). El del SPA se probó en Chrome contra un servidor local, sin profesional identificado: se verificó que el e-mail mal formado frena el envío y que el válido pasa al control siguiente; no se llegó al POST.
 
+### R. Sub-fase 8.7i — Desplegables, medicación en Indicaciones y diagnóstico de lista (2026-10-03) — SIN E2E
+
+Solo SPA (`interface/`). No se tocó n8n ni Supabase: las claves del payload son las mismas.
+
+*   **Intervalo:** `OPCIONES_INTERVALO` pasa a 14 opciones, sin default. Salen "Lun, Mierc y Vier cada 12 hs", "Lun, Mierc y Vier cada 24 hs" y "Lunes y Jueves"; entran "Lun, Mie y Vie solo dosis nocturna" y "Lun y Jue solo dosis nocturna". Un intervalo viejo que venga precargado se sigue mostrando como opción propia.
+*   **Motivo de la consulta:** desplegable de 16 opciones (`CATALOGO_EXAMEN.motivo`), default "Soplo detectado en consulta". Antes era texto libre. Sigue viajando en `examen_clinico.motivo`.
+*   **Medicación en Indicaciones:** la lista de "Tratamiento crónico" se muestra otra vez debajo del texto de indicaciones, con agregar, editar y eliminar / rehacer. Es una sola lista: `espejarMedicacion()` copia cada cambio a la otra. Al payload va una sola vez (`payload.medicacion`).
+*   **MINE 2:** solo en B1/B2 (ya era así desde 8.7b). Se agregó la razón a `CRITERIOS DE CLASIFICACION.md` (v1.6), el texto en pantalla para C/D y un test.
+*   **Diagnóstico de lista:** desplegable de 42 opciones en 9 grupos (`DIAGNOSTICOS_INTERPRETACION`), dentro de "Interpretación diagnóstica", selección única, vacío por defecto. En el payload va en `examen_clinico.diagnostico`, en el primer renglón, antes del dictado. Para enviar alcanza con uno de los dos.
+*   **Tests:** `node --test tests/clasificacion.test.mjs` (36 casos).
+*   **Sin validar:** probado en Chrome contra un servidor local, sin profesional identificado (no se llegó al POST). El E2E lo hace Marcelo. No se revisó cómo queda en el informe el diagnóstico de dos renglones.
+
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
 **Actualización 2026-09-23:**

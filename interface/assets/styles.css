@@ -204,6 +204,12 @@ select.campo-frecuencia:focus {
   }
 }
 
+/* La misma lista, repetida dentro de "Indicaciones" (8.7i). El botón no se
+   estira a todo el ancho del bloque. */
+.medicacion-indicaciones .btn {
+  align-self: flex-start;
+}
+
 .acciones-fila {
   display: flex;
   gap: 0.35rem;

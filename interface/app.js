@@ -639,14 +639,12 @@ const ETIQUETAS_ESTADO = {
 
 // 8.7f (2026-10-02): el intervalo es un desplegable (lista de Marcelo, en este
 // orden), sin opción elegida por defecto. El texto elegido viaja tal cual en
-// payload.medicacion[].frecuencia.
+// payload.medicacion[].frecuencia. 8.7i (2026-10-03): 14 opciones.
 const OPCIONES_INTERVALO = [
   'Cada 12 hs',
   'Cada 8 hs',
   'Cada 6 hs',
   'Cada 4 hs',
-  'Lun, Mierc y Vier cada 12 hs',
-  'Lun, Mierc y Vier cada 24 hs',
   'Dosis inyectable interpolada',
   'Todas las mañanas',
   'Todas las noches',
@@ -654,8 +652,9 @@ const OPCIONES_INTERVALO = [
   '2 veces al día',
   '3 veces al día',
   '4 veces al día',
-  'Lunes y Jueves',
   'Dosis única nocturna',
+  'Lun, Mie y Vie solo dosis nocturna',
+  'Lun y Jue solo dosis nocturna',
 ];
 
 // Llena el <select> de intervalo. Un valor que no está en la lista (fila
@@ -685,7 +684,73 @@ function actualizarBadge(fila) {
   badge.textContent = ETIQUETAS_ESTADO[estado] || estado;
 }
 
-function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', estado = 'nueva' } = {}) {
+// Estado completo de una fila (lo que hace falta para copiarla a la otra lista).
+function leerFilaMedicamento(fila) {
+  const campoDosis = fila.querySelector('.campo-dosis');
+  const campoFrecuencia = fila.querySelector('.campo-frecuencia');
+  return {
+    medicamento: fila.querySelector('.campo-medicamento').textContent,
+    dosis: campoDosis.value,
+    frecuencia: campoFrecuencia.value,
+    estado: fila.dataset.estado,
+    eliminada: fila.dataset.eliminada === 'true',
+    originalDosis: campoDosis.dataset.original,
+    originalFrecuencia: campoFrecuencia.dataset.original,
+  };
+}
+
+// Vuelca un estado sobre una fila ya creada, sin reemplazarla (no se pierde el
+// foco ni el clic en curso). Los campos solo se pisan si cambiaron.
+function aplicarFilaMedicamento(fila, datos) {
+  const campoMedicamento = fila.querySelector('.campo-medicamento');
+  const campoDosis = fila.querySelector('.campo-dosis');
+  const campoFrecuencia = fila.querySelector('.campo-frecuencia');
+  const btnEliminar = fila.querySelector('.btn-eliminar');
+
+  if (campoMedicamento.textContent !== datos.medicamento) campoMedicamento.textContent = datos.medicamento;
+  if (campoDosis.value !== datos.dosis) campoDosis.value = datos.dosis;
+  if (campoFrecuencia.value !== datos.frecuencia) {
+    // Intervalo fuera de la lista (consulta vieja): se agrega como opción propia.
+    if (!Array.from(campoFrecuencia.options).some((opcion) => opcion.value === datos.frecuencia)) {
+      const opcion = document.createElement('option');
+      opcion.value = datos.frecuencia;
+      opcion.textContent = datos.frecuencia;
+      campoFrecuencia.appendChild(opcion);
+    }
+    campoFrecuencia.value = datos.frecuencia;
+  }
+  // Snapshot para detectar ediciones reales sobre filas "continua" (Sección 2.1
+  // del contrato: "modificada" es la fila que existía y cuya dosis/frecuencia
+  // se editó hoy — no basta con haber tocado el botón de editar).
+  campoDosis.dataset.original = datos.originalDosis;
+  campoFrecuencia.dataset.original = datos.originalFrecuencia;
+
+  fila.dataset.estado = datos.estado;
+  // 8.7e: "Eliminar" (✕) reemplaza al viejo estado "suspendida". La fila no
+  // sale del DOM: queda marcada con data-eliminada (atenuada y tachada, sin
+  // edición) y el mismo botón pasa a "Rehacer" (↺), que la deja como estaba,
+  // con su estado y sus valores. Sin cartel de confirmación. leerMedicacion()
+  // saltea las marcadas: no viajan en el payload ni existe un estado
+  // "eliminado".
+  if (datos.eliminada) {
+    fila.dataset.eliminada = 'true';
+  } else {
+    delete fila.dataset.eliminada;
+  }
+  campoDosis.disabled = datos.eliminada;
+  campoFrecuencia.disabled = datos.eliminada;
+  campoMedicamento.contentEditable = !datos.eliminada && datos.estado === 'nueva' ? 'true' : 'false';
+  btnEliminar.textContent = datos.eliminada ? '↺' : '✕';
+  btnEliminar.title = datos.eliminada ? 'Rehacer (recuperar el medicamento)' : 'Eliminar medicamento';
+  btnEliminar.setAttribute('aria-label', datos.eliminada ? 'Rehacer' : 'Eliminar');
+
+  actualizarBadge(fila);
+}
+
+function crearFilaMedicamento({
+  medicamento = '', dosis = '', frecuencia = '', estado = 'nueva',
+  eliminada = false, originalDosis = dosis, originalFrecuencia = frecuencia,
+} = {}) {
   const fragmento = plantillaFilaMedicamento.content.cloneNode(true);
   const fila = fragmento.querySelector('.fila-medicamento');
   const campoMedicamento = fila.querySelector('.campo-medicamento');
@@ -693,36 +758,19 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   const campoFrecuencia = fila.querySelector('.campo-frecuencia');
   const btnEliminar = fila.querySelector('.btn-eliminar');
 
-  fila.dataset.estado = estado;
-  campoMedicamento.textContent = medicamento;
-  campoDosis.value = dosis;
   poblarIntervalo(campoFrecuencia, frecuencia);
 
-  const esNueva = estado === 'nueva';
-  campoMedicamento.contentEditable = esNueva ? 'true' : 'false';
   // El nombre es una sola línea: Enter pasa a la dosis en vez de cortar renglón.
   campoMedicamento.addEventListener('keydown', (evento) => {
     if (evento.key !== 'Enter') return;
     evento.preventDefault();
     campoDosis.focus();
   });
-  campoDosis.readOnly = !esNueva;
-
-  // Snapshot para detectar ediciones reales sobre filas "continua" (Sección 2.1
-  // del contrato: "modificada" es la fila que existía y cuya dosis/frecuencia
-  // se editó hoy — no basta con haber tocado el botón de editar).
-  campoDosis.dataset.original = dosis;
-  campoFrecuencia.dataset.original = frecuencia;
+  campoDosis.readOnly = estado !== 'nueva';
 
   // 8.7e: la dosis se edita con solo pararse adentro (clic o Tab), sin botón
   // de editar. El intervalo es un <select> (8.7f): siempre se puede cambiar.
   campoDosis.addEventListener('focus', () => { campoDosis.readOnly = false; });
-
-  const etiquetarBotonEliminar = (eliminada) => {
-    btnEliminar.textContent = eliminada ? '↺' : '✕';
-    btnEliminar.title = eliminada ? 'Rehacer (recuperar el medicamento)' : 'Eliminar medicamento';
-    btnEliminar.setAttribute('aria-label', eliminada ? 'Rehacer' : 'Eliminar');
-  };
 
   const marcarSiModificada = () => {
     if (fila.dataset.estado !== 'continua') return;
@@ -736,40 +784,57 @@ function crearFilaMedicamento({ medicamento = '', dosis = '', frecuencia = '', e
   campoDosis.addEventListener('blur', marcarSiModificada);
   campoFrecuencia.addEventListener('change', marcarSiModificada);
 
-  // 8.7e: "Eliminar" (✕) reemplaza al viejo estado "suspendida". La fila no
-  // sale del DOM: queda marcada con data-eliminada (atenuada y tachada, sin
-  // edición) y el mismo botón pasa a "Rehacer" (↺), que la deja como estaba,
-  // con su estado y sus valores. Sin cartel de confirmación. leerMedicacion()
-  // saltea las marcadas: no viajan en el payload ni existe un estado
-  // "eliminado".
   btnEliminar.addEventListener('click', () => {
-    const eliminada = fila.dataset.eliminada !== 'true';
-    if (eliminada) {
-      fila.dataset.eliminada = 'true';
-    } else {
-      delete fila.dataset.eliminada;
-    }
-    campoDosis.disabled = eliminada;
-    campoFrecuencia.disabled = eliminada;
-    campoMedicamento.contentEditable = !eliminada && fila.dataset.estado === 'nueva' ? 'true' : 'false';
-    etiquetarBotonEliminar(eliminada);
+    const actual = leerFilaMedicamento(fila);
+    aplicarFilaMedicamento(fila, { ...actual, eliminada: !actual.eliminada });
   });
 
-  actualizarBadge(fila);
+  aplicarFilaMedicamento(fila, {
+    medicamento, dosis, frecuencia, estado, eliminada, originalDosis, originalFrecuencia,
+  });
   return fila;
 }
 
-const btnAgregarMedicamento = document.getElementById('btn-agregar-medicamento');
-if (btnAgregarMedicamento) {
-  btnAgregarMedicamento.addEventListener('click', () => {
-    const fila = crearFilaMedicamento({ estado: 'nueva' });
-    listaMedicacion.appendChild(fila);
-    fila.querySelector('.campo-medicamento').focus();
+// 8.7i: la lista se muestra dos veces, en "Tratamiento crónico" y dentro de
+// "Indicaciones". Es una sola lista: cada cambio en una (agregar, editar,
+// eliminar, rehacer) se copia fila por fila a la otra. `focusout` cubre el paso
+// a "modificada", que se decide al salir de la dosis.
+const listaMedicacionIndicaciones = document.getElementById('lista-medicacion-indicaciones');
+const LISTAS_MEDICACION = [listaMedicacion, listaMedicacionIndicaciones].filter(Boolean);
+
+function espejarMedicacion(origen) {
+  const filas = Array.from(origen.children);
+  LISTAS_MEDICACION.filter((lista) => lista !== origen).forEach((destino) => {
+    filas.forEach((fila, i) => {
+      const datos = leerFilaMedicamento(fila);
+      if (destino.children[i]) aplicarFilaMedicamento(destino.children[i], datos);
+      else destino.appendChild(crearFilaMedicamento(datos));
+    });
   });
 }
 
+LISTAS_MEDICACION.forEach((lista) => {
+  ['input', 'change', 'click', 'focusout'].forEach((tipo) => {
+    lista.addEventListener(tipo, () => espejarMedicacion(lista));
+  });
+});
+
+[
+  ['btn-agregar-medicamento', listaMedicacion],
+  ['btn-agregar-medicamento-indicaciones', listaMedicacionIndicaciones],
+].forEach(([idBoton, lista]) => {
+  const boton = document.getElementById(idBoton);
+  if (!boton || !lista) return;
+  boton.addEventListener('click', () => {
+    const fila = crearFilaMedicamento({ estado: 'nueva' });
+    lista.appendChild(fila);
+    espejarMedicacion(lista);
+    fila.querySelector('.campo-medicamento').focus();
+  });
+});
+
 // Las filas eliminadas (data-eliminada, a la espera de un posible "Rehacer")
-// no se envían.
+// no se envían. Se lee una sola de las dos listas: son iguales.
 function leerMedicacion() {
   return Array.from(
     listaMedicacion.querySelectorAll('.fila-medicamento:not([data-eliminada="true"])'),
@@ -876,8 +941,8 @@ if (btnSubmitFormulario) {
   const textoOriginalBoton = btnSubmitFormulario.textContent;
 
   btnSubmitFormulario.addEventListener('click', async () => {
-    const diagnostico = document.getElementById('consulta-diagnostico').value.trim();
-    if (!diagnostico) {
+    // Alcanza con el diagnóstico de lista o con el dictado (8.7i).
+    if (!leerDiagnostico()) {
       mostrarAviso('Completá el diagnóstico antes de enviar la consulta.');
       return;
     }
@@ -1608,6 +1673,28 @@ if (inputEcoPdf) {
 // y no se imprime en el informe. Los defaults son los del paciente típico de
 // consultorio (mayormente nervioso), no el estado normal.
 const CATALOGO_EXAMEN = {
+  // 8.7i: el motivo de la consulta pasó de texto libre a desplegable.
+  motivo: {
+    opciones: [
+      'Control evolutivo',
+      'Tos',
+      'Soplo detectado en consulta',
+      'Agitación',
+      'Disrritmia',
+      'Ascites',
+      'Descompensación hemodinámica',
+      'Evaluación prequirúrgica',
+      'Evaluación preanestésica',
+      'Evaluación prequimioterápica',
+      'Pérdida transitoria de la conciencia',
+      'Pérdida abrupta de la visión',
+      'Mareo o trastorno de la marcha',
+      'Control por la edad',
+      'Apto físico / Deporte',
+      'IRC',
+    ],
+    default: 'Soplo detectado en consulta',
+  },
   fr_tipo: {
     opciones: [
       'Polipnea',
@@ -1910,6 +1997,13 @@ function leerTexto(idCampo) {
   return valor === '' ? null : valor;
 }
 
+// 8.7i: el diagnóstico de lista (Interpretación diagnóstica) va antes del
+// dictado del profesional, en renglones separados de la misma clave.
+function leerDiagnostico() {
+  const partes = [leerTexto('interp-diagnostico'), leerTexto('consulta-diagnostico')].filter(Boolean);
+  return partes.length ? partes.join('\n') : null;
+}
+
 function leerExamenClinico() {
   return {
     motivo: leerTexto('consulta-motivo'),
@@ -1932,7 +2026,7 @@ function leerExamenClinico() {
     pas: leerEntero('clinica-pas'),
     pam: leerEntero('clinica-pam'),
     pad: leerEntero('clinica-pad'),
-    diagnostico: leerTexto('consulta-diagnostico'),
+    diagnostico: leerDiagnostico(),
     indicaciones: leerTexto('consulta-indicaciones'),
     // Interpretación diagnóstica (8.7b, Sección 10). leerInterpretacion es una
     // function declaration (hoisted).
@@ -2178,6 +2272,8 @@ function clasificacionMINE2(puntaje) {
   return 'tardio';
 }
 
+// §2.1 — solo preclínicos (B1 / B2). En C o D no se calcula: la medicación y
+// los signos clínicos alteran las variables y el puntaje no es válido.
 function aplicaMINE2(ctx) {
   return ctx.especie === 'canino' && (ctx.estadioACVIM === 'B1' || ctx.estadioACVIM === 'B2');
 }
@@ -2488,7 +2584,9 @@ function textoResultados(ctx, { acvim, mine2, hp }) {
     const avanzado = mine2.b2_avanzado ? ' · B2 avanzado' : '';
     lineas.push(`MINE 2: ${mine2.valor}/11 — ${mine2.clasificacion}${avanzado} (${ORIGEN_TEXTO[mine2.origen]})`);
   } else {
-    lineas.push('MINE 2: no aplica (solo perros en estadio B1 o B2).');
+    lineas.push(acvim && (acvim.valor === 'C' || acvim.valor === 'D')
+      ? `MINE 2: no se calcula en estadio ${acvim.valor} (solo es válido en B1 o B2).`
+      : 'MINE 2: no aplica (solo perros en estadio B1 o B2).');
   }
   if (hp) {
     const trv = hp.datos_usados.trv == null ? 'no medible' : `${hp.datos_usados.trv} m/s`;
@@ -2610,6 +2708,91 @@ function leerInterpretacion() {
 // --- Armado de los controles ---------------------------------------------------
 if (selectMorfoAortica) poblarSelect(selectMorfoAortica, { opciones: OPCIONES_MORFO_AORTICA, default: '' });
 if (selectMorfoPulmonar) poblarSelect(selectMorfoPulmonar, { opciones: OPCIONES_MORFO_PULMONAR, default: '' });
+
+// 8.7i: diagnóstico de lista, agrupado por patología (42 opciones). Selección
+// única, vacío por defecto. El texto elegido viaja tal cual (leerDiagnostico,
+// Sección 9).
+const DIAGNOSTICOS_INTERPRETACION = [
+  ['Mitral', [
+    'Hallazgos compatibles con: ENFERMEDAD MITRAL ACVIM B1.',
+    'Hallazgos compatibles con: ENFERMEDAD MITRAL ACVIM B2.',
+    'Hallazgos compatibles con: INSUFICIENCIA MITRAL ACVIM Ca.',
+    'Hallazgos compatibles con: INSUFICIENCIA MITRAL ACVIM Cc.',
+    'Hallazgos compatibles con: INSUFICIENCIA MITRAL ACVIM Da.',
+    'Hallazgos compatibles con: INSUFICIENCIA MITRAL ACVIM Dc.',
+  ]],
+  ['Tricuspídea', [
+    'Hallazgos compatibles con: ENFERMEDAD TRICUSPÍDEA ACVIM B1.',
+    'Hallazgos compatibles con: ENFERMEDAD TRICUSPÍDEA ACVIM B2.',
+    'Hallazgos compatibles con: INSUFICIENCIA TRICUSPÍDEA ACVIM Ca.',
+    'Hallazgos compatibles con: INSUFICIENCIA TRICUSPÍDEA ACVIM Cc.',
+    'Hallazgos compatibles con: INSUFICIENCIA TRICUSPÍDEA ACVIM Da.',
+    'Hallazgos compatibles con: INSUFICIENCIA TRICUSPÍDEA ACVIM Dc.',
+  ]],
+  ['AV Bilateral', [
+    'Hallazgos compatibles con: ENFERMEDAD AV BILATERAL ACVIM B1.',
+    'Hallazgos compatibles con: ENFERMEDAD AV BILATERAL ACVIM B2.',
+    'Hallazgos compatibles con: INSUFICIENCIA AV BILATERAL ACVIM Ca.',
+    'Hallazgos compatibles con: INSUFICIENCIA AV BILATERAL ACVIM Cc.',
+    'Hallazgos compatibles con: INSUFICIENCIA AV BILATERAL ACVIM Da.',
+  ]],
+  ['CMD', [
+    'Hallazgos sugerentes de: CMD/ Miocarditis / Hipotiroidismo.',
+    'Hallazgos sugerentes de: Hipotiroidismo / CMD/ Miocarditis.',
+    'Hallazgos sugerentes de: CMD en fase oculta / CMAVD.',
+    'Hallazgos compatibles con: CMD LEVE.',
+    'Hallazgos compatibles con: CMD MODERADA.',
+    'Hallazgos compatibles con: CMD SEVERA.',
+  ]],
+  ['CMAVD', [
+    'Hallazgos compatibles con: CMAVD LEVE.',
+    'Hallazgos compatibles con: CMAVD MODERADA.',
+    'Hallazgos compatibles con: CMAVD SEVERA.',
+  ]],
+  ['Estenosis Pulmonar', [
+    'Hallazgos compatibles con: ESTENOSIS PULMONAR TIPO I LEVE.',
+    'Hallazgos compatibles con: ESTENOSIS PULMONAR TIPO I MODERADA.',
+    'Hallazgos compatibles con: ESTENOSIS PULMONAR TIPO I SEVERA.',
+    'Hallazgos compatibles con: ESTENOSIS PULMONAR TIPO II LEVE.',
+    'Hallazgos compatibles con: ESTENOSIS PULMONAR TIPO II MODERADA.',
+    'Hallazgos compatibles con: ESTENOSIS PULMONAR TIPO II SEVERA.',
+  ]],
+  ['Conducto Arterioso Persistente', [
+    'Hallazgos compatibles con: CONDUCTO ARTERIOSO PERSISTENTE LEVE.',
+    'Hallazgos compatibles con: CONDUCTO ARTERIOSO PERSISTENTE MODERADO.',
+    'Hallazgos compatibles con: CONDUCTO ARTERIOSO PERSISTENTE SEVERO.',
+    'Hallazgos sugerentes de: CONDUCTO ARTERIOSO PERSISTENTE LEVE.',
+    'Hallazgos sugerentes de: CONDUCTO ARTERIOSO PERSISTENTE MODERADO.',
+    'Hallazgos sugerentes de: CONDUCTO ARTERIOSO PERSISTENTE SEVERO.',
+  ]],
+  ['Comunicación Interatrial', [
+    'Hallazgos sugerentes de: Comunicación interatrial.',
+    'Hallazgos compatibles con: Comunicación interatrial.',
+  ]],
+  ['Estructura y función conservada', [
+    'Hallazgos compatibles con: Estructura y función cardíaca conservada sin evidencias de cardiopatía primaria.',
+    'Hallazgos compatibles con: Estructura y función cardíaca conservada.',
+  ]],
+];
+
+const selectDiagnostico = document.getElementById('interp-diagnostico');
+if (selectDiagnostico) {
+  const vacia = document.createElement('option');
+  vacia.value = '';
+  vacia.textContent = '—';
+  selectDiagnostico.appendChild(vacia);
+  DIAGNOSTICOS_INTERPRETACION.forEach(([grupo, opciones]) => {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = grupo;
+    opciones.forEach((texto) => {
+      const opcion = document.createElement('option');
+      opcion.value = texto;
+      opcion.textContent = texto;
+      optgroup.appendChild(opcion);
+    });
+    selectDiagnostico.appendChild(optgroup);
+  });
+}
 
 if (selectEcoPulmonar) {
   HALLAZGOS_ECO_PULMONAR.forEach((texto, i) => {

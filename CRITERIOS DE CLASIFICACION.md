@@ -1,6 +1,8 @@
 # CRITERIOS DE CLASIFICACIÓN — MyVete
 
-Versión 1.5 — 2026-10-01.
+Versión 1.6 — 2026-10-03.
+- v1.6: MINE 2 solo en B1/B2 (8.7i). Se deja escrita la razón por la que no
+  se calcula en C ni en D (2.1). Ningún umbral cambia.
 - v1.5: unidades (8.7d). Todas las medidas lineales se muestran y se guardan
   en mm; los cálculos convierten a cm por dentro. Ningún umbral cambia.
 - v1.1: corrección de la v1.0 tras la auditoría de la Sub-fase 8.7 (errores
@@ -243,7 +245,17 @@ disease. J Vet Intern Med 39(5), doi:10.1111/jvim.70215).
     }
 
 - El paper incluyó perros B1 **y** B2 (374 + 375). No se limita a B2.
-- En C o D (cualquier origen) → `null`.
+- **Solo se aplica si el estadio ACVIM es B1 o B2** (v1.6). En C o D
+  (cualquier origen: calculado, última consulta, estimado o manual) **no se
+  calcula** → `null`.
+  - **Razón:** en C/D la medicación y los signos clínicos alteran las
+    variables (LA/Ao, LVIDDn, E-vel). El MINE 2 no es válido.
+  - No se guarda puntaje ni severidad (`mine2_puntaje` y
+    `mine2_clasificacion` en `null`), no hay disclaimer de faltantes y el
+    informe no lo muestra. En el SPA se lee "MINE 2: no se calcula en
+    estadio C/D".
+  - Tampoco se arrastra el puntaje de la última consulta: si el paciente
+    pasó a C o D, el MINE 2 anterior no se repite.
 - Se evalúa sobre el estadio ACVIM **propuesto** (0.3), sea calculado, de la
   última consulta o estimado.
 

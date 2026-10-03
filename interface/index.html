@@ -156,10 +156,11 @@
         </div>
       </div>
 
-      <!-- 1. Motivo de la consulta -->
+      <!-- 1. Motivo de la consulta — desplegable (8.7i). Opciones y default en
+           app.js (CATALOGO_EXAMEN.motivo). -->
       <label class="campo-label campo-ancho">
         Motivo de la consulta
-        <input type="text" id="consulta-motivo" class="input-control" placeholder="Ej: Control cardiológico por tos nocturna" />
+        <select id="consulta-motivo" class="input-control" data-catalogo="motivo"></select>
       </label>
 
       <!-- 2. Anamnesis y examen físico — dictado por voz (Web Speech API nativa,
@@ -634,6 +635,15 @@
             <legend>Signos numéricos (salen de las medidas)</legend>
           </fieldset>
         </details>
+
+        <!-- Diagnóstico de lista (8.7i): selección única, vacío por defecto.
+             Las opciones las pone app.js (DIAGNOSTICOS_INTERPRETACION). En el
+             payload va antes del dictado del profesional (campo "Diagnóstico"),
+             dentro de la misma clave `diagnostico`. -->
+        <label class="campo-label campo-ancho">
+          Diagnóstico (lista)
+          <select id="interp-diagnostico" class="input-control"></select>
+        </label>
       </details>
 
       <!-- 18. Presión arterial — sin default, se carga a mano (un valor no medido
@@ -671,6 +681,18 @@
           <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-indicaciones">🎙️ Dictar</button>
         </div>
       </label>
+
+      <!-- Medicación dentro de Indicaciones (8.7i): es la misma lista que
+           "Tratamiento crónico", mostrada otra vez. app.js (Sección 3) mantiene
+           las dos iguales: lo que se agrega, edita o elimina en una aparece en
+           la otra. Al payload viaja una sola (payload.medicacion). -->
+      <div class="campo-label campo-ancho medicacion-indicaciones">
+        Medicación (la misma lista que "Tratamiento crónico")
+        <ul id="lista-medicacion-indicaciones" class="lista-medicacion"></ul>
+        <button type="button" id="btn-agregar-medicamento-indicaciones" class="btn btn-secundario">
+          + Agregar medicamento
+        </button>
+      </div>
 
       <!-- 21. [RESERVADO] Fotos del ecocardiograma — no implementado todavía. -->
       <p class="placeholder-reservado">Reservado: fotos del ecocardiograma (próximos sprints).</p>

@@ -172,6 +172,27 @@ test('MINE 2: severidad, "B2 avanzado" y no aplica en C/felino', () => {
   assert.equal(calcularMINE2(ctx({ especie: 'felino', eco: baseMine2 })), null);
 });
 
+// 8.7i: en C o D la medicación y los signos clínicos alteran las variables.
+test('MINE 2: solo B1/B2 — no se calcula en C ni en D, sea cual sea el origen', () => {
+  const datosB2 = { ai_ao_lineal: 2.0, dvid_indexado: 2.1, velocidad_e_mitral: 130 };
+  const datosB1 = { ai_ao_lineal: 1.2, dvid_indexado: 1.3, velocidad_e_mitral: 100 };
+  assert.equal(mine2(datosB1).valor, 3, 'B1 calculado → se calcula');
+  assert.equal(mine2(datosB2).valor, 8, 'B2 calculado → se calcula');
+  ['B1', 'B2'].forEach((estadio) => {
+    assert.notEqual(mine2(datosB2, { manual: { acvim_estadio: estadio } }), null, `${estadio} manual`);
+  });
+  ['C', 'D'].forEach((estadio) => {
+    assert.equal(mine2(datosB2, { manual: { acvim_estadio: estadio } }), null, `${estadio} manual`);
+    assert.equal(mine2(datosB2, { historial: { acvim_estadio: estadio, mine2_puntaje: 8 } }), null, `${estadio} de la última consulta`);
+    assert.equal(calcularMINE2({ ...ctx({ eco: datosB2 }), estadioACVIM: estadio }), null, `${estadio} pasado en ctx`);
+  });
+  // C prellenado por edema documentado (estimado).
+  assert.equal(mine2({ ...datosB2, efusion_pleural: 'Leve' }), null);
+  const todo = calcularClasificaciones(ctx({ eco: datosB2, manual: { acvim_estadio: 'D' } }));
+  assert.equal(todo.acvim.valor, 'D');
+  assert.equal(todo.mine2, null);
+});
+
 test('MINE 2: una variable faltante → coherencia (promedio hacia arriba)', () => {
   // LA/Ao 3 puntos, LVIDDN 2 puntos → E recibe ceil(2.5) = 3 (máx. de E = 3).
   const r = mine2({ ai_ao_lineal: 2.0, dvid_indexado: 1.8 });
