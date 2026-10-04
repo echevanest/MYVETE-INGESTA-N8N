@@ -15,6 +15,16 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
 
+### `MYVETE - Ingesta` — Sub-fase 8.7l (2026-10-04)
+
+Defaults explícitos en el loop de rebote. `PUT /workflows/lkOwTFmVTZu7EMoU` con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E.**
+
+*   **`Esperar rebote`:** vuelve a decir `unit: seconds` (estaba solo `amount: 20`).
+*   **`Buscar rebote inmediato`:** vuelve a decir `method: GET` (no traía `method`).
+*   **Por qué faltaban:** `seconds` y `GET` son los valores por defecto de esos nodos, y n8n no los escribe en el JSON cuando el workflow se guarda desde el editor. El comportamiento era el mismo; ahora queda escrito. **Un guardado desde el editor los puede volver a sacar** sin que eso cambie nada.
+*   **Sin tocar:** `Exportar PDF (autenticado)` y `Buscar colisiones PDF` tampoco traen `method` (ya era así en `workflow_B.post-8.7h.json`); usan el GET por defecto.
+*   **Backups:** `workflow_B.pre-8.7l.json` y `workflow_B.post-8.7l.json`. Sin secretos.
+
 ### `MYVETE - Ingesta` — Sub-fase 8.7k (2026-10-04)
 
 Dos cambios de texto, sin nodos nuevos ni cambios de conexiones. `PUT /workflows/lkOwTFmVTZu7EMoU` con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E: nada de esto corrió todavía en n8n.**

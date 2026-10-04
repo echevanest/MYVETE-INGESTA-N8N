@@ -484,6 +484,7 @@ SPA (`interface/`) y n8n (`lkOwTFmVTZu7EMoU`). No se tocó Supabase: las claves 
 *   **Clasificación sin leyenda:** `Preparar Datos para PDF` ya no agrega "(indicado por el profesional)" al estadio ACVIM cuando `acvim_origen = 'manual'`. Sale solo el valor.
 *   **n8n:** PUT con el workflow despublicado (`active: false` antes y después). Backups `n8n/workflow_B.pre-8.7k.json` y `n8n/workflow_B.post-8.7k.json`.
 *   **Tests:** `node --test tests/clasificacion.test.mjs` (36 casos).
+*   **8.7l (mismo día):** `Esperar rebote` vuelve a decir `unit: seconds` y `Buscar rebote inmediato`, `method: GET`. Son los valores por defecto que el editor de n8n no escribe; no cambia el comportamiento. Backups `n8n/workflow_B.pre-8.7l.json` y `post-8.7l.json`.
 *   **Sin validar:** el SPA se probó en Chrome contra un servidor local, sin profesional identificado (no se llegó al POST). Los cambios de n8n no corrieron: el E2E lo hace Marcelo.
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
