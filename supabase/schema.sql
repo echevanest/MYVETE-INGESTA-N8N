@@ -477,14 +477,17 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 -- aprendizaje futuro). Sin FK: es un agregado, no cuelga de una atención. Misma
 -- migración que `descripciones`. Hoy nada la escribe.
 --
--- `patologia` (text, sin CHECK), 19 valores previstos: MMVD, CMD, CMH, CIA, CIV,
--- EP, EA, CAP, tetralogia_fallot, cmavd, cardiopatia_arritmias,
+-- `patologia` (text, sin CHECK), 19 valores previstos, en minúsculas igual que
+-- los grupos (8.7m, 2026-10-04): mmvd, cmd, cmh, cia, civ, ep, ea, cap,
+-- tetralogia_fallot, cmavd, cardiopatia_arritmias,
 -- cardiopatia_doxorrubicina, cardiopatias_nutricionales,
 -- cardiopatia_restrictiva, hipertension_pulmonar, endocarditis,
 -- tumores_cardiacos, pericardio, otros.
 --
--- No hay UNIQUE sobre (patologia, grupo, subgrupo, opcion): la misma combinación
--- puede repetirse en más de una fila mientras no se agregue.
+-- UNIQUE sobre (patologia, grupo, subgrupo, opcion) desde 8.7m
+-- (`supabase/migrations/20261004_patrones_unique_minusculas.sql`). NULLS NOT
+-- DISTINCT: dos filas con subgrupo NULL y el resto igual también chocan. Sirve
+-- de destino para un upsert. Las minúsculas no están forzadas por CHECK.
 create table public.patrones (
   id         uuid primary key default gen_random_uuid(),
   patologia  text not null,                   -- una de las 19 de arriba
@@ -493,7 +496,8 @@ create table public.patrones (
   opcion     text not null,
   frecuencia integer not null default 0,      -- veces que se eligió la opción
   confianza  numeric,                         -- sin escala definida todavía
-  updated_at timestamptz not null default now()  -- sin trigger: lo actualiza quien escribe
+  updated_at timestamptz not null default now(),  -- sin trigger: lo actualiza quien escribe
+  constraint patrones_unique unique nulls not distinct (patologia, grupo, subgrupo, opcion)
 );
 
 create index idx_patrones_patologia       on public.patrones (patologia);

@@ -485,6 +485,7 @@ SPA (`interface/`) y n8n (`lkOwTFmVTZu7EMoU`). No se tocó Supabase: las claves 
 *   **n8n:** PUT con el workflow despublicado (`active: false` antes y después). Backups `n8n/workflow_B.pre-8.7k.json` y `n8n/workflow_B.post-8.7k.json`.
 *   **Tests:** `node --test tests/clasificacion.test.mjs` (36 casos).
 *   **8.7l (mismo día):** `Esperar rebote` vuelve a decir `unit: seconds` y `Buscar rebote inmediato`, `method: GET`. Son los valores por defecto que el editor de n8n no escribe; no cambia el comportamiento. Backups `n8n/workflow_B.pre-8.7l.json` y `post-8.7l.json`.
+*   **8.7m (mismo día):** `patrones` con `UNIQUE NULLS NOT DISTINCT (patologia, grupo, subgrupo, opcion)` y patologías en minúsculas (`supabase/migrations/20261004_patrones_unique_minusculas.sql`; la tabla estaba vacía, así que no cambió ninguna fila). Duplicado probado con y sin `subgrupo`, dentro de transacciones con rollback: falla con 23505. En n8n, `method: GET` explícito en `Exportar PDF (autenticado)` y `Buscar colisiones PDF` (backups `pre-8.7m` / `post-8.7m`). Sin CHECK en `patrones` y sin nadie que escriba las tablas todavía (decisión de Marcelo: queda para 8.1 / 8.2).
 *   **Sin validar:** el SPA se probó en Chrome contra un servidor local, sin profesional identificado (no se llegó al POST). Los cambios de n8n no corrieron: el E2E lo hace Marcelo.
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
