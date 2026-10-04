@@ -79,8 +79,9 @@ Para una consulta de verificación, el mismo comando con
 
 - **Verificado el 2026-10-01:** el `select` de solo lectura (HTTP 201) y que
   `read_only: true` rechaza escrituras (`cannot execute CREATE TABLE in a
-  read-only transaction`, HTTP 400). **Todavía no se ejecutó DDL por esta
-  vía**: la primera vez hay que confirmar que funciona como se espera.
+  read-only transaction`, HTTP 400). **DDL ejecutado por esta vía el
+  2026-10-03** (`20261003_descripciones_patrones.sql`: 2 tablas, 7 índices y
+  RLS, en una transacción): responde `[]` con HTTP 201.
 - Sin `read_only`, la consulta corre con un rol con permisos amplios: un
   `drop` o un `delete` sin `where` se ejecutan sin preguntar.
 - Esta vía **no registra la migración** en el historial de migraciones de

@@ -148,6 +148,11 @@ section {
   gap: 0.15rem;
 }
 
+/* display: flex le gana al atributo hidden ("Otro motivo", 8.7i). */
+.campo-label[hidden] {
+  display: none;
+}
+
 .campo-dosis,
 .campo-frecuencia {
   width: 100%;

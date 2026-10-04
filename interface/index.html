@@ -157,10 +157,15 @@
       </div>
 
       <!-- 1. Motivo de la consulta — desplegable (8.7i). Opciones y default en
-           app.js (CATALOGO_EXAMEN.motivo). -->
+           app.js (CATALOGO_EXAMEN.motivo). Con "Otro" aparece el campo de
+           texto, y lo que se escribe ahí es lo que viaja como motivo. -->
       <label class="campo-label campo-ancho">
         Motivo de la consulta
         <select id="consulta-motivo" class="input-control" data-catalogo="motivo"></select>
+      </label>
+      <label id="grupo-motivo-otro" class="campo-label campo-ancho" hidden>
+        Otro motivo
+        <input type="text" id="consulta-motivo-otro" class="input-control" placeholder="Escribí el motivo de la consulta" />
       </label>
 
       <!-- 2. Anamnesis y examen físico — dictado por voz (Web Speech API nativa,
@@ -636,13 +641,21 @@
           </fieldset>
         </details>
 
-        <!-- Diagnóstico de lista (8.7i): selección única, vacío por defecto.
-             Las opciones las pone app.js (DIAGNOSTICOS_INTERPRETACION). En el
-             payload va antes del dictado del profesional (campo "Diagnóstico"),
-             dentro de la misma clave `diagnostico`. -->
+        <!-- 19. Diagnóstico (8.7i): primero el de lista (selección única, vacío
+             por defecto; las opciones las pone app.js,
+             DIAGNOSTICOS_INTERPRETACION) y pegado el dictado del profesional.
+             En el payload van los dos en la clave `diagnostico`: la opción de
+             lista en el primer renglón y el dictado después. -->
         <label class="campo-label campo-ancho">
           Diagnóstico (lista)
           <select id="interp-diagnostico" class="input-control"></select>
+        </label>
+        <label class="campo-label campo-ancho">
+          Diagnóstico (dictado)
+          <div class="campo-con-dictado">
+            <textarea id="consulta-diagnostico" class="textarea-control" rows="2" placeholder="Ej: Insuficiencia mitral crónica compensada"></textarea>
+            <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-diagnostico">🎙️ Dictar</button>
+          </div>
         </label>
       </details>
 
@@ -663,15 +676,6 @@
           <input type="number" id="clinica-pad" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 70" data-referencia="70" />
         </label>
       </div>
-
-      <!-- 19. Diagnóstico -->
-      <label class="campo-label campo-ancho">
-        Diagnóstico
-        <div class="campo-con-dictado">
-          <textarea id="consulta-diagnostico" class="textarea-control" rows="2" placeholder="Ej: Insuficiencia mitral crónica compensada"></textarea>
-          <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-diagnostico">🎙️ Dictar</button>
-        </div>
-      </label>
 
       <!-- 20. Indicaciones -->
       <label class="campo-label campo-ancho">

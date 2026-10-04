@@ -944,6 +944,10 @@ if (btnSubmitFormulario) {
     // Alcanza con el diagnóstico de lista o con el dictado (8.7i).
     if (!leerDiagnostico()) {
       mostrarAviso('Completá el diagnóstico antes de enviar la consulta.');
+      // El diagnóstico está dentro de "Interpretación diagnóstica": si el
+      // bloque está cerrado, se abre para que se vea qué falta.
+      const bloqueDiagnostico = document.getElementById('bloque-interpretacion');
+      if (bloqueDiagnostico) bloqueDiagnostico.open = true;
       return;
     }
 
@@ -1672,6 +1676,9 @@ if (inputEcoPdf) {
 // Todos los selects llevan una opción vacía "—" (value ""), que viaja como null
 // y no se imprime en el informe. Los defaults son los del paciente típico de
 // consultorio (mayormente nervioso), no el estado normal.
+// Última opción del motivo: habilita el campo de texto libre (leerMotivo).
+const MOTIVO_OTRO = 'Otro';
+
 const CATALOGO_EXAMEN = {
   // 8.7i: el motivo de la consulta pasó de texto libre a desplegable.
   motivo: {
@@ -1680,8 +1687,8 @@ const CATALOGO_EXAMEN = {
       'Tos',
       'Soplo detectado en consulta',
       'Agitación',
-      'Disrritmia',
-      'Ascites',
+      'Disritmia',
+      'Ascitis',
       'Descompensación hemodinámica',
       'Evaluación prequirúrgica',
       'Evaluación preanestésica',
@@ -1692,6 +1699,7 @@ const CATALOGO_EXAMEN = {
       'Control por la edad',
       'Apto físico / Deporte',
       'IRC',
+      MOTIVO_OTRO,
     ],
     default: 'Soplo detectado en consulta',
   },
@@ -1997,6 +2005,23 @@ function leerTexto(idCampo) {
   return valor === '' ? null : valor;
 }
 
+// Con "Otro" viaja el texto que escribió el profesional; si lo dejó vacío,
+// viaja "Otro".
+function leerMotivo() {
+  const motivo = leerTexto('consulta-motivo');
+  return motivo === MOTIVO_OTRO ? leerTexto('consulta-motivo-otro') || MOTIVO_OTRO : motivo;
+}
+
+const selectMotivo = document.getElementById('consulta-motivo');
+const grupoMotivoOtro = document.getElementById('grupo-motivo-otro');
+if (selectMotivo && grupoMotivoOtro) {
+  selectMotivo.addEventListener('change', () => {
+    const esOtro = selectMotivo.value === MOTIVO_OTRO;
+    grupoMotivoOtro.hidden = !esOtro;
+    if (esOtro) document.getElementById('consulta-motivo-otro').focus();
+  });
+}
+
 // 8.7i: el diagnóstico de lista (Interpretación diagnóstica) va antes del
 // dictado del profesional, en renglones separados de la misma clave.
 function leerDiagnostico() {
@@ -2006,7 +2031,7 @@ function leerDiagnostico() {
 
 function leerExamenClinico() {
   return {
-    motivo: leerTexto('consulta-motivo'),
+    motivo: leerMotivo(),
     anamnesis: leerTexto('consulta-anamnesis'),
     fc_numero: leerEntero('clinica-fc'),
     soplos: leerSoplos(),

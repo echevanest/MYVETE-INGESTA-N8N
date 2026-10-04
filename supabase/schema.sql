@@ -434,6 +434,73 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 -- unificar el viejo "Apéndice Métrico" dentro de este bloque).
 
 -- ---------------------------------------------------------------------------
+-- descripciones
+-- ---------------------------------------------------------------------------
+-- Opciones descriptivas elegidas en una atención (hallazgos por grupo), para el
+-- sistema de aprendizaje futuro. Varias filas por atención; se borran con ella
+-- (ON DELETE CASCADE). Migración
+-- `supabase/migrations/20261003_descripciones_patrones.sql` (2026-10-03, por la
+-- API de administración: no figura en el historial de migraciones de Supabase).
+-- Hoy nada la escribe: ni el SPA ni n8n.
+--
+-- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
+-- regurgitaciones, cmh, cmd, estenosis_pulmonar, estenosis_aortica,
+-- conducto_arterioso, tetralogia_fallot, cmavd, cardiopatia_arritmias,
+-- cardiopatia_doxorrubicina, cardiopatias_nutricionales,
+-- cardiopatia_restrictiva, hipertension_pulmonar, endocarditis,
+-- tumores_cardiacos, pericardio, masas, otros.
+--
+-- `subgrupo` (text, opcional, sin CHECK), ejemplos:
+--   valvulas / regurgitaciones: mitral, tricuspidea, aortica, pulmonar
+--   camaras: vi, vd, ai, ad
+--   cmh: hipertrofia, obstruccion, sam
+--   cmd: dilatacion, hipoquinesia
+create table public.descripciones (
+  id          uuid primary key default gen_random_uuid(),
+  atencion_id uuid not null references public.atenciones_cardiologia (id) on delete cascade,
+  grupo       text not null,                  -- uno de los 21 grupos de arriba
+  subgrupo    text,                           -- detalle dentro del grupo
+  opcion      text not null,                  -- texto de la opción elegida
+  orden       integer not null default 0,     -- posición dentro de la atención
+  created_at  timestamptz not null default now()
+);
+
+create index idx_descripciones_atencion       on public.descripciones (atencion_id);
+create index idx_descripciones_grupo          on public.descripciones (grupo);
+create index idx_descripciones_opcion         on public.descripciones (opcion);
+create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, subgrupo);
+
+-- ---------------------------------------------------------------------------
+-- patrones
+-- ---------------------------------------------------------------------------
+-- Qué opciones se eligen con cada patología y con qué frecuencia (sistema de
+-- aprendizaje futuro). Sin FK: es un agregado, no cuelga de una atención. Misma
+-- migración que `descripciones`. Hoy nada la escribe.
+--
+-- `patologia` (text, sin CHECK), 19 valores previstos: MMVD, CMD, CMH, CIA, CIV,
+-- EP, EA, CAP, tetralogia_fallot, cmavd, cardiopatia_arritmias,
+-- cardiopatia_doxorrubicina, cardiopatias_nutricionales,
+-- cardiopatia_restrictiva, hipertension_pulmonar, endocarditis,
+-- tumores_cardiacos, pericardio, otros.
+--
+-- No hay UNIQUE sobre (patologia, grupo, subgrupo, opcion): la misma combinación
+-- puede repetirse en más de una fila mientras no se agregue.
+create table public.patrones (
+  id         uuid primary key default gen_random_uuid(),
+  patologia  text not null,                   -- una de las 19 de arriba
+  grupo      text not null,                   -- mismos grupos que descripciones
+  subgrupo   text,
+  opcion     text not null,
+  frecuencia integer not null default 0,      -- veces que se eligió la opción
+  confianza  numeric,                         -- sin escala definida todavía
+  updated_at timestamptz not null default now()  -- sin trigger: lo actualiza quien escribe
+);
+
+create index idx_patrones_patologia       on public.patrones (patologia);
+create index idx_patrones_grupo           on public.patrones (grupo);
+create index idx_patrones_patologia_grupo on public.patrones (patologia, grupo);
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------------
 alter table public.tutores enable row level security;
@@ -441,6 +508,12 @@ alter table public.mascotas enable row level security;
 alter table public.atenciones_cardiologia enable row level security;
 alter table public.datos_ecocardiografia enable row level security;
 
+alter table public.descripciones enable row level security;
+alter table public.patrones enable row level security;
+
+-- descripciones y patrones (2026-10-03): RLS habilitado, sin políticas, igual
+-- que las 4 de arriba.
+--
 -- Sin políticas definidas todavía (ver hallazgo crítico arriba); las 4 tablas
 -- igual. Los nodos n8n escriben con la credencial service_role, que bypassa
 -- RLS — no hace falta política para `anon`. No se agregó ninguna en esta
