@@ -7,13 +7,24 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 - Plantillas JSON exportadas de cada workflow (respaldo ante cambios o errores en la nube).
 - Notas de configuración de nodos que no queden claras solo con el JSON (credenciales referenciadas, nombres de hojas de cálculo, direcciones de correo de destino).
 
-## Estado actual (2026-10-02)
+## Estado actual (2026-10-04)
 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
 | `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (43 nodos desde 8.7h, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sub-fase 8.7k (2026-10-04)
+
+Dos cambios de texto, sin nodos nuevos ni cambios de conexiones. `PUT /workflows/lkOwTFmVTZu7EMoU` con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E: nada de esto corrió todavía en n8n.**
+
+*   **`IA - Estructurar Anamnesis`:** el system prompt suma que el diagnóstico no se extrae ni se infiere de la anamnesis, que `diagnostico_sugerido` va siempre en null y que no entra en `resumen_anamnesis`. El esquema de salida no cambia (la clave sigue existiendo). El SPA muestra el aviso "No incluir el diagnóstico" bajo el campo.
+*   **`Preparar Datos para PDF`:** la línea "Estadio ACVIM" ya no lleva "(indicado por el profesional)" cuando `acvim_origen = 'manual'`; sale solo el valor. `acvim_origen` se sigue guardando en Supabase.
+*   **Sin tocar:** el respaldo `examen.diagnostico || informe.diagnostico_sugerido` sigue en el código de `Preparar Datos para PDF`. Con la IA devolviendo null no aporta nada; depende del prompt, no de una garantía en código.
+*   **Diferencias previas al PUT:** respecto de `workflow_B.post-8.7h.json`, el workflow vivo ya traía cambios de posición en 26 nodos y dos parámetros sin su valor por defecto explícito (`Esperar rebote` sin `unit`, `Buscar rebote inmediato` sin `method`). No son de 8.7k; quedaron tal cual.
+*   **FR en el informe:** con el default nuevo del SPA, la línea sale `FR: 20 rpm (Eupneico)` si no se cambia.
+*   **Backups:** `workflow_B.pre-8.7k.json` (antes del PUT) y `workflow_B.post-8.7k.json` (vivo después del PUT). Sin secretos.
 
 ### `MYVETE - Ingesta` — Sub-fase 8.7h (2026-10-02)
 

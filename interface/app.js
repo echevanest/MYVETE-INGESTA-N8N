@@ -1713,7 +1713,7 @@ const CATALOGO_EXAMEN = {
       'Distrés respiratorio moderado',
       'Distrés respiratorio severo',
     ],
-    default: 'Polipnea',
+    default: 'Eupneico',
   },
   sensorio: {
     opciones: [

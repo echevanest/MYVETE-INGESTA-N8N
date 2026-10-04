@@ -407,6 +407,19 @@ select.campo-frecuencia:focus {
   }
 }
 
+/* 8.7k: subtítulos "Constantes fisiológicas" / "Examen clínico". */
+.subtitulo-examen {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* 8.7k: aviso fijo bajo un campo (anamnesis: "No incluir el diagnóstico"). */
+.campo-aviso {
+  font-size: 0.8rem;
+  color: #7a4a00;
+}
+
 /* --- Examen clínico (Sprint 8.0): soplos, auscultación cardíaca --------- */
 
 .bloque-soplos {

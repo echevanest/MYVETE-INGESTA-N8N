@@ -138,7 +138,7 @@ PASO 2 — Durante la consulta
      - PAS / PAM / PAD (sin valor inicial, se cargan a mano).
   2. IMPORTANTE: casi todos los desplegables vienen con un valor inicial
      (el del paciente típico de consultorio, mayormente nervioso: por
-     ejemplo Sensorio "Excitación", FR "Polipnea"). Ese valor SALE EN EL
+     ejemplo Sensorio "Excitación", FR "Eupneico"). Ese valor SALE EN EL
      INFORME tal cual. Si no evaluaste un campo, elegí "—" (vacío): lo
      vacío no se imprime.
   3. Si hiciste ecocardiograma: cargá el PDF del equipo con el botón

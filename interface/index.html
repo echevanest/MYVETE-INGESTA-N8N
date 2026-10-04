@@ -134,7 +134,8 @@
          (Sección 9, CATALOGO_EXAMEN) para tener una sola fuente de verdad. Todos
          los campos son opcionales; la opción vacía "—" viaja como null y no se
          imprime en el informe. Los defaults reflejan al paciente típico de
-         consultorio (mayormente nervioso), no el estado normal. -->
+         consultorio (mayormente nervioso), no el estado normal; desde 8.7k el tipo
+         de respiración arranca en "Eupneico". -->
     <section id="bloque-texto-clinico">
       <h2>Consulta y examen clínico</h2>
 
@@ -178,27 +179,25 @@
           <textarea id="consulta-anamnesis" class="textarea-control" rows="4" placeholder="Paciente con tos nocturna de 2 semanas de evolución..."></textarea>
           <button type="button" class="btn btn-secundario btn-dictado" data-target="consulta-anamnesis">🎙️ Dictar</button>
         </div>
+        <!-- 8.7k: el diagnóstico va en "Interpretación diagnóstica"; la IA de
+             n8n tampoco lo saca de este texto. -->
+        <span id="aviso-anamnesis" class="campo-aviso">No incluir el diagnóstico: se carga más abajo, en "Interpretación diagnóstica".</span>
       </label>
 
-      <!-- 3. FC + soplos. Los ids clinica-fc / clinica-fr se conservan porque los
-           usan los perfiles clínicos (CAMPOS_PERFIL en app.js). Los renglones de
-           soplo los arma app.js (Sección 9) desde #plantilla-fila-soplo.
-           data-referencia (8.7e): valor del que parten las flechas ↑↓ cuando el
-           campo está vacío (app.js Sección 9); no es un valor cargado. -->
+      <!-- 3. Constantes fisiológicas (8.7k): encabezan el examen clínico, todas
+           juntas — FC, FR + tipo, PAS, PAM, PAD y Mucosas. Solo cambia el orden
+           en pantalla: ids y payload son los mismos. Los ids clinica-fc /
+           clinica-fr se conservan porque los usan los perfiles clínicos
+           (CAMPOS_PERFIL en app.js). data-referencia (8.7e): valor del que
+           parten las flechas ↑↓ cuando el campo está vacío (app.js Sección 9);
+           no es un valor cargado. La presión arterial no tiene default: un
+           valor no medido no debe salir en el informe. -->
+      <h3 class="subtitulo-examen">Constantes fisiológicas</h3>
       <div class="grid-constantes">
         <label class="campo-label">
           Frecuencia cardíaca (lpm)
           <input type="number" id="clinica-fc" class="input-control" value="120" min="0" step="1" inputmode="numeric" data-referencia="120" />
         </label>
-      </div>
-      <div class="campo-ancho bloque-soplos">
-        <span class="campo-label">Soplos</span>
-        <ul id="lista-soplos" class="lista-soplos"></ul>
-        <button type="button" id="btn-agregar-soplo" class="btn btn-secundario">+ Agregar soplo</button>
-      </div>
-
-      <!-- 4. FR + tipo -->
-      <div class="grid-constantes">
         <label class="campo-label">
           Frecuencia respiratoria (rpm)
           <input type="number" id="clinica-fr" class="input-control" value="20" min="0" step="1" inputmode="numeric" data-referencia="20" />
@@ -207,6 +206,31 @@
           Tipo de respiración
           <select id="clinica-fr-tipo" class="input-control" data-catalogo="fr_tipo"></select>
         </label>
+        <label class="campo-label">
+          PAS (mmHg)
+          <input type="number" id="clinica-pas" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 120" data-referencia="120" />
+        </label>
+        <label class="campo-label">
+          PAM (mmHg)
+          <input type="number" id="clinica-pam" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 90" data-referencia="90" />
+        </label>
+        <label class="campo-label">
+          PAD (mmHg)
+          <input type="number" id="clinica-pad" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 70" data-referencia="70" />
+        </label>
+        <label class="campo-label">
+          Mucosas
+          <select id="clinica-mucosas" class="input-control" data-catalogo="mucosas"></select>
+        </label>
+      </div>
+
+      <!-- 4. Soplos. Los renglones los arma app.js (Sección 9) desde
+           #plantilla-fila-soplo. -->
+      <h3 class="subtitulo-examen">Examen clínico</h3>
+      <div class="campo-ancho bloque-soplos">
+        <span class="campo-label">Soplos</span>
+        <ul id="lista-soplos" class="lista-soplos"></ul>
+        <button type="button" id="btn-agregar-soplo" class="btn btn-secundario">+ Agregar soplo</button>
       </div>
 
       <!-- 5 a 14. Dropdowns del examen clínico (opciones y defaults en app.js). -->
@@ -214,10 +238,6 @@
         <label class="campo-label">
           Sensorio
           <select id="clinica-sensorio" class="input-control" data-catalogo="sensorio"></select>
-        </label>
-        <label class="campo-label">
-          Mucosas
-          <select id="clinica-mucosas" class="input-control" data-catalogo="mucosas"></select>
         </label>
         <label class="campo-label">
           Pulso femoral
@@ -659,23 +679,7 @@
         </label>
       </details>
 
-      <!-- 18. Presión arterial — sin default, se carga a mano (un valor no medido
-           no debe salir en el informe). Con el campo vacío, las flechas parten
-           de data-referencia en vez de arrancar en 1. -->
-      <div class="grid-constantes">
-        <label class="campo-label">
-          PAS (mmHg)
-          <input type="number" id="clinica-pas" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 120" data-referencia="120" />
-        </label>
-        <label class="campo-label">
-          PAM (mmHg)
-          <input type="number" id="clinica-pam" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 90" data-referencia="90" />
-        </label>
-        <label class="campo-label">
-          PAD (mmHg)
-          <input type="number" id="clinica-pad" class="input-control" min="0" step="1" inputmode="numeric" placeholder="Ej: 70" data-referencia="70" />
-        </label>
-      </div>
+      <!-- 18. Presión arterial — desde 8.7k está arriba, con las constantes. -->
 
       <!-- 20. Indicaciones -->
       <label class="campo-label campo-ancho">

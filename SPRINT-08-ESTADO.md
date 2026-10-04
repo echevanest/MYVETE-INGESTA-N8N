@@ -68,7 +68,7 @@ Ver `n8n/README.md` → "Estado actual". En resumen:
 3. **Soplos y auscultación cardíaca se guardan como jsonb** (arrays).
 4. **Se guarda el texto visible (con tildes), no códigos.** Se lee directo en Supabase y en el PDF. Contra: corregir un texto después deja historial con el texto viejo.
 5. **Sin CHECK ni enums** en las columnas del examen. FC/FR son `integer` sin CHECK.
-6. **Los defaults representan al paciente típico de consultorio** (mayormente nervioso), no el estado normal. Ej.: Sensorio "Excitación", FR tipo "Polipnea", SLTB "Aumentado".
+6. **Los defaults representan al paciente típico de consultorio** (mayormente nervioso), no el estado normal. Ej.: Sensorio "Excitación", SLTB "Aumentado". Excepción desde 8.7k (2026-10-04): FR tipo arranca en "Eupneico" (antes "Polipnea").
 7. **La opción vacía se envía como null** y no se imprime en el informe.
 8. **`motivo` no tiene columna:** va solo al informe.
 9. **`metricas` y `updated_at` se eliminaron.**
