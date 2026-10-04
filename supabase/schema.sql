@@ -477,17 +477,26 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 -- aprendizaje futuro). Sin FK: es un agregado, no cuelga de una atención. Misma
 -- migración que `descripciones`. Hoy nada la escribe.
 --
--- `patologia` (text, sin CHECK), 19 valores previstos, en minúsculas igual que
--- los grupos (8.7m, 2026-10-04): mmvd, cmd, cmh, cia, civ, ep, ea, cap,
--- tetralogia_fallot, cmavd, cardiopatia_arritmias,
--- cardiopatia_doxorrubicina, cardiopatias_nutricionales,
--- cardiopatia_restrictiva, hipertension_pulmonar, endocarditis,
--- tumores_cardiacos, pericardio, otros.
+-- `patologia` (text, sin CHECK), 19 valores previstos, en MAYÚSCULAS (8.7n,
+-- 2026-10-04; decisión de Marcelo, reemplaza las minúsculas de 8.7m): MMVD, CMD,
+-- CMH, CIA, CIV, EP, EA, CAP, TETRALOGIA_FALLOT, CMAVD, CARDIOPATIA_ARRITMIAS,
+-- CARDIOPATIA_DOXORRUBICINA, CARDIOPATIAS_NUTRICIONALES,
+-- CARDIOPATIA_RESTRICTIVA, HIPERTENSION_PULMONAR, ENDOCARDITIS,
+-- TUMORES_CARDIACOS, PERICARDIO, OTROS.
+--
+-- Regla para el código que escriba esta tabla (8.1 / 8.2; hoy no existe):
+--   * `patologia` se normaliza a MAYÚSCULAS antes de insertar o hacer upsert.
+--   * `grupo` y `subgrupo` van en minúsculas, como en `descripciones`.
+-- Nada en la base lo fuerza (sin CHECK): `CMD` y `cmd` serían dos filas
+-- distintas para el UNIQUE, así que la normalización es responsabilidad de
+-- quien escribe.
 --
 -- UNIQUE sobre (patologia, grupo, subgrupo, opcion) desde 8.7m
 -- (`supabase/migrations/20261004_patrones_unique_minusculas.sql`). NULLS NOT
 -- DISTINCT: dos filas con subgrupo NULL y el resto igual también chocan. Sirve
--- de destino para un upsert. Las minúsculas no están forzadas por CHECK.
+-- de destino para un upsert. La migración de 8.7m también pasó `patologia` a
+-- minúsculas con un UPDATE, pero la tabla estaba vacía: no quedó ninguna fila
+-- en minúsculas.
 create table public.patrones (
   id         uuid primary key default gen_random_uuid(),
   patologia  text not null,                   -- una de las 19 de arriba
