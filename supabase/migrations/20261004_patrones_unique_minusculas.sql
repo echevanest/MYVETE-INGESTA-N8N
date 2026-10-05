@@ -1,6 +1,11 @@
 -- 2026-10-04 — Sub-fase 8.7m: `patrones` con UNIQUE y patologías en minúsculas.
 -- Una sola transacción. No borra nada.
 --
+-- ADVERTENCIA (8.7n, 2026-10-04): las patologías van en
+-- MAYÚSCULAS desde 8.7n. Si se re-ejecuta este archivo con
+-- la tabla `patrones` cargada, el `UPDATE ... LOWER(patologia)`
+-- pasa todo a minúsculas, contra la convención actual.
+--
 -- 1. Pasa `patologia` a minúsculas. La tabla está vacía al 2026-10-04, así que
 --    hoy no cambia ninguna fila; queda por si alguien cargó algo antes de
 --    ejecutar. Va primero para que el UNIQUE se cree sobre los valores finales.
