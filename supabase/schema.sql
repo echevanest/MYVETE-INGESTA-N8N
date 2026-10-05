@@ -254,7 +254,9 @@ create table public.atenciones_cardiologia (
   clasificacion_advertencias     jsonb,
   morfo_aortica                  text,
   morfo_pulmonar                 text,
-  eco_pulmonar_hallazgos         jsonb
+  eco_pulmonar_hallazgos         jsonb,
+  -- 8.7p
+  medicacion                     jsonb
 );
 
 create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (mascota_id, fecha desc);
@@ -328,6 +330,12 @@ create index atenciones_cardiologia_profesional_id_idx on public.atenciones_card
 --   - morfo_aortica / morfo_pulmonar: texto del dropdown del SPA.
 --   - eco_pulmonar_hallazgos (jsonb): array de hallazgos de ecografía
 --     pulmonar (selección múltiple); base del prellenado ACVIM C.
+--
+-- 8.7p (migración `20261005_medicacion.sql`, 2026-10-05):
+--   - medicacion (jsonb): tratamiento crónico de la atención, con la forma de
+--     `payload.medicacion`: `[{ medicamento, dosis, frecuencia, estado }]`,
+--     `estado` = 'continua' | 'nueva' | 'modificada'. Los fármacos eliminados
+--     no viajan. `[]` = sin fármacos; NULL = atención anterior a 8.7p.
 create index idx_atenciones_acvim     on public.atenciones_cardiologia (acvim_estadio);
 create index idx_atenciones_mine2_clas on public.atenciones_cardiologia (mine2_clasificacion);
 create index idx_atenciones_hp_clas    on public.atenciones_cardiologia (hp_clasificacion);

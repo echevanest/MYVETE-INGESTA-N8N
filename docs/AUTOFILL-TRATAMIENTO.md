@@ -1,6 +1,14 @@
 # Autofill del tratamiento crónico — plan (sin ejecutar)
 
-Preparado el 2026-10-01. **Nada de esto está implementado.** Es el plan para
+**Actualización 2026-10-05 (8.7p): la Fase 1 está implementada, sin E2E.**
+La columna `medicacion` existe (`jsonb`, admite NULL, sin default: así la pidió
+Marcelo; el plan de abajo decía `not null default '[]'`), `Insert Atención
+Cardiología` la guarda y el informe tiene la sección TRATAMIENTO después de
+INDICACIONES, con el estado de cada fármaco (Continúa / Nueva / Modificada).
+Las Fases 2 y 3 se definen en 8.1. La tabla de "Estado actual" de abajo es la
+del 2026-10-01.
+
+Preparado el 2026-10-01. **Nada de esto estaba implementado.** Es el plan para
 que, al abrir el panel sobre un paciente con consultas previas, el bloque
 "Tratamiento crónico" llegue precargado con lo que quedó vigente en la última.
 

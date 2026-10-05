@@ -60,6 +60,9 @@
         <label class="campo-label">
           E-mail del tutor
           <input type="email" id="tutor-email" class="input-control" placeholder="Ej: juan@mail.com" />
+          <!-- 8.7p: dominio corregido ("gemail.com" → "gmail.com") o aviso
+               "Verificá el email del tutor". Lo llena app.js (revisarEmailTutor). -->
+          <span id="aviso-email-tutor" class="campo-aviso" role="status" hidden></span>
         </label>
       </div>
       <!-- Aviso de recuperación automática del tutor (lo pobla app.js al recibir

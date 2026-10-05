@@ -385,6 +385,114 @@ if (btnGuardarPerfil) {
 renderizarPerfiles(); // estado inicial (especie por defecto del <select>)
 
 // ---------------------------------------------------------------------------
+// 1.bis E-mail del tutor — formato y corrección del dominio (8.7p)
+// ---------------------------------------------------------------------------
+// Va antes de la Sección 2: aplicarFiliacion corre durante la carga del script
+// (leerFiliacionDesdeHash) y ya necesita estas constantes.
+// >>> EMAIL-PURO
+// Formato mínimo de e-mail: algo@algo.algo, sin espacios. La misma regla está
+// en n8n ('IF - ¿Tutor con email?' y 'Verificación final').
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// 8.7p (2026-10-05): corrección del dominio del e-mail del tutor. La misma
+// lógica está copiada en n8n ('Preparar Datos para PDF'); si cambia acá, cambia
+// allá (copia del nodo en n8n/preparar_datos_pdf.8.7p.js).
+//
+// Dominios a los que se corrige un error de tipeo ("gemail.com" → "gmail.com").
+const DOMINIOS_EMAIL_CORREGIBLES = [
+  'gmail.com',
+  'hotmail.com', 'hotmail.com.ar', 'hotmail.es',
+  'outlook.com', 'outlook.com.ar', 'outlook.es',
+  'yahoo.com', 'yahoo.com.ar', 'yahoo.es',
+  'live.com', 'live.com.ar',
+  'icloud.com',
+];
+// Dominios que existen y se dejan como están: ni se corrigen ni dan aviso,
+// aunque se parezcan a uno de arriba ("email.com", "hotmail.se").
+const DOMINIOS_EMAIL_VALIDOS = [
+  'googlemail.com', 'mail.com', 'email.com', 'ymail.com', 'rocketmail.com',
+  'msn.com', 'me.com', 'mac.com', 'aol.com', 'gmx.com', 'gmx.es',
+  'proton.me', 'protonmail.com',
+  'hotmail.fr', 'hotmail.it', 'hotmail.de', 'hotmail.se', 'hotmail.co.uk',
+  'outlook.fr', 'outlook.it', 'outlook.de', 'outlook.se',
+  'yahoo.fr', 'yahoo.it', 'yahoo.de', 'yahoo.se', 'yahoo.co.uk',
+  'yahoo.com.mx', 'yahoo.com.br', 'live.cl', 'live.it', 'live.fr',
+  'fibertel.com.ar', 'speedy.com.ar', 'arnet.com.ar', 'ciudad.com.ar',
+  'telecentro.com.ar', 'uolsinectis.com.ar',
+];
+
+// Distancia de edición con transposición de letras vecinas ("gmial" → "gmail"
+// cuenta 1).
+function distanciaEdicion(a, b) {
+  const d = [];
+  for (let i = 0; i <= a.length; i += 1) d.push([i]);
+  for (let j = 1; j <= b.length; j += 1) d[0][j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + costo);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[a.length][b.length];
+}
+
+// Revisa el dominio de un e-mail. Devuelve { estado, email, original, dominio }:
+//   'vacio' | 'invalido' (no cumple EMAIL_VALIDO) | 'ok' (dominio conocido)
+//   'corregido': el dominio está a una sola letra de exactamente un dominio
+//                corregible; `email` trae el corregido.
+//   'desconocido': no se puede deducir; `email` queda como llegó.
+function revisarEmail(valor) {
+  const original = String(valor == null ? '' : valor).trim();
+  if (!original) return { estado: 'vacio', email: '', original, dominio: '' };
+  if (!EMAIL_VALIDO.test(original)) return { estado: 'invalido', email: original, original, dominio: '' };
+  const arroba = original.lastIndexOf('@');
+  const usuario = original.slice(0, arroba);
+  const dominio = original.slice(arroba + 1).toLowerCase();
+  if (DOMINIOS_EMAIL_CORREGIBLES.includes(dominio) || DOMINIOS_EMAIL_VALIDOS.includes(dominio)) {
+    return { estado: 'ok', email: original, original, dominio };
+  }
+  const candidatos = DOMINIOS_EMAIL_CORREGIBLES.filter((c) => distanciaEdicion(dominio, c) === 1);
+  if (candidatos.length === 1) {
+    return { estado: 'corregido', email: `${usuario}@${candidatos[0]}`, original, dominio: candidatos[0] };
+  }
+  return { estado: 'desconocido', email: original, original, dominio };
+}
+// <<< EMAIL-PURO
+
+// 8.7p: corrige el e-mail del tutor en el campo o avisa que hay que mirarlo.
+// Se llama al precargar la filiación, al salir del campo y al enviar. Si el
+// profesional vuelve a escribir un e-mail que ya se le corrigió, se respeta
+// (queda solo el aviso): la corrección no insiste.
+const emailsTutorYaCorregidos = new Set();
+
+function revisarEmailTutor() {
+  const campo = document.getElementById('tutor-email');
+  const aviso = document.getElementById('aviso-email-tutor');
+  if (!campo || !aviso) return;
+  let revision = revisarEmail(campo.value);
+  if (revision.estado === 'corregido' && emailsTutorYaCorregidos.has(revision.original.toLowerCase())) {
+    revision = { ...revision, estado: 'desconocido', email: revision.original, dominio: revision.original.split('@').pop() };
+  }
+  if (revision.estado === 'corregido') {
+    emailsTutorYaCorregidos.add(revision.original.toLowerCase());
+    campo.value = revision.email;
+    aviso.textContent = `E-mail corregido: "${revision.original}" → "${revision.email}". Si el original estaba bien, volvé a escribirlo.`;
+    aviso.hidden = false;
+  } else if (revision.estado === 'desconocido') {
+    aviso.textContent = `Verificá el email del tutor: "${revision.dominio}" no es un dominio conocido.`;
+    aviso.hidden = false;
+  } else {
+    aviso.hidden = true;
+  }
+}
+
+const campoEmailTutorRevision = document.getElementById('tutor-email');
+if (campoEmailTutorRevision) campoEmailTutorRevision.addEventListener('change', revisarEmailTutor);
+
+// ---------------------------------------------------------------------------
 // 2. Bloque Filiación — precarga editable
 // ---------------------------------------------------------------------------
 // 8.7e (2026-10-01): los campos se editan con solo pararse adentro; ya no hay
@@ -535,7 +643,12 @@ function aplicarFiliacion(payload, origen) {
   if (tutor) {
     if (tutor.nombre != null) document.getElementById('tutor-nombre').value = tutor.nombre;
     if (tutor.telefono != null) document.getElementById('tutor-telefono').value = tutor.telefono;
-    if (tutor.email != null) document.getElementById('tutor-email').value = tutor.email;
+    if (tutor.email != null) {
+      document.getElementById('tutor-email').value = tutor.email;
+      // 8.7p: el e-mail copiado de MyVete puede venir con el dominio mal
+      // escrito. revisarEmailTutor es una function declaration (hoisted).
+      revisarEmailTutor();
+    }
     // Si llegó algún dato real del tutor (2do mensaje del bookmarklet, vía
     // fetch), cualquier aviso de "no se pudo traer" que hubiera queda obsoleto.
     if (tutor.nombre != null || tutor.telefono != null || tutor.email != null) {
@@ -909,9 +1022,7 @@ window.consolidarPayloadFinal = consolidarPayloadFinal;
 // `borrador_medico` de la respuesta del webhook.
 const WEBHOOK_URL_N8N = 'https://echevanest.app.n8n.cloud/webhook/ingesta-filiacion';
 
-// Formato mínimo de e-mail: algo@algo.algo, sin espacios. La misma regla está
-// en n8n ('IF - ¿Tutor con email?' y 'Verificación final').
-const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// EMAIL_VALIDO y la corrección de dominios (8.7p) están en la Sección 1.bis.
 
 const btnSubmitFormulario = document.getElementById('btn-submit-formulario');
 const avisoFormulario = document.getElementById('aviso-formulario');
@@ -954,6 +1065,8 @@ if (btnSubmitFormulario) {
     // 8.7h: un e-mail mal formado no se envía a n8n (el informe no podría
     // salir). Vacío sí se permite: tutor sin e-mail, informe sin mail.
     const campoEmailTutor = document.getElementById('tutor-email');
+    // 8.7p: por si el campo nunca perdió el foco, se revisa antes de leerlo.
+    revisarEmailTutor();
     const emailTutor = campoEmailTutor.value.trim();
     if (emailTutor && !EMAIL_VALIDO.test(emailTutor)) {
       mostrarAviso('El e-mail del tutor no tiene un formato válido (ej: juan@mail.com). Corregilo, o dejalo vacío para enviar sin mail al tutor.');

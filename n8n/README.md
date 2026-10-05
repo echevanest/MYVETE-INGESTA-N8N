@@ -7,13 +7,26 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 - Plantillas JSON exportadas de cada workflow (respaldo ante cambios o errores en la nube).
 - Notas de configuración de nodos que no queden claras solo con el JSON (credenciales referenciadas, nombres de hojas de cálculo, direcciones de correo de destino).
 
-## Estado actual (2026-10-04)
+## Estado actual (2026-10-05)
 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
 | `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (43 nodos desde 8.7h, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sub-fase 8.7p (2026-10-05)
+
+Medicación (Fase 1) y corrección del dominio del e-mail. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 75 → 76, 43 nodos) con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). Cambian 2 nodos; conexiones iguales. **Sin E2E: nada de esto corrió todavía en n8n.**
+
+*   **`Insert Atención Cardiología`:** suma `medicacion` (38 columnas): el arreglo de `body.medicacion` sin las filas sin nombre de fármaco; `[]` si no viene. La columna se creó antes del PUT (`supabase/migrations/20261005_medicacion.sql`): con el orden inverso, el insert de la atención falla.
+*   **`Preparar Datos para PDF`** (copia en `preparar_datos_pdf.8.7p.js`):
+    *   Sección nueva **TRATAMIENTO**, después de INDICACIONES: `- Medicamento - dosis - intervalo (Continúa | Nueva | Modificada)`. Sin fármacos, la sección no sale. Los eliminados no viajan en el payload.
+    *   Corrección del dominio del e-mail del tutor: el bloque `EMAIL-PURO` es copia textual del de `interface/app.js` (`tests/email.test.mjs` comprueba que sean iguales). Solo corrige lo deducible; el resto sigue como llegó. La salida suma `email_recibido` y `email_corregido`; `email` es el corregido, y es el que leen `IF - ¿Tutor con email?`, `Enviar informe al tutor`, `Buscar rebote inmediato` y `Verificación final`.
+    *   **No cambia:** `Upsert Tutor` guarda el e-mail como llega; la planilla no anota que hubo corrección; un dominio desconocido no dispara ninguna alerta en n8n.
+*   **Rebote (solo lectura):** `Buscar rebote inmediato` sigue buscando `subject:"Delivery Status Notification (Failure)"` de `mailer-daemon@googlemail.com`; `Esperar rebote`, 20 s; `Evaluar rebote` y `Verificación final`, idénticos a las copias de 8.7h. Los `(Delay)` no se miran.
+*   **Verificación:** los 2 nodos se probaron localmente con los datos de la ejecución 3090; la versión viva se releyó por API: idéntica a la probada.
+*   **Backups:** `workflow_B.pre-8.7p.json` y `workflow_B.post-8.7p.json`. Sin secretos.
 
 ### `MYVETE - Ingesta` — E2E 8.7o (2026-10-05)
 
