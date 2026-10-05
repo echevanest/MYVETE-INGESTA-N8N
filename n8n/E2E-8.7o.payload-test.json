@@ -1,0 +1,188 @@
+{
+  "profesional_id": "d81595e9-f134-442b-b4fc-eef8560bb491",
+  "profesional": {
+    "profesional_id": "d81595e9-f134-442b-b4fc-eef8560bb491",
+    "nombre": "Marcelo Ricardo",
+    "apellido": "Echevarria",
+    "email": "echevanest@gmail.com",
+    "especialidad": "Especialista en cardiología clínica UBA",
+    "matricula_tipo": "MN",
+    "matricula_numero": "7356",
+    "matricula_2_tipo": "MP",
+    "matricula_2_numero": "10087",
+    "firma_url": "__FIRMA_URL__"
+  },
+  "filiacion": {
+    "tutor": {
+      "id_myvete": "TEST-E2E-87O",
+      "nombre": "TEST, E2E 87O",
+      "telefono": null,
+      "email": null
+    },
+    "mascota": {
+      "nombre": "TEST-E2E-87O",
+      "especie": "canino",
+      "raza": "Mestizo",
+      "peso": 25
+    },
+    "editado": false
+  },
+  "examen_clinico": {
+    "motivo": "Soplo detectado en consulta",
+    "anamnesis": "TEST E2E 8.7o. Paciente asintomático. Sin tos ni disnea. Buen apetito. No es una consulta real.",
+    "fc_numero": 110,
+    "soplos": [
+      {
+        "momento": "Sistólico",
+        "foco": "Mitral",
+        "intensidad": "3/6",
+        "orden": 0
+      }
+    ],
+    "fr_numero": 20,
+    "fr_tipo": "Eupneico",
+    "sensorio": "Excitación",
+    "mucosas": "Rosadas y húmedas",
+    "pulso_femoral": "Moderado. Coincidente con auscultación y sin déficit",
+    "reflejo_tusigeno": "No provocado",
+    "hidratacion": "Normal",
+    "tllc": null,
+    "sucusion": null,
+    "auscultacion_pulmonar_patron": "Toraco-abdominal",
+    "auscultacion_pulmonar_amplitud": "Superficial",
+    "auscultacion_pulmonar_sltb": "Aumentado",
+    "auscultacion_cardiaca": [],
+    "pas": 130,
+    "pam": null,
+    "pad": null,
+    "diagnostico": "TEST E2E 8.7o - diagnóstico de lista (renglón 1)\nTEST E2E 8.7o - diagnóstico dictado (renglón 2). No es una consulta real.",
+    "indicaciones": "TEST E2E 8.7o - control en 6 meses. No es una consulta real.",
+    "acvim_estadio": "B1",
+    "acvim_origen": "calculado",
+    "mine2_puntaje": 4,
+    "mine2_clasificacion": "leve",
+    "hp_clasificacion": "alta",
+    "hp_sospecha": true,
+    "hp_signos": {},
+    "hp_n_sitios": 2,
+    "clasificacion_advertencias": {
+      "acvim": {
+        "origen": "calculado",
+        "faltantes": [],
+        "advertencias": []
+      },
+      "mine2": {
+        "origen": "calculado",
+        "faltantes": [],
+        "advertencias": []
+      },
+      "hp": {
+        "origen": "estimado",
+        "faltantes": [],
+        "advertencias": [
+          "DVD/DVI ≥ 0.70: sobrecarga del VD sospechosa.",
+          "Orientación con 2 de los 3 sitios evaluados."
+        ]
+      }
+    },
+    "morfo_aortica": "Conservada",
+    "morfo_pulmonar": "Conservada",
+    "eco_pulmonar_hallazgos": [
+      "Signo de nódulo"
+    ]
+  },
+  "medicacion": [
+    {
+      "medicamento": "Pimobendan",
+      "dosis": "5 mg",
+      "frecuencia": "Cada 12 hs",
+      "estado": "nueva"
+    },
+    {
+      "medicamento": "Furosemida",
+      "dosis": "20 mg",
+      "frecuencia": "Lun, Mie y Vie solo dosis nocturna",
+      "estado": "nueva"
+    }
+  ],
+  "datos_ecocardiografia": {
+    "sivd": 3.5,
+    "sivs": 9.5,
+    "dvid": 31.1,
+    "dvs": 12,
+    "ppvid": 4.3,
+    "ppvis": 12,
+    "fe_modom": 91.1,
+    "fs_modom": 61.24,
+    "volumen_fdi_modom": null,
+    "volumen_fsi_modom": null,
+    "volumen_si_modom": null,
+    "gasto_cardiaco_modom": null,
+    "masa_vi": 30.535,
+    "indice_masa_vi": 35.113,
+    "mvcf": null,
+    "epr": 0.251,
+    "tiempo_eyectivo": null,
+    "fe_simpson": null,
+    "volumen_ai_esv_simpson": null,
+    "volumen_ai_simp_simpson": null,
+    "volumen_vi_fd_simpson": null,
+    "volumen_vi_fs_simpson": null,
+    "ai_lineal": 17.9,
+    "ao_lineal": 11.8,
+    "ai_ao_lineal": 1.52,
+    "ai_ao_area": null,
+    "vmax_ao": null,
+    "gp_ao": null,
+    "vti_ao": null,
+    "thp_ao": null,
+    "vmax_pulmonar": null,
+    "gp_pulmonar": null,
+    "vmax_mitral": null,
+    "gp_mitral": null,
+    "velocidad_e_mitral": 145.92,
+    "velocidad_a_mitral": null,
+    "relacion_ea_mitral": null,
+    "vmax_tricuspideo": 310,
+    "gp_tricuspideo": 38.4,
+    "velocidad_e_tricuspideo": null,
+    "velocidad_a_tricuspideo": null,
+    "relacion_ea_tricuspideo": null,
+    "mapse": null,
+    "tapse": null,
+    "fa_atrial": null,
+    "vp_ap": null,
+    "ao_ap": null,
+    "dapd": null,
+    "dvccd": null,
+    "efusion_pericardica": null,
+    "efusion_pleural": null,
+    "patron_llenado_vi": null,
+    "observaciones": null,
+    "dvid_indexado": 1.207,
+    "dvs_indexado": 0.435,
+    "sivd_indexado": 0.161,
+    "sivs_indexado": 0.456,
+    "ppvid_indexado": 0.204,
+    "ppvis_indexado": 0.584,
+    "ai_indexado": 0.743,
+    "ao_indexado": 0.436,
+    "masa_vi_indexada": 35.113,
+    "volumen_ai_indexado": null,
+    "volumen_fdi_indexado": null,
+    "volumen_fsi_indexado": null,
+    "volumen_si_indexado": null,
+    "gasto_cardiaco_indexado": null,
+    "volumen_vi_fd_indexado": null,
+    "volumen_vi_fs_indexado": null,
+    "at_pulmonar": 50,
+    "et_pulmonar": 200,
+    "at_et_pulmonar": 0.25,
+    "vel_regurg_pulmonar": null,
+    "dvdd": 22,
+    "dvds": 15,
+    "plvdd": 4,
+    "plvds": 6
+  },
+  "bloque_ekg": null
+}

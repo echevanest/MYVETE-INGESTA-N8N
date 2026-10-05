@@ -15,6 +15,10 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
 
+### `MYVETE - Ingesta` — E2E 8.7o (2026-10-05)
+
+Publicado, una corrida con `E2E-8.7o.payload-test.json` (ejecución 3090, `success`) y despublicado (`active: false`, `activeVersionId: null`). Sin `PUT`: la versión es la de 8.7m. Resultado y lo que quedó sin cubrir en `E2E-8.7o.md`. **Backup:** `workflow_B.post-8.7o.json`.
+
 ### `MYVETE - Ingesta` — Sub-fase 8.7m (2026-10-04)
 
 `method: GET` explícito en `Exportar PDF (autenticado)` y `Buscar colisiones PDF`, los dos `httpRequest` que no lo traían (8.7l los había dejado sin tocar). `PUT /workflows/lkOwTFmVTZu7EMoU` con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). **Sin E2E.**
