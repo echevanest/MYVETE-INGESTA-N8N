@@ -516,6 +516,7 @@ SPA (`interface/`) y n8n (`lkOwTFmVTZu7EMoU`). No se tocó Supabase: las claves 
 *   **8.7s (2026-10-07) — SIN E2E:**
     *   **`live.com.uy`** en `DOMINIOS_EMAIL_VALIDOS`, en el SPA y en las dos copias de n8n (PUT con el workflow despublicado, versionCounter 78 → 79; backups `pre-8.7s` / `post-8.7s`). Tests: 166 casos.
     *   **`descripciones` y `patrones` (solo documentación, sin tocar Supabase):** `patologia` en MAYÚSCULAS, `grupo` y `subgrupo` en minúsculas; sin CHECK (texto libre); normaliza el código que escribe; `patologia` y `grupo` son entidades distintas y no se unifican. Las va a escribir n8n en 8.1 / 8.2 (`docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`). Nada implementado.
+*   **8.7t (2026-10-07) — solo documentación:** decisiones de 8.1 / 8.2 en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`: `payload.descripciones` como arreglo de `{ grupo, subgrupo, opcion, orden }` (una fila por elemento); normalización completa (mayúsculas/minúsculas, espacios al borde, acentos, espacios internos) y `opcion` en minúsculas; patrones, `frecuencia` y `confianza` en dos fases (a mano o desde perfiles, después aprendizaje); corrección ortográfica con disclaimer. El doc separa lo decidido de lo propuesto por CODE y de lo que falta definir. **Hallazgo:** los perfiles y los botones rápidos no están en Supabase (`PERFILES_BASE` + localStorage) y no traen patología ni opciones, así que hoy no hay de dónde sacar los patrones de la Fase 1. Sin cambios en el SPA, n8n ni Supabase.
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 

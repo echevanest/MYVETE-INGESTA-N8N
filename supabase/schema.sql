@@ -461,6 +461,11 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 --     previstos, no una validación; un valor que no esté en ellas se guarda.
 --   * Normaliza el código que escribe (n8n), antes de insertar. La base no lo
 --     fuerza: `Mitral` y `mitral` serían dos valores distintos.
+--   * 8.7t (2026-10-07): la normalización de `grupo` y `subgrupo` incluye
+--     también espacios al borde, acentos y espacios internos; `opcion` va en
+--     minúsculas. Las filas llegan en `payload.descripciones`, un arreglo de
+--     `{ grupo, subgrupo, opcion, orden }`; n8n guarda una fila por elemento.
+--     Detalle en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`.
 --
 -- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
 -- regurgitaciones, cmh, cmd, estenosis_pulmonar, estenosis_aortica,
@@ -511,6 +516,12 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 --   * `grupo` y `subgrupo` → minúsculas, como en `descripciones`.
 --   * Sin CHECK: `patologia`, `grupo` y `subgrupo` son texto libre. Las listas
 --     son los valores previstos, no una validación.
+--   * 8.7t (2026-10-07): además de mayúsculas y minúsculas, se normalizan
+--     espacios al borde, acentos y espacios internos; `opcion` va en
+--     minúsculas.
+-- `frecuencia` y `confianza` (8.7t): Fase 1 a mano (o desde perfiles); Fase 2
+-- por aprendizaje. Los patrones de la Fase 1 salen de perfiles y botones
+-- rápidos, que hoy no están en Supabase (`PERFILES_BASE` + localStorage).
 -- Nada en la base lo fuerza: `CMD` y `cmd` serían dos filas distintas para el
 -- UNIQUE, así que la normalización es responsabilidad de quien escribe.
 --
