@@ -385,7 +385,7 @@ if (btnGuardarPerfil) {
 renderizarPerfiles(); // estado inicial (especie por defecto del <select>)
 
 // ---------------------------------------------------------------------------
-// 1.bis E-mail del tutor — formato y corrección del dominio (8.7p, 8.7q)
+// 1.bis E-mail del tutor — formato y corrección del dominio (8.7p a 8.7r)
 // ---------------------------------------------------------------------------
 // Va antes de la Sección 2: aplicarFiliacion corre durante la carga del script
 // (leerFiliacionDesdeHash) y ya necesita estas constantes.
@@ -396,8 +396,8 @@ const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // 8.7p (2026-10-05): corrección del dominio del e-mail del tutor. La misma
 // lógica está copiada en n8n ('Preparar Datos para PDF'); si cambia acá, cambia
-// allá (copia del nodo en n8n/preparar_datos_pdf.8.7q.js). Desde 8.7q también
-// está en la expresión de 'Upsert Tutor' (n8n/upsert_tutor.8.7q.js).
+// allá (copia del nodo en n8n/preparar_datos_pdf.8.7r.js). Desde 8.7q también
+// está en la expresión de 'Upsert Tutor' (n8n/upsert_tutor.8.7r.js).
 //
 // Dominios a los que se corrige un error de tipeo ("gemail.com" → "gmail.com").
 const DOMINIOS_EMAIL_CORREGIBLES = [
@@ -418,6 +418,11 @@ const DOMINIOS_EMAIL_VALIDOS = [
   'outlook.fr', 'outlook.it', 'outlook.de', 'outlook.se',
   'yahoo.fr', 'yahoo.it', 'yahoo.de', 'yahoo.se', 'yahoo.co.uk',
   'yahoo.com.mx', 'yahoo.com.br', 'live.cl', 'live.it', 'live.fr',
+  // 8.7r: variantes regionales de los mismos proveedores; sin esto daban el
+  // aviso de "se parece a un dominio conocido".
+  'yahoo.com.co', 'yahoo.com.pe', 'yahoo.com.ve', 'yahoo.cl',
+  'outlook.cl', 'outlook.com.br', 'outlook.pt',
+  'hotmail.cl', 'hotmail.com.br', 'live.com.mx', 'live.com.pt',
   'fibertel.com.ar', 'speedy.com.ar', 'arnet.com.ar', 'ciudad.com.ar',
   'telecentro.com.ar', 'uolsinectis.com.ar',
 ];

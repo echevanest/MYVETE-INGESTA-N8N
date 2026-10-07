@@ -15,6 +15,17 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
 
+### `MYVETE - Ingesta` — Sub-fase 8.7r (2026-10-07)
+
+Respuestas P1-P6 de 8.7q. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 77 → 78, 43 nodos) con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). Cambian 4 nodos; conexiones iguales. **Sin E2E: nada de esto corrió todavía en n8n** (lo hace Marcelo).
+
+*   **`Registrar en Índice`:** `observaciones` suma `Verificar email: dominio parecido a uno conocido` cuando `Preparar Datos para PDF` devuelve `email_estado = 'sospechoso'`. Va al final, después de `Email corregido: X → Y` (los dos casos no se dan juntos). `estado_persistencia` no cambia.
+*   **`Insert Atención Cardiología`:** `datos_filiacion.tutor.email` lleva el e-mail que devolvió `Upsert Tutor` (`$('Upsert Tutor').item.json.email`, la fila de `tutores` recién guardada), o sea el corregido. Solo se reemplaza si el payload traía un e-mail no vacío; sin e-mail, `datos_filiacion` queda como llegó. El resto de `datos_filiacion` y las otras 37 columnas no cambian. No lleva copia del bloque `EMAIL-PURO`: lee lo que ya guardó `Upsert Tutor`.
+*   **`Preparar Datos para PDF`** (copia en `preparar_datos_pdf.8.7r.js`) y **`Upsert Tutor`** (copia en `upsert_tutor.8.7r.js`): bloque `EMAIL-PURO` con 11 dominios válidos más (`yahoo.com.co`, `yahoo.com.pe`, `yahoo.com.ve`, `yahoo.cl`, `outlook.cl`, `outlook.com.br`, `outlook.pt`, `hotmail.cl`, `hotmail.com.br`, `live.com.mx`, `live.com.pt`). Dejan de ser sospechosos; nada más cambia.
+*   **Sin cambios, por decisión de Marcelo:** n8n corrige siempre, aunque el profesional haya reescrito el e-mail en el SPA; `live.com` sigue entre los corregibles.
+*   **Verificación:** las expresiones de `Upsert Tutor`, `Insert Atención Cardiología` y `Registrar en Índice` se evaluaron localmente con el motor de expresiones de n8n (`@n8n/tournament`), encadenadas, con el payload de `E2E-8.7o.payload-test.json`; sin corrección, el insert sale idéntico al de 8.7q. La versión viva se releyó por API: idéntica a la probada. **Sin verificar en n8n:** que `Upsert Tutor` devuelva la fila con `email` como se supone (`Upsert Mascota` ya lee `id` de esa misma salida) y las expresiones largas en la nube.
+*   **Backups:** `workflow_B.pre-8.7r.json` y `workflow_B.post-8.7r.json`. Sin secretos.
+
 ### `MYVETE - Ingesta` — Sub-fase 8.7q (2026-10-07)
 
 Respuestas P1-P6 de 8.7p. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 76 → 77, 43 nodos) con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). Cambian 3 nodos; conexiones iguales. **Sin E2E: nada de esto corrió todavía en n8n** (lo hace Marcelo: un fármaco + un e-mail con typo).

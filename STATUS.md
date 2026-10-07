@@ -505,6 +505,14 @@ SPA (`interface/`) y n8n (`lkOwTFmVTZu7EMoU`). No se tocó Supabase: las claves 
     *   **n8n:** PUT con el workflow despublicado (`active: false` antes y después, versionCounter 76 → 77); cambian solo esos 3 nodos. Backups `n8n/workflow_B.pre-8.7q.json` y `post-8.7q.json`; copias en `n8n/preparar_datos_pdf.8.7q.js` y `n8n/upsert_tutor.8.7q.js`.
     *   **Tests:** `node --test tests/clasificacion.test.mjs tests/email.test.mjs` (151 casos; los de e-mail corren contra el SPA y contra las dos copias de n8n, y comprueban que las tres sean iguales).
     *   **Verificado:** las dos expresiones, localmente con el motor de expresiones de n8n; el nodo Code, con el payload de `E2E-8.7o`; la migración, con un `select` (0 NULL, `is_nullable = NO`); el SPA, en Chrome contra un servidor local (`@clinica.vet` sin aviso, `@gmial.com` corregido con aviso, `@gmeil.con` con aviso). **Sin verificar:** nada de n8n corrió en la nube; el E2E lo hace Marcelo (un fármaco + un e-mail con typo).
+*   **8.7r (2026-10-07) — SIN E2E** (respuestas P1-P6 de 8.7q):
+    *   **Dominio sospechoso en el índice:** `Registrar en Índice` agrega `Verificar email: dominio parecido a uno conocido` a `observaciones`.
+    *   **`datos_filiacion`:** `Insert Atención Cardiología` guarda en `datos_filiacion.tutor.email` el e-mail que devolvió `Upsert Tutor` (el corregido). Sin e-mail en el payload, queda como llegó.
+    *   **Proveedores reales:** 11 dominios más en `DOMINIOS_EMAIL_VALIDOS` (`yahoo.com.co`, `yahoo.com.pe`, `yahoo.com.ve`, `yahoo.cl`, `outlook.cl`, `outlook.com.br`, `outlook.pt`, `hotmail.cl`, `hotmail.com.br`, `live.com.mx`, `live.com.pt`), en el SPA y en las dos copias de n8n. La lista sale de memoria, no de una fuente consultada.
+    *   **Decidido sin cambios:** n8n corrige siempre (no hay marca de "no corregir"); `live.com` sigue entre los corregibles; el `UNIQUE` de `tutores.email` queda como está.
+    *   **n8n:** PUT con el workflow despublicado (`active: false` antes y después, versionCounter 77 → 78); cambian 4 nodos. Backups `n8n/workflow_B.pre-8.7r.json` y `post-8.7r.json`; copias en `n8n/preparar_datos_pdf.8.7r.js` y `n8n/upsert_tutor.8.7r.js`.
+    *   **Tests:** 163 casos, todos pasan.
+    *   **Verificado:** las expresiones, localmente con el motor de expresiones de n8n; el SPA, en Chrome contra un servidor local (`@yahoo.com.co`, `@outlook.cl` y `@live.com.mx` sin aviso). **Sin verificar:** Sheets y Supabase, que dependen del E2E de Marcelo.
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
