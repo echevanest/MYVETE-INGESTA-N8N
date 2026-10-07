@@ -452,7 +452,15 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 -- (ON DELETE CASCADE). Migración
 -- `supabase/migrations/20261003_descripciones_patrones.sql` (2026-10-03, por la
 -- API de administración: no figura en el historial de migraciones de Supabase).
--- Hoy nada la escribe: ni el SPA ni n8n.
+-- Hoy nada la escribe: ni el SPA ni n8n. La va a escribir n8n (8.1 / 8.2; ver
+-- `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`).
+--
+-- Normalización (8.7s, 2026-10-07; decisión de Marcelo):
+--   * `grupo` y `subgrupo` van en minúsculas.
+--   * Sin CHECK: son texto libre. Las listas de abajo son los valores
+--     previstos, no una validación; un valor que no esté en ellas se guarda.
+--   * Normaliza el código que escribe (n8n), antes de insertar. La base no lo
+--     fuerza: `Mitral` y `mitral` serían dos valores distintos.
 --
 -- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
 -- regurgitaciones, cmh, cmd, estenosis_pulmonar, estenosis_aortica,
@@ -486,7 +494,8 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 -- ---------------------------------------------------------------------------
 -- Qué opciones se eligen con cada patología y con qué frecuencia (sistema de
 -- aprendizaje futuro). Sin FK: es un agregado, no cuelga de una atención. Misma
--- migración que `descripciones`. Hoy nada la escribe.
+-- migración que `descripciones`. Hoy nada la escribe; la va a escribir n8n
+-- (8.1 / 8.2; ver `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`).
 --
 -- `patologia` (text, sin CHECK), 19 valores previstos, en MAYÚSCULAS (8.7n,
 -- 2026-10-04; decisión de Marcelo, reemplaza las minúsculas de 8.7m): MMVD, CMD,
@@ -495,12 +504,19 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 -- CARDIOPATIA_RESTRICTIVA, HIPERTENSION_PULMONAR, ENDOCARDITIS,
 -- TUMORES_CARDIACOS, PERICARDIO, OTROS.
 --
--- Regla para el código que escriba esta tabla (8.1 / 8.2; hoy no existe):
---   * `patologia` se normaliza a MAYÚSCULAS antes de insertar o hacer upsert.
---   * `grupo` y `subgrupo` van en minúsculas, como en `descripciones`.
--- Nada en la base lo fuerza (sin CHECK): `CMD` y `cmd` serían dos filas
--- distintas para el UNIQUE, así que la normalización es responsabilidad de
--- quien escribe.
+-- Normalización (confirmada en 8.7s, 2026-10-07; decisión de Marcelo). La
+-- aplica el código que escriba esta tabla, que va a ser n8n (8.1 / 8.2; hoy no
+-- existe), antes de insertar o hacer upsert:
+--   * `patologia` → MAYÚSCULAS.
+--   * `grupo` y `subgrupo` → minúsculas, como en `descripciones`.
+--   * Sin CHECK: `patologia`, `grupo` y `subgrupo` son texto libre. Las listas
+--     son los valores previstos, no una validación.
+-- Nada en la base lo fuerza: `CMD` y `cmd` serían dos filas distintas para el
+-- UNIQUE, así que la normalización es responsabilidad de quien escribe.
+--
+-- `patologia` y `grupo` son entidades distintas y no se unifican (8.7s): hay
+-- grupos sin patología equivalente (valvulas, camaras, funcion, …) y los que
+-- se parecen no comparten nombre (grupo `estenosis_pulmonar`, patología `EP`).
 --
 -- UNIQUE sobre (patologia, grupo, subgrupo, opcion) desde 8.7m
 -- (`supabase/migrations/20261004_patrones_unique_minusculas.sql`). NULLS NOT

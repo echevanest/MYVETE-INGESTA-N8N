@@ -1,4 +1,4 @@
-// Tests de la corrección del dominio del e-mail del tutor (8.7p a 8.7r).
+// Tests de la corrección del dominio del e-mail del tutor (8.7p a 8.7s).
 // Corre con: node --test tests/email.test.mjs
 //
 // Recorta de app.js la sección pura entre `// >>> EMAIL-PURO` y
@@ -51,6 +51,7 @@ const CASOS = [
   ['juan@outlook.cl', 'ok', 'juan@outlook.cl'],
   ['juan@live.com.mx', 'ok', 'juan@live.com.mx'],
   ['juan@hotmail.com.br', 'ok', 'juan@hotmail.com.br'],
+  ['juan@live.com.uy', 'ok', 'juan@live.com.uy'],
   // Se parece a uno conocido y no es deducible: queda como llegó, con aviso.
   ['juan@gmeil.con', 'sospechoso', 'juan@gmeil.con'],
   ['juan@gemial.com', 'sospechoso', 'juan@gemial.com'],
@@ -58,7 +59,7 @@ const CASOS = [
   ['juan@gmial.com.ar', 'sospechoso', 'juan@gmial.com.ar'],
   ['juan@hotmail.net', 'sospechoso', 'juan@hotmail.net'],
   ['juan@hotmal.con', 'sospechoso', 'juan@hotmal.con'],
-  ['juan@live.com.uy', 'sospechoso', 'juan@live.com.uy'],
+  ['juan@live.com.pe', 'sospechoso', 'juan@live.com.pe'],
   // Dominio propio, no se parece a ninguno: queda como llegó, sin aviso (8.7q).
   ['juan@dominio-inexistente.com', 'desconocido', 'juan@dominio-inexistente.com'],
   ['juan@clinica.vet', 'desconocido', 'juan@clinica.vet'],
@@ -76,8 +77,8 @@ const CASOS = [
 
 for (const [nombre, ruta] of [
   ['SPA (app.js)', '../interface/app.js'],
-  ['n8n (Preparar Datos para PDF)', '../n8n/preparar_datos_pdf.8.7r.js'],
-  ['n8n (Upsert Tutor)', '../n8n/upsert_tutor.8.7r.js'],
+  ['n8n (Preparar Datos para PDF)', '../n8n/preparar_datos_pdf.8.7s.js'],
+  ['n8n (Upsert Tutor)', '../n8n/upsert_tutor.8.7s.js'],
 ]) {
   const revisarEmail = cargar(ruta);
   for (const [entrada, estado, email] of CASOS) {
@@ -90,6 +91,6 @@ for (const [nombre, ruta] of [
 }
 
 test('las copias de n8n son idénticas a la del SPA', () => {
-  assert.equal(recortar('../n8n/preparar_datos_pdf.8.7r.js'), recortar('../interface/app.js'));
-  assert.equal(recortar('../n8n/upsert_tutor.8.7r.js'), recortar('../interface/app.js'));
+  assert.equal(recortar('../n8n/preparar_datos_pdf.8.7s.js'), recortar('../interface/app.js'));
+  assert.equal(recortar('../n8n/upsert_tutor.8.7s.js'), recortar('../interface/app.js'));
 });

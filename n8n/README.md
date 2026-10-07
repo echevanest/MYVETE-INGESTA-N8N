@@ -15,6 +15,12 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
 
+### `MYVETE - Ingesta` — Sub-fase 8.7s (2026-10-07)
+
+`live.com.uy` pasa a la lista de dominios válidos. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 78 → 79, 43 nodos) con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). Cambian 2 nodos, solo en el bloque `EMAIL-PURO`: `Preparar Datos para PDF` (copia en `preparar_datos_pdf.8.7s.js`) y `Upsert Tutor` (copia en `upsert_tutor.8.7s.js`). Conexiones iguales. **Sin E2E.** La versión viva se releyó por API: idéntica a la probada. **Backups:** `workflow_B.pre-8.7s.json` y `workflow_B.post-8.7s.json`. Sin secretos.
+
+n8n va a ser quien escriba `descripciones` y `patrones` (8.1 / 8.2, sin implementar): ver `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`.
+
 ### `MYVETE - Ingesta` — Sub-fase 8.7r (2026-10-07)
 
 Respuestas P1-P6 de 8.7q. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 77 → 78, 43 nodos) con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). Cambian 4 nodos; conexiones iguales. **Sin E2E: nada de esto corrió todavía en n8n** (lo hace Marcelo).

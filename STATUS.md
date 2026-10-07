@@ -513,6 +513,9 @@ SPA (`interface/`) y n8n (`lkOwTFmVTZu7EMoU`). No se tocó Supabase: las claves 
     *   **n8n:** PUT con el workflow despublicado (`active: false` antes y después, versionCounter 77 → 78); cambian 4 nodos. Backups `n8n/workflow_B.pre-8.7r.json` y `post-8.7r.json`; copias en `n8n/preparar_datos_pdf.8.7r.js` y `n8n/upsert_tutor.8.7r.js`.
     *   **Tests:** 163 casos, todos pasan.
     *   **Verificado:** las expresiones, localmente con el motor de expresiones de n8n; el SPA, en Chrome contra un servidor local (`@yahoo.com.co`, `@outlook.cl` y `@live.com.mx` sin aviso). **Sin verificar:** Sheets y Supabase, que dependen del E2E de Marcelo.
+*   **8.7s (2026-10-07) — SIN E2E:**
+    *   **`live.com.uy`** en `DOMINIOS_EMAIL_VALIDOS`, en el SPA y en las dos copias de n8n (PUT con el workflow despublicado, versionCounter 78 → 79; backups `pre-8.7s` / `post-8.7s`). Tests: 166 casos.
+    *   **`descripciones` y `patrones` (solo documentación, sin tocar Supabase):** `patologia` en MAYÚSCULAS, `grupo` y `subgrupo` en minúsculas; sin CHECK (texto libre); normaliza el código que escribe; `patologia` y `grupo` son entidades distintas y no se unifican. Las va a escribir n8n en 8.1 / 8.2 (`docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`). Nada implementado.
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 
