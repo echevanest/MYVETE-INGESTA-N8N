@@ -385,7 +385,7 @@ if (btnGuardarPerfil) {
 renderizarPerfiles(); // estado inicial (especie por defecto del <select>)
 
 // ---------------------------------------------------------------------------
-// 1.bis E-mail del tutor — formato y corrección del dominio (8.7p)
+// 1.bis E-mail del tutor — formato y corrección del dominio (8.7p, 8.7q)
 // ---------------------------------------------------------------------------
 // Va antes de la Sección 2: aplicarFiliacion corre durante la carga del script
 // (leerFiliacionDesdeHash) y ya necesita estas constantes.
@@ -396,7 +396,8 @@ const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // 8.7p (2026-10-05): corrección del dominio del e-mail del tutor. La misma
 // lógica está copiada en n8n ('Preparar Datos para PDF'); si cambia acá, cambia
-// allá (copia del nodo en n8n/preparar_datos_pdf.8.7p.js).
+// allá (copia del nodo en n8n/preparar_datos_pdf.8.7q.js). Desde 8.7q también
+// está en la expresión de 'Upsert Tutor' (n8n/upsert_tutor.8.7q.js).
 //
 // Dominios a los que se corrige un error de tipeo ("gemail.com" → "gmail.com").
 const DOMINIOS_EMAIL_CORREGIBLES = [
@@ -439,11 +440,42 @@ function distanciaEdicion(a, b) {
   return d[a.length][b.length];
 }
 
+// Primera etiqueta de un dominio: "gmail" en "gmail.com.ar".
+function etiquetaDominio(dominio) {
+  return dominio.split('.')[0];
+}
+
+// 8.7q (2026-10-07): ¿el dominio se parece a uno de los corregibles? Los
+// dominios propios ("clinica.vet") no se parecen y pasan sin aviso. Se parece
+// si:
+//   - la etiqueta es la de un proveedor corregible con otra terminación
+//     ("gmail.com.ar", "hotmail.net");
+//   - la etiqueta está a una letra de la de un proveedor ("gmeil.con"), salvo
+//     que sea la de un dominio válido ("mail.clinica.vet", "email.x.com");
+//   - el dominio entero está a dos letras de un corregible ("gemial.com").
+// Las dos últimas no se aplican a etiquetas de menos de 5 letras ("live"):
+// "nike.com" quedaría a dos letras de "live.com".
+function dominioParecido(dominio) {
+  const etiqueta = etiquetaDominio(dominio);
+  const etiquetasCorregibles = DOMINIOS_EMAIL_CORREGIBLES.map(etiquetaDominio);
+  if (etiquetasCorregibles.includes(etiqueta)) return true;
+  const esEtiquetaValida = DOMINIOS_EMAIL_VALIDOS.map(etiquetaDominio).includes(etiqueta);
+  return DOMINIOS_EMAIL_CORREGIBLES.some((c) => {
+    const etiquetaC = etiquetaDominio(c);
+    if (etiquetaC.length < 5) return false;
+    if (!esEtiquetaValida && distanciaEdicion(etiqueta, etiquetaC) === 1) return true;
+    return distanciaEdicion(dominio, c) <= 2;
+  });
+}
+
 // Revisa el dominio de un e-mail. Devuelve { estado, email, original, dominio }:
 //   'vacio' | 'invalido' (no cumple EMAIL_VALIDO) | 'ok' (dominio conocido)
 //   'corregido': el dominio está a una sola letra de exactamente un dominio
 //                corregible; `email` trae el corregido.
-//   'desconocido': no se puede deducir; `email` queda como llegó.
+//   'sospechoso': se parece a un dominio corregible, pero no se puede deducir
+//                 cuál quiso escribir; `email` queda como llegó. Da aviso.
+//   'desconocido': no se parece a ninguno (dominio propio); `email` queda como
+//                  llegó, sin aviso.
 function revisarEmail(valor) {
   const original = String(valor == null ? '' : valor).trim();
   if (!original) return { estado: 'vacio', email: '', original, dominio: '' };
@@ -458,14 +490,15 @@ function revisarEmail(valor) {
   if (candidatos.length === 1) {
     return { estado: 'corregido', email: `${usuario}@${candidatos[0]}`, original, dominio: candidatos[0] };
   }
-  return { estado: 'desconocido', email: original, original, dominio };
+  return { estado: dominioParecido(dominio) ? 'sospechoso' : 'desconocido', email: original, original, dominio };
 }
 // <<< EMAIL-PURO
 
 // 8.7p: corrige el e-mail del tutor en el campo o avisa que hay que mirarlo.
 // Se llama al precargar la filiación, al salir del campo y al enviar. Si el
 // profesional vuelve a escribir un e-mail que ya se le corrigió, se respeta
-// (queda solo el aviso): la corrección no insiste.
+// (queda solo el aviso): la corrección no insiste. 8.7q: un dominio que no se
+// parece a ninguno conocido ('desconocido') ya no da aviso.
 const emailsTutorYaCorregidos = new Set();
 
 function revisarEmailTutor() {
@@ -474,15 +507,15 @@ function revisarEmailTutor() {
   if (!campo || !aviso) return;
   let revision = revisarEmail(campo.value);
   if (revision.estado === 'corregido' && emailsTutorYaCorregidos.has(revision.original.toLowerCase())) {
-    revision = { ...revision, estado: 'desconocido', email: revision.original, dominio: revision.original.split('@').pop() };
+    revision = { ...revision, estado: 'sospechoso', email: revision.original, dominio: revision.original.split('@').pop() };
   }
   if (revision.estado === 'corregido') {
     emailsTutorYaCorregidos.add(revision.original.toLowerCase());
     campo.value = revision.email;
     aviso.textContent = `E-mail corregido: "${revision.original}" → "${revision.email}". Si el original estaba bien, volvé a escribirlo.`;
     aviso.hidden = false;
-  } else if (revision.estado === 'desconocido') {
-    aviso.textContent = `Verificá el email del tutor: "${revision.dominio}" no es un dominio conocido.`;
+  } else if (revision.estado === 'sospechoso') {
+    aviso.textContent = `Verificá el email del tutor: "${revision.dominio}" se parece a un dominio conocido, pero no es ninguno.`;
     aviso.hidden = false;
   } else {
     aviso.hidden = true;

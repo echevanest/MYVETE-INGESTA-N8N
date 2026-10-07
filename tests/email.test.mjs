@@ -1,9 +1,10 @@
-// Tests de la corrección del dominio del e-mail del tutor (8.7p).
+// Tests de la corrección del dominio del e-mail del tutor (8.7p, 8.7q).
 // Corre con: node --test tests/email.test.mjs
 //
 // Recorta de app.js la sección pura entre `// >>> EMAIL-PURO` y
 // `// <<< EMAIL-PURO` (ver clasificacion.test.mjs) y corre los mismos casos
-// contra la copia que lleva el nodo de n8n 'Preparar Datos para PDF'.
+// contra las copias que llevan los nodos de n8n 'Preparar Datos para PDF' y
+// 'Upsert Tutor' (8.7q).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -45,11 +46,22 @@ const CASOS = [
   ['juan@ymail.com', 'ok', 'juan@ymail.com'],
   ['juan@hotmail.se', 'ok', 'juan@hotmail.se'],
   ['juan@fibertel.com.ar', 'ok', 'juan@fibertel.com.ar'],
-  // No deducible: queda como llegó.
+  // Se parece a uno conocido y no es deducible: queda como llegó, con aviso.
+  ['juan@gmeil.con', 'sospechoso', 'juan@gmeil.con'],
+  ['juan@gemial.com', 'sospechoso', 'juan@gemial.com'],
+  ['juan@gmail.com.ar', 'sospechoso', 'juan@gmail.com.ar'],
+  ['juan@gmial.com.ar', 'sospechoso', 'juan@gmial.com.ar'],
+  ['juan@hotmail.net', 'sospechoso', 'juan@hotmail.net'],
+  ['juan@hotmal.con', 'sospechoso', 'juan@hotmal.con'],
+  ['juan@live.com.mx', 'sospechoso', 'juan@live.com.mx'],
+  // Dominio propio, no se parece a ninguno: queda como llegó, sin aviso (8.7q).
   ['juan@dominio-inexistente.com', 'desconocido', 'juan@dominio-inexistente.com'],
-  ['juan@gmeil.con', 'desconocido', 'juan@gmeil.con'],
-  ['juan@gmail.com.ar', 'desconocido', 'juan@gmail.com.ar'],
   ['juan@clinica.vet', 'desconocido', 'juan@clinica.vet'],
+  ['juan@veterinaria-sanmartin.com.ar', 'desconocido', 'juan@veterinaria-sanmartin.com.ar'],
+  ['juan@mail.clinica.vet', 'desconocido', 'juan@mail.clinica.vet'],
+  ['juan@email.empresa.com', 'desconocido', 'juan@email.empresa.com'],
+  ['juan@nike.com', 'desconocido', 'juan@nike.com'],
+  ['juan@uba.ar', 'desconocido', 'juan@uba.ar'],
   ['juan@gmail', 'invalido', 'juan@gmail'],
   ['juan gmail.com', 'invalido', 'juan gmail.com'],
   ['', 'vacio', ''],
@@ -59,7 +71,8 @@ const CASOS = [
 
 for (const [nombre, ruta] of [
   ['SPA (app.js)', '../interface/app.js'],
-  ['n8n (Preparar Datos para PDF)', '../n8n/preparar_datos_pdf.8.7p.js'],
+  ['n8n (Preparar Datos para PDF)', '../n8n/preparar_datos_pdf.8.7q.js'],
+  ['n8n (Upsert Tutor)', '../n8n/upsert_tutor.8.7q.js'],
 ]) {
   const revisarEmail = cargar(ruta);
   for (const [entrada, estado, email] of CASOS) {
@@ -71,6 +84,7 @@ for (const [nombre, ruta] of [
   }
 }
 
-test('la copia de n8n es idéntica a la del SPA', () => {
-  assert.equal(recortar('../n8n/preparar_datos_pdf.8.7p.js'), recortar('../interface/app.js'));
+test('las copias de n8n son idénticas a la del SPA', () => {
+  assert.equal(recortar('../n8n/preparar_datos_pdf.8.7q.js'), recortar('../interface/app.js'));
+  assert.equal(recortar('../n8n/upsert_tutor.8.7q.js'), recortar('../interface/app.js'));
 });

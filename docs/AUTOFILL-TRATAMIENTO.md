@@ -5,6 +5,8 @@ La columna `medicacion` existe (`jsonb`, admite NULL, sin default: así la pidi�
 Marcelo; el plan de abajo decía `not null default '[]'`), `Insert Atención
 Cardiología` la guarda y el informe tiene la sección TRATAMIENTO después de
 INDICACIONES, con el estado de cada fármaco (Continúa / Nueva / Modificada).
+**8.7q (2026-10-07):** la columna pasó a `not null default '[]'` (como decía
+el plan) y el informe rotula solo Nueva / Modificada.
 Las Fases 2 y 3 se definen en 8.1. La tabla de "Estado actual" de abajo es la
 del 2026-10-01.
 

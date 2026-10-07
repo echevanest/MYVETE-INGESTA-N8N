@@ -82,7 +82,9 @@ Para una consulta de verificación, el mismo comando con
   read-only transaction`, HTTP 400). **DDL ejecutado por esta vía el
   2026-10-03** (`20261003_descripciones_patrones.sql`: 2 tablas, 7 índices y
   RLS, en una transacción): responde `[]` con HTTP 201. También
-  `20261004_patrones_unique_minusculas.sql` el 2026-10-04.
+  `20261004_patrones_unique_minusculas.sql` el 2026-10-04,
+  `20261005_medicacion.sql` el 2026-10-05 y
+  `20261007_medicacion_notnull.sql` el 2026-10-07.
 - Sin `read_only`, la consulta corre con un rol con permisos amplios: un
   `drop` o un `delete` sin `where` se ejecutan sin preguntar.
 - Esta vía **no registra la migración** en el historial de migraciones de

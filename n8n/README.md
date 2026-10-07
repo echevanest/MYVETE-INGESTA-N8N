@@ -7,13 +7,26 @@ No contiene lógica del proyecto en sí — es el respaldo local de lo que vive 
 - Plantillas JSON exportadas de cada workflow (respaldo ante cambios o errores en la nube).
 - Notas de configuración de nodos que no queden claras solo con el JSON (credenciales referenciadas, nombres de hojas de cálculo, direcciones de correo de destino).
 
-## Estado actual (2026-10-05)
+## Estado actual (2026-10-07)
 
 | Workflow | ID | Estado | Rol |
 |---|---|---|---|
 | `MYVETE - Ingesta` | `lkOwTFmVTZu7EMoU` | `active: false` (sin versión publicada) | Workflow principal (43 nodos desde 8.7h, path `ingesta-filiacion`). Se publica solo para pruebas E2E. |
 | `MYVETE - Alta Profesional` | `MlEGaxt7k6H9SAfP` | `active: true` | Alta/upsert de profesionales (Sprint 7) + limpieza de la firma reemplazada (8.7d). |
 | `MYVETE - Ingesta (CORE) [BACKUP - NO TOCAR]` | `5gGWXOjY2BBOAfuw` | `active: false` | Backup histórico (8 nodos, path `ingesta-filiacion-v4`). **Ya no es producción** — las secciones de abajo que lo describen como activo son históricas. Sigue mandando `metricas`, columna que ya no existe: si se reactiva, su insert de atención falla. |
+
+### `MYVETE - Ingesta` — Sub-fase 8.7q (2026-10-07)
+
+Respuestas P1-P6 de 8.7p. `PUT /workflows/lkOwTFmVTZu7EMoU` (versionCounter 76 → 77, 43 nodos) con el workflow **despublicado** (`active: false`, `activeVersionId: null` antes y después). Cambian 3 nodos; conexiones iguales. **Sin E2E: nada de esto corrió todavía en n8n** (lo hace Marcelo: un fármaco + un e-mail con typo).
+
+*   **`Upsert Tutor`** (copia de la expresión en `upsert_tutor.8.7q.js`): `tutores.email` se guarda con el dominio corregido. El nodo corre antes que `Preparar Datos para PDF`, así que el `jsonBody` lleva su propia copia del bloque `EMAIL-PURO` dentro de una función. Si no hay corrección, manda el e-mail tal como llega (igual que antes). El `on_conflict` de la URL no cambió.
+*   **`Preparar Datos para PDF`** (copia en `preparar_datos_pdf.8.7q.js`):
+    *   Bloque `EMAIL-PURO` actualizado: estado nuevo `sospechoso` (se parece a un dominio conocido y no es deducible); `desconocido` queda para los dominios propios. Ninguno de los dos se corrige. La salida suma `email_estado`; **ningún nodo lo lee**.
+    *   **TRATAMIENTO:** el estado se muestra solo si es `(Nueva)` o `(Modificada)`; los que continúan salen sin rótulo.
+*   **`Registrar en Índice`:** `observaciones` suma al final `Email corregido: X → Y` cuando `Preparar Datos para PDF` corrigió el e-mail (lo lee con `.first()`). `estado_persistencia` no cambia: una corrección sola deja `OK` con la observación.
+*   **Tres copias del bloque `EMAIL-PURO`:** `interface/app.js`, `Preparar Datos para PDF` y `Upsert Tutor`. `tests/email.test.mjs` comprueba que sean iguales; si cambia una, cambian las tres.
+*   **Verificación:** las dos expresiones se evaluaron localmente con el motor de expresiones de n8n (`@n8n/tournament`) y el nodo Code con el payload de `E2E-8.7o.payload-test.json` (sin corrección ni fármacos que continúan, el informe sale idéntico al de 8.7p). La versión viva se releyó por API: idéntica a la probada. **Sin verificar en n8n:** que la expresión larga de `Upsert Tutor` evalúe igual en la nube y la lectura de `Preparar Datos para PDF` desde `Registrar en Índice`.
+*   **Backups:** `workflow_B.pre-8.7q.json` y `workflow_B.post-8.7q.json`. Sin secretos.
 
 ### `MYVETE - Ingesta` — Sub-fase 8.7p (2026-10-05)
 
@@ -23,7 +36,7 @@ Medicación (Fase 1) y corrección del dominio del e-mail. `PUT /workflows/lkOwT
 *   **`Preparar Datos para PDF`** (copia en `preparar_datos_pdf.8.7p.js`):
     *   Sección nueva **TRATAMIENTO**, después de INDICACIONES: `- Medicamento - dosis - intervalo (Continúa | Nueva | Modificada)`. Sin fármacos, la sección no sale. Los eliminados no viajan en el payload.
     *   Corrección del dominio del e-mail del tutor: el bloque `EMAIL-PURO` es copia textual del de `interface/app.js` (`tests/email.test.mjs` comprueba que sean iguales). Solo corrige lo deducible; el resto sigue como llegó. La salida suma `email_recibido` y `email_corregido`; `email` es el corregido, y es el que leen `IF - ¿Tutor con email?`, `Enviar informe al tutor`, `Buscar rebote inmediato` y `Verificación final`.
-    *   **No cambia:** `Upsert Tutor` guarda el e-mail como llega; la planilla no anota que hubo corrección; un dominio desconocido no dispara ninguna alerta en n8n.
+    *   **No cambia:** `Upsert Tutor` guarda el e-mail como llega; la planilla no anota que hubo corrección; un dominio desconocido no dispara ninguna alerta en n8n. (Los dos primeros puntos cambiaron en 8.7q.)
 *   **Rebote (solo lectura):** `Buscar rebote inmediato` sigue buscando `subject:"Delivery Status Notification (Failure)"` de `mailer-daemon@googlemail.com`; `Esperar rebote`, 20 s; `Evaluar rebote` y `Verificación final`, idénticos a las copias de 8.7h. Los `(Delay)` no se miran.
 *   **Verificación:** los 2 nodos se probaron localmente con los datos de la ejecución 3090; la versión viva se releyó por API: idéntica a la probada.
 *   **Backups:** `workflow_B.pre-8.7p.json` y `workflow_B.post-8.7p.json`. Sin secretos.
