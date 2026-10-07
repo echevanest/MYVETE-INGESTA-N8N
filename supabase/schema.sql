@@ -465,6 +465,10 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 --     también espacios al borde, acentos y espacios internos; `opcion` va en
 --     minúsculas. Las filas llegan en `payload.descripciones`, un arreglo de
 --     `{ grupo, subgrupo, opcion, orden }`; n8n guarda una fila por elemento.
+--   * 8.7u (2026-10-07): `opcion` lleva solo minúsculas (acentos y espacios
+--     se conservan); `orden` es la posición dentro del grupo y lo manda el
+--     SPA; n8n inserta el arreglo entero en un solo pedido y, si falla, sigue
+--     de largo y alerta, como el tramo del eco.
 --     Detalle en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`.
 --
 -- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
@@ -519,9 +523,18 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 --   * 8.7t (2026-10-07): además de mayúsculas y minúsculas, se normalizan
 --     espacios al borde, acentos y espacios internos; `opcion` va en
 --     minúsculas.
--- `frecuencia` y `confianza` (8.7t): Fase 1 a mano (o desde perfiles); Fase 2
--- por aprendizaje. Los patrones de la Fase 1 salen de perfiles y botones
--- rápidos, que hoy no están en Supabase (`PERFILES_BASE` + localStorage).
+-- `frecuencia` y `confianza` (8.7t, 8.7u): Fase 1 a mano; Fase 2 por
+-- aprendizaje. Los patrones de la Fase 1 se cargan a mano (8.7u): los perfiles
+-- y los botones rápidos no están en Supabase (`PERFILES_BASE` + localStorage)
+-- y no se espera a que 8.2 los migre.
+--
+-- `confianza` (8.7u): escala de 0 a 1 = atenciones con la opción / atenciones
+-- de la patología. La base no la fuerza (`numeric`, sin CHECK).
+--
+-- `origen` (8.7u, migración `20261007_patrones_origen.sql`): `manual` para los
+-- patrones cargados a mano, `aprendido` para los que calcula el aprendizaje.
+-- Default `'manual'`, admite NULL, sin CHECK. Sirve para que el recálculo de
+-- la Fase 2 no pise lo cargado a mano.
 -- Nada en la base lo fuerza: `CMD` y `cmd` serían dos filas distintas para el
 -- UNIQUE, así que la normalización es responsabilidad de quien escribe.
 --
@@ -542,8 +555,9 @@ create table public.patrones (
   subgrupo   text,
   opcion     text not null,
   frecuencia integer not null default 0,      -- veces que se eligió la opción
-  confianza  numeric,                         -- sin escala definida todavía
+  confianza  numeric,                         -- de 0 a 1 (8.7u); sin CHECK
   updated_at timestamptz not null default now(),  -- sin trigger: lo actualiza quien escribe
+  origen     text default 'manual',           -- 'manual' | 'aprendido' (8.7u); sin CHECK
   constraint patrones_unique unique nulls not distinct (patologia, grupo, subgrupo, opcion)
 );
 
