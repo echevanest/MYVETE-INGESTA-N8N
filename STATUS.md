@@ -522,6 +522,11 @@ SPA (`interface/`) y n8n (`lkOwTFmVTZu7EMoU`). No se tocó Supabase: las claves 
     *   **Decisiones documentadas** en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`: un fallo al guardar las descripciones sigue de largo y alerta, como el eco; los patrones de la Fase 1 se cargan a mano, sin esperar a 8.2; la patología se autocompleta si hay datos y si no queda vacía; `opcion` se corrige automáticamente y va solo en minúsculas; en los textos largos solo se avisa; `orden` es la posición dentro del grupo; insert único; `confianza` de 0 a 1 (atenciones con la opción / atenciones de la patología). El aprendizaje activo va en 8.2.
     *   **Reparto 8.1 / 8.2:** tabla en la sección 0 del doc. Solo el aprendizaje activo en 8.2 es decisión de Marcelo; el resto del reparto es propuesta de CODE.
     *   **Sin implementar:** nada en el SPA ni en n8n. Falta, entre otras cosas, la columna para la patología en `atenciones_cardiologia` y definir de dónde se autocompleta.
+*   **8.7v (2026-10-08) — solo documentación:** se registran en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md` las respuestas de Marcelo a las 9 preguntas de 8.7u, que estaban en el chat y no en el repo. Tabla resumen al principio del doc.
+    *   **CONFIRMADA:** P4 (los patrones iniciales se cargan a mano y la lista la pasa Marcelo; la lista todavía no llegó).
+    *   **Respondidas, falta el OK final de Marcelo (CONFIRMAR):** P1 columna `patologia` en `atenciones_cardiologia`; P2 la patología se autocompleta si hay datos (falta la fuente); P3 `opcion` sale de un desplegable; P5 `opcion` se normaliza entera; P6 en textos largos solo se avisa (falta la lista de comparación); P7 `orden` dentro del grupo; P8 `origen` NOT NULL + CHECK; P9 sirve la tabla de reparto 8.1 / 8.2.
+    *   **Migraciones NO ejecutadas:** `atenciones_cardiologia.patologia` y el CHECK / NOT NULL de `patrones.origen` esperan el OK. Sin archivos en `supabase/migrations/`. Sin cambios en Supabase, el SPA ni n8n.
+    *   **Para resolver con el OK:** P5 choca con la decisión de 8.7u (`opcion` solo en minúsculas, conservando acentos y espacios); con el desplegable de P3 la corrección automática de `opcion` puede quedar sin objeto; el SQL de P8 trae el CHECK pero no el NOT NULL.
 
 ## 🟡 2. TRABAJO EN PROGRESO (Evolución Actual)
 

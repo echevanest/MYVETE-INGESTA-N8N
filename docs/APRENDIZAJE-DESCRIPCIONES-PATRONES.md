@@ -1,21 +1,40 @@
 # `descripciones` y `patrones` — quién las escribe y cómo
 
-Decisiones de Marcelo del 2026-10-07 (8.7s, 8.7t y 8.7u). **Nada de esto está
-implementado:** las dos tablas existen desde el 2026-10-03 y están vacías. Lo
-único hecho es la columna `patrones.origen` (8.7u). La implementación es de
-8.1 / 8.2.
+Decisiones de Marcelo del 2026-10-07 (8.7s, 8.7t y 8.7u) y respuestas del
+2026-10-08 (8.7v). **Nada de esto está implementado:** las dos tablas existen
+desde el 2026-10-03 y están vacías. Lo único hecho es la columna
+`patrones.origen` (8.7u). La implementación es de 8.1 / 8.2.
 
 La estructura de las tablas está en `supabase/schema.sql`.
 
 Cada sección separa lo **decidido** (Marcelo) de lo **propuesto** (CODE, sin
 confirmar) y de lo que sigue **sin definir**.
 
+## Respuestas a las 9 preguntas de 8.7u (8.7v, 2026-10-08)
+
+Marcelo las respondió en el chat; se registran acá. **CONFIRMADA** = cerrada.
+**CONFIRMAR** = respondida, falta el OK final de Marcelo: no se implementa ni
+se ejecuta ninguna migración hasta tenerlo.
+
+| # | Pregunta | Respuesta de Marcelo | Estado | Sección |
+|---|---|---|---|---|
+| P1 | Patología: dónde se guarda | Columna `patologia` en `atenciones_cardiologia` | CONFIRMAR | 4 |
+| P2 | Patología: de dónde se autocompleta | Si hay datos (última atención, ACVIM, etc.); si no, vacío y la completan los profesionales | CONFIRMAR la fuente | 4 |
+| P3 | `opcion`: texto libre o desplegable | Desplegable | CONFIRMAR | 5 |
+| P4 | Lista de patrones iniciales | Se cargan a mano; la lista la pasa Marcelo | CONFIRMADA (falta la lista) | 4 |
+| P5 | `opcion` con espacios de más | Normalizar todo (mayúsculas/minúsculas, espacios al borde, acentos, espacios internos) | CONFIRMAR | 3 |
+| P6 | Aviso en textos largos | Solo avisar, no corregir | CONFIRMAR la lista de comparación | 5 |
+| P7 | `orden` | Dentro del grupo | CONFIRMAR | 2 |
+| P8 | `origen` sin restricción | NOT NULL y CHECK (`manual` / `aprendido`) | CONFIRMAR | 4 |
+| P9 | Reparto 8.1 / 8.2 | Sirve la tabla de la sección 0 | CONFIRMAR | 0 |
+
 ## 0. Qué va en 8.1 y qué en 8.2
 
 **Decidido:** el aprendizaje activo (sección 5) va en 8.2. Los patrones
 iniciales se cargan a mano, sin esperar a que 8.2 migre los perfiles.
 
-**Propuesto (CODE)**, el resto del reparto:
+**Respondido (Marcelo, 8.7v, P9) — CONFIRMAR:** la tabla sirve. Hasta el OK
+final, el resto del reparto sigue siendo propuesta de CODE:
 
 | Tema | Sección | Sub-fase |
 |---|---|---|
@@ -89,10 +108,11 @@ iniciales se cargan a mano, sin esperar a que 8.2 migre los perfiles.
   `Preparar alerta descripciones` → `Alertar fallo descripciones`), a los
   mismos destinatarios y con la misma credencial que `Alertar fallo eco`.
 
-**Sin definir:**
+**Respondido (Marcelo, 8.7v, P7) — CONFIRMAR:**
 
-- Si `orden` reinicia por `grupo` o por `grupo` + `subgrupo`. El ejemplo de
-  arriba supone por grupo.
+- `orden` es **dentro del grupo**: reinicia en cada `grupo` y no en cada
+  `subgrupo`, como en el ejemplo de arriba. (La lectura "no reinicia por
+  subgrupo" es de CODE; la respuesta dice "dentro del grupo".)
 
 ## 3. Normalización
 
@@ -136,11 +156,23 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   sin patología equivalente (`valvulas`, `camaras`, `funcion`) y los que se
   parecen no comparten nombre (grupo `estenosis_pulmonar`, patología `EP`).
 
-**Sin definir:**
+**Respondido (Marcelo, 8.7v, P5) — CONFIRMAR:**
 
-- Si a `opcion` se le quitan también los espacios al borde y los espacios
-  repetidos. "Solo minúsculas" al pie de la letra los deja, y `"leve"` y
-  `"leve "` serían dos filas de `patrones`.
+- `opcion`: **normalizar todo** (mayúsculas/minúsculas, espacios al borde,
+  acentos, espacios internos). Hasta el OK final, la tabla de arriba sigue
+  con la regla de 8.7u.
+
+**Sin definir (a resolver con el OK de P5):**
+
+- **Choca con la decisión de 8.7u** ("solo minúsculas: acentos y espacios se
+  conservan"). Aplicada al pie de la letra, la regla completa deja
+  `"Insuficiencia Mitral Leve"` como `insuficiencia_mitral_leve` y
+  `"tricuspídea"` como `tricuspidea`. Falta saber si `opcion` es el texto que
+  se muestra (y entonces pierde acentos y espacios) o solo una clave, y si
+  "espacios internos" para `opcion` es pasar a guion bajo o colapsar los
+  repetidos en uno.
+- Si `opcion` sale de un desplegable (P3), el valor lo fija el SPA y no hay
+  espacios de más que limpiar; la regla queda como red de seguridad en n8n.
 
 ## 4. Patrones
 
@@ -153,6 +185,33 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   default `'manual'`, admite NULL, sin CHECK.
 - **Patología de la atención:** se autocompleta si hay datos; si no, queda
   vacía y los profesionales la van completando.
+- **La lista de patrones iniciales la pasa Marcelo** (8.7v, P4, CONFIRMADA).
+  Todavía no está en el repo.
+
+**Respondido (Marcelo, 8.7v) — CONFIRMAR:**
+
+- **P1 — dónde se guarda la patología:** columna `patologia` (`text`, admite
+  NULL) en `atenciones_cardiologia`. Sin ejecutar:
+
+  ```sql
+  ALTER TABLE public.atenciones_cardiologia
+    ADD COLUMN patologia text;
+  ```
+
+- **P2 — de dónde se autocompleta:** si hay datos (de la última atención,
+  ACVIM, etc.); si no, vacío, y mientras tanto la completan los
+  profesionales. **Falta confirmar la fuente** (ver "Sin definir").
+- **P8 — `origen`:** NOT NULL y CHECK (`manual` / `aprendido`). Sin ejecutar.
+  El SQL del prompt trae solo el CHECK; el NOT NULL de la respuesta necesita
+  una sentencia más (la segunda de abajo, agregada por CODE):
+
+  ```sql
+  ALTER TABLE public.patrones
+    ADD CONSTRAINT patrones_origen_check
+    CHECK (origen IN ('manual', 'aprendido'));
+  ALTER TABLE public.patrones
+    ALTER COLUMN origen SET NOT NULL;
+  ```
 
 **Por qué a mano (estado verificado el 2026-10-07):**
 
@@ -203,11 +262,11 @@ las listas de `schema.sql` son los valores previstos, no una validación).
 
 **Sin definir:**
 
-- **De dónde se autocompleta la patología:** de la última atención de la
-  mascota, del estadio ACVIM / MINE 2 / HP que ya calcula el SPA, del texto del
-  diagnóstico, o de una combinación.
-- **Dónde se guarda:** falta la columna en `atenciones_cardiologia` y la clave
-  en el payload.
+- **De dónde se autocompleta la patología (P2, CONFIRMAR la fuente):** la
+  respuesta nombra la última atención y el ACVIM "etc."; falta el orden de
+  prioridad entre las fuentes y si entran también MINE 2 / HP y el texto del
+  diagnóstico.
+- **La clave de la patología en el payload** (la columna es P1).
 - **Si la patología es una sola por atención** o pueden ser varias (un
   paciente con MMVD e hipertensión pulmonar).
 - **Si es un desplegable** con las 19 previstas o texto libre.
@@ -222,11 +281,16 @@ las listas de `schema.sql` son los valores previstos, no una validación).
 - **`opcion`: se corrige automáticamente**, con un disclaimer ("se
   corrigió…").
 - **Textos largos** (anamnesis, diagnóstico, indicaciones): **solo se avisa**,
-  no se corrige.
+  no se corrige (ratificado en 8.7v, P6).
 - **Aprendizaje activo:** buscar términos parecidos, agendarlos y preguntar la
   diferencia. **Va en 8.2. No se implementa antes.**
 
-**Propuesto (CODE):**
+**Respondido (Marcelo, 8.7v, P3) — CONFIRMAR:**
+
+- **`opcion` sale de un desplegable**, no es texto libre.
+
+**Propuesto (CODE)** (escrito antes de P3, cuando `opcion` podía ser texto
+libre):
 
 - **Dónde va el disclaimer:** en el SPA, bajo el campo, en el momento en que se
   corrige. No en el informe: el informe lo lee el tutor y ya hay una regla
@@ -247,13 +311,16 @@ las listas de `schema.sql` son los valores previstos, no una validación).
 
 **Sin definir:**
 
-- **Si `opcion` es texto libre o sale de un desplegable.** Si sale de un
-  desplegable no hay nada que corregir.
-- **Cómo llega la lista de opciones al SPA** para corregir: el SPA no lee
-  Supabase para datos clínicos (la lectura va por un webhook de n8n, igual que
-  el autofill de 8.1).
-- **Contra qué lista se avisa en los textos largos:** las opciones de
-  `patrones` no cubren el vocabulario de una anamnesis.
+- **Con `opcion` en desplegable (P3), qué queda de la corrección automática
+  con disclaimer** (decidida en 8.7u): si el valor sale de una lista no hay
+  nada que corregir. Falta saber si el desplegable admite escribir una opción
+  nueva; solo en ese caso la corrección sigue teniendo sentido.
+- **De dónde salen las opciones del desplegable y cómo llegan al SPA:** el SPA
+  no lee Supabase para datos clínicos (la lectura va por un webhook de n8n,
+  igual que el autofill de 8.1).
+- **Contra qué lista se avisa en los textos largos (P6, CONFIRMAR la lista de
+  comparación):** las opciones de `patrones` no cubren el vocabulario de una
+  anamnesis.
 - **Aprendizaje activo (8.2):** dónde se agendan los términos parecidos, a
   quién se le pregunta la diferencia y cuándo.
 

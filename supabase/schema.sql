@@ -469,6 +469,12 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 --     se conservan); `orden` es la posición dentro del grupo y lo manda el
 --     SPA; n8n inserta el arreglo entero en un solo pedido y, si falla, sigue
 --     de largo y alerta, como el tramo del eco.
+--   * 8.7v (2026-10-08), respuestas de Marcelo pendientes de su OK final:
+--     `opcion` sale de un desplegable y se normaliza entera, como `grupo`
+--     (reemplazaría el "solo minúsculas" de 8.7u); `orden` reinicia en cada
+--     grupo. La patología de la atención iría en una columna nueva,
+--     `atenciones_cardiologia.patologia` (text, admite NULL): no existe
+--     todavía, la migración no se ejecutó.
 --     Detalle en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`.
 --
 -- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
@@ -535,6 +541,9 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 -- patrones cargados a mano, `aprendido` para los que calcula el aprendizaje.
 -- Default `'manual'`, admite NULL, sin CHECK. Sirve para que el recálculo de
 -- la Fase 2 no pise lo cargado a mano.
+-- 8.7v (2026-10-08): Marcelo respondió NOT NULL + CHECK (`manual` /
+-- `aprendido`), pendiente de su OK final. No se ejecutó: la columna sigue
+-- como está abajo.
 -- Nada en la base lo fuerza: `CMD` y `cmd` serían dos filas distintas para el
 -- UNIQUE, así que la normalización es responsabilidad de quien escribe.
 --
