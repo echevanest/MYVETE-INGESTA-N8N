@@ -257,11 +257,13 @@ create table public.atenciones_cardiologia (
   eco_pulmonar_hallazgos         jsonb,
   -- 8.7p; not null + default desde 8.7q
   medicacion                     jsonb not null default '[]'::jsonb,
-  -- 8.7w (`20261008_patologia_origen.sql`). Patología de la atención, en
-  -- MAYÚSCULAS como `patrones.patologia`; sin CHECK. Hoy nada la escribe. Se
-  -- va a autocompletar (ACVIM B → MMVD, HTP → HP; más de una → todas; si no,
+  -- 8.7w (`20261008_patologia_origen.sql`); `text[]` desde 8.7x
+  -- (`20261008_patologia_array.sql`). Patologías de la atención, una por
+  -- elemento, en MAYÚSCULAS como `patrones.patologia`; sin CHECK. Hoy nada la
+  -- escribe. Se va a autocompletar (ACVIM B → MMVD, HTP según
+  -- `hp_clasificacion` → HIPERTENSION_PULMONAR; más de una → todas; si no,
   -- vacío): ver `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`, sección 4.
-  patologia                      text
+  patologia                      text[]
 );
 
 create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (mascota_id, fecha desc);
@@ -478,6 +480,8 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 --     con acentos, sin guiones bajos) y es mixta: se elige de un desplegable
 --     o se escribe; `orden` reinicia en cada grupo, no en cada subgrupo. La
 --     patología de la atención va en `atenciones_cardiologia.patologia`.
+--   * 8.7x (2026-10-08): a `opcion` se le quitan además los espacios al
+--     borde y los repetidos pasan a uno solo.
 --     Detalle en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`.
 --
 -- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
@@ -536,6 +540,8 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 -- aprendizaje. Los patrones de la Fase 1 se cargan a mano (8.7u): los perfiles
 -- y los botones rápidos no están en Supabase (`PERFILES_BASE` + localStorage)
 -- y no se espera a que 8.2 los migre.
+-- 8.7x (2026-10-08): no hay carga inicial. La tabla arranca vacía y se forma
+-- con los datos de los profesionales.
 --
 -- `confianza` (8.7u): escala de 0 a 1 = atenciones con la opción / atenciones
 -- de la patología. La base no la fuerza (`numeric`, sin CHECK).

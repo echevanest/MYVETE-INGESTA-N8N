@@ -1,11 +1,11 @@
 # `descripciones` y `patrones` — quién las escribe y cómo
 
 Decisiones de Marcelo del 2026-10-07 (8.7s, 8.7t y 8.7u) y respuestas del
-2026-10-08 (8.7v, confirmadas en 8.7w). **Nada de esto está implementado en el
+2026-10-08 (8.7v, confirmadas en 8.7w; 8.7x). **Nada de esto está implementado en el
 SPA ni en n8n:** las dos tablas existen desde el 2026-10-03 y están vacías. Lo
 único hecho es estructura de la base: la columna `patrones.origen` (8.7u, con
 NOT NULL + CHECK desde 8.7w) y la columna `atenciones_cardiologia.patologia`
-(8.7w). La implementación es de 8.1 / 8.2.
+(8.7w; `text[]` desde 8.7x). La implementación es de 8.1 / 8.2.
 
 La estructura de las tablas está en `supabase/schema.sql`.
 
@@ -33,10 +33,22 @@ abierto está en el "Sin definir" de su sección.
 Cambiaron respecto de 8.7v: P3 (era "desplegable"), P4 (era "la lista la pasa
 Marcelo") y P5 (era "normalizar todo").
 
+## Respuestas a las 7 preguntas de 8.7w (8.7x, 2026-10-08)
+
+| # | Pregunta | Respuesta de Marcelo | Hecho | Sección |
+|---|---|---|---|---|
+| 1 | Cómo se guardan varias patologías | Arreglo (`text[]`) | Columna cambiada (8.7x) | 4 |
+| 2 | `HP` o `HIPERTENSION_PULMONAR` | `HIPERTENSION_PULMONAR` | — | 4 |
+| 3 | ACVIM C/D y qué cuenta como HTP | Que use los valores del criterio de clasificación de HP | — | 4 |
+| 4 | Carga inicial de patrones | No hay carga inicial | — | 4 |
+| 5 | Espacios de más en `opcion` | Quitar los del borde y colapsar los repetidos | — | 3 |
+| 6 | Opciones "de los perfiles" | Los profesionales van guardando perfiles a medida que se usa el sistema | — | 5 |
+| 7 | Qué IA revisa los textos largos | La que usa n8n para redactar el texto (OpenAI) | — | 5 |
+
 ## 0. Qué va en 8.1 y qué en 8.2
 
-**Decidido:** el aprendizaje activo (sección 5) va en 8.2. Los patrones
-iniciales se cargan a mano, sin esperar a que 8.2 migre los perfiles.
+**Decidido:** el aprendizaje activo (sección 5) va en 8.2. No hay carga
+inicial de patrones (8.7x).
 
 **Decidido (8.7w, P9):** el reparto de esta tabla, propuesto por CODE y
 aprobado por Marcelo:
@@ -46,9 +58,9 @@ aprobado por Marcelo:
 | Columna `patrones.origen` | 4 | hecha (8.7u); NOT NULL + CHECK (8.7w) |
 | `payload.descripciones` en el SPA | 2 | 8.1 |
 | Tramo de n8n: normalizar, insert único, alerta si falla | 2, 3 | 8.1 |
-| Patología de la atención: columna | 4 | hecha (8.7w) |
+| Patología de la atención: columna | 4 | hecha (8.7w; `text[]` desde 8.7x) |
 | Patología de la atención: autocompletado, campo en el SPA, payload y n8n | 4 | 8.1 |
-| Patrones iniciales (Fase 1; ver P4 en la sección 4) | 4 | 8.1 |
+| Patrones iniciales | 4 | no hay carga inicial (8.7x) |
 | Corrección automática de `opcion` con disclaimer | 5 | 8.1 |
 | Aviso en textos largos | 5 | 8.1 |
 | Recálculo de `patrones` desde `descripciones` (Fase 2) | 4, 6 | 8.2 |
@@ -167,24 +179,18 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   pasa a guiones bajos.** Queda en pie la regla de 8.7u (la de la tabla de
   arriba); el "normalizar todo" de 8.7v no corre para `opcion`.
 
-**Propuesto (CODE):**
-
-- A `opcion` se le quitan los espacios al borde y cada tramo de espacios
-  repetidos pasa a uno solo (`" Insuficiencia  mitral leve "` →
-  `insuficiencia mitral leve`). No cambia el texto que se ve y evita que
-  `"leve"` y `"leve "` sean dos filas de `patrones`.
-
-**Sin definir:**
-
-- Lo anterior: P5 preguntaba por los espacios de más y la respuesta de 8.7w
-  habla de minúsculas, acentos y guiones bajos, no de espacios. Importa
-  porque `opcion` también se puede escribir a mano (P3).
+- **Espacios (8.7x):** a `opcion` se le quitan los espacios al borde y cada
+  tramo de espacios repetidos pasa a uno solo (`" Insuficiencia  mitral
+  leve "` → `insuficiencia mitral leve`). No cambia el texto que se ve y
+  evita que `"leve"` y `"leve "` sean dos filas de `patrones`.
 
 ## 4. Patrones
 
 **Decidido:**
 
-- **Fase 1: se cargan a mano.** No se espera a 8.2.
+- **No hay carga inicial** (8.7x; reemplaza "Fase 1: se cargan a mano" de
+  8.7u). `patrones` arranca vacía y se forma con los datos de los
+  profesionales.
 - **Fase 2:** se depuran con el aprendizaje.
 - **Columna `origen`** en `patrones`: `manual` / `aprendido`. Agregada el
   2026-10-07 (`supabase/migrations/20261007_patrones_origen.sql`). Desde el
@@ -193,23 +199,31 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   (`manual` / `aprendido`).
 - **Patología de la atención:** se autocompleta si hay datos; si no, queda
   vacía y los profesionales la van completando.
-- **Dónde se guarda la patología (8.7w, P1):** columna `patologia` (`text`,
-  admite NULL, sin default, sin CHECK) en `atenciones_cardiologia`. Agregada
-  el 2026-10-08 (`supabase/migrations/20261008_patologia_origen.sql`). Las 4
-  atenciones que había quedaron en NULL. Hoy nada la escribe.
+- **Dónde se guarda la patología (8.7w, P1):** columna `patologia` en
+  `atenciones_cardiologia`, sin default y sin CHECK. Agregada el 2026-10-08
+  como `text` (`supabase/migrations/20261008_patologia_origen.sql`) y pasada
+  a **`text[]`** el mismo día (8.7x,
+  `supabase/migrations/20261008_patologia_array.sql`): una atención puede
+  tener varias patologías y se guardan todas, una por elemento
+  (`{MMVD,HIPERTENSION_PULMONAR}`). Las 4 atenciones que había quedaron en
+  NULL. Hoy nada la escribe.
 - **De dónde se autocompleta (8.7w, P2):**
 
   | Dato de la atención | Patología |
   |---|---|
   | ACVIM B | `MMVD` |
-  | HTP | `HP` |
+  | HTP | `HIPERTENSION_PULMONAR` (8.7x; `HP` no se usa) |
   | más de una | todas |
   | ninguna | vacío |
+
+  **HTP sale de los valores del criterio de clasificación de HP** (8.7x):
+  `hp_clasificacion` ∈ {`baja`, `intermedia`, `alta`}, `NULL` sin la sección
+  habilitada (`CRITERIOS DE CLASIFICACION.md`, sección 3).
 
 - **Patrones iniciales (8.7w, P4): se forman con los datos de los
   profesionales.** Reemplaza "la lista la pasa Marcelo" de 8.7v.
 
-**Por qué a mano (estado verificado el 2026-10-07):**
+**Estado de los perfiles (verificado el 2026-10-07):**
 
 - **Los perfiles no están en Supabase.** Viven en el SPA: `PERFILES_BASE` en
   `interface/app.js` (3 perfiles: 2 de canino, 1 de felino) más los
@@ -221,20 +235,6 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   `pam`, `pad` y un texto de `anamnesis`. No tiene `patologia`, `grupo`,
   `subgrupo` ni `opcion`.
 
-**Propuesto (CODE), Fase 1 (carga a mano):**
-
-- Marcelo pasa la lista (patología, grupo, subgrupo, opción). Se escribe como
-  un archivo `.sql` en `supabase/migrations/`, ya normalizado, y se ejecuta por
-  la API de administración con el procedimiento de `docs/SUPABASE-DDL.md`.
-  Queda versionado y se puede revisar antes de ejecutar.
-- Las filas entran con `origen = 'manual'` (es el default).
-
-  ```sql
-  insert into public.patrones (patologia, grupo, subgrupo, opcion)
-  values ('MMVD', 'valvulas', 'mitral', '...')
-  on conflict on constraint patrones_unique do nothing;
-  ```
-
 **Propuesto (CODE), Fase 2 (depuración):**
 
 - **Recalcular, no sumar de a uno.** Cada tanto se arma `patrones` desde
@@ -243,38 +243,34 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   una ejecución se repite o si se borra una atención.
 
   ```sql
-  select a.patologia, d.grupo, d.subgrupo, d.opcion, count(*) as frecuencia
+  select p.patologia, d.grupo, d.subgrupo, d.opcion, count(*) as frecuencia
   from public.descripciones d
   join public.atenciones_cardiologia a on a.id = d.atencion_id
-  where a.patologia is not null
+  cross join lateral unnest(a.patologia) as p(patologia)
   group by 1, 2, 3, 4;
   ```
 
 - **El recálculo solo toca las filas con `origen = 'aprendido'`** o crea filas
   nuevas con ese origen. Las `manual` no se pisan.
-- **Esa consulta hoy no devuelve nada:** la columna `patologia` existe desde
-  8.7w pero está vacía; falta que `Insert Atención Cardiología` la guarde,
-  normalizada a MAYÚSCULAS. Además supone una sola patología por atención:
-  con varias (P2) hay que separarlas antes de agrupar, según cómo se guarden.
+- **Esa consulta hoy no devuelve nada:** la columna `patologia` está vacía;
+  falta que `Insert Atención Cardiología` la guarde, con cada elemento
+  normalizado a MAYÚSCULAS. El `unnest` abre el arreglo: una atención con dos
+  patologías suma a los patrones de las dos.
 
 **Sin definir:**
 
-- **Cómo se guardan varias patologías** (P2: "si hay más de una, todas") en
-  una columna `text`: separadas por un carácter (`MMVD,HP`), o cambiando la
-  columna a arreglo. De eso depende el recálculo de la Fase 2.
-- **`HP` no está entre las 19 patologías previstas** de `schema.sql`; la que
-  figura es `HIPERTENSION_PULMONAR`. Falta decir cuál de las dos queda.
-- **Qué pasa con ACVIM C y D.** El SPA maneja B1, B2, C y D; la regla nombra
-  solo "ACVIM B". Y qué cuenta como HTP: `hp_clasificacion`, `hp_sospecha`, o
-  los dos.
+- **Con qué valor de `hp_clasificacion` se anota `HIPERTENSION_PULMONAR`:**
+  con cualquiera de los tres (`baja`, `intermedia`, `alta`) o solo desde
+  `intermedia`. `baja` es probabilidad baja de HP, no un diagnóstico.
+- **ACVIM C y D:** el SPA maneja B1, B2, C y D y la regla nombra solo
+  "ACVIM B". La respuesta de 8.7x habla del criterio de HP, no del ACVIM:
+  falta decir si C y D también dan `MMVD`.
 - **Si el resto de las 19 patologías** (CMD, CMH, EP, …) se autocompleta de
   algún dato o lo completa siempre el profesional.
-- **P4, qué significa en la Fase 1:** si "se forman con los datos de los
-  profesionales" quiere decir que no hay carga a mano inicial y `patrones`
-  arranca vacía hasta que haya atenciones, o que cada profesional pasa su
-  lista. Las decisiones de 8.7u ("Fase 1: se cargan a mano") siguen escritas
-  arriba hasta aclararlo.
-- **La clave de la patología en el payload.**
+- **Sin carga inicial, qué filas llevan `origen = 'manual'`:** el default de
+  la columna sigue siendo `'manual'`, así que lo que escriba el aprendizaje
+  tiene que mandar `'aprendido'` de forma explícita.
+- **La clave de la patología en el payload** y si llega como arreglo.
 - **Si el campo de patología del SPA es un desplegable** con las previstas o
   texto libre. (Pueden ser varias por atención: respondido en P2.)
 - Con cuántas atenciones un patrón aprendido pasa a pesar más que uno manual.
@@ -289,10 +285,13 @@ las listas de `schema.sql` son los valores previstos, no una validación).
   corrigió…").
 - **Textos largos** (anamnesis, diagnóstico, indicaciones): **solo se avisa**,
   no se corrige (ratificado en 8.7v, P6). **Los errores los detecta la IA, por
-  semántica** (8.7w, P6): no se compara contra una lista.
+  semántica** (8.7w, P6): no se compara contra una lista. **La IA es la que
+  ya usa n8n para redactar el texto, OpenAI** (8.7x).
 - **`opcion` es mixta** (8.7w, P3): desplegable + texto libre. Las opciones
   prellenadas salen de los perfiles y del aprendizaje; el profesional puede
-  escribir una opción nueva.
+  escribir una opción nueva. **Los perfiles los van guardando los
+  profesionales a medida que se usa el sistema** (8.7x): al principio el
+  desplegable puede estar vacío y todo se escribe a mano.
 - **Aprendizaje activo:** buscar términos parecidos, agendarlos y preguntar la
   diferencia. **Va en 8.2. No se implementa antes.**
 
@@ -319,17 +318,20 @@ la que se elige del desplegable no se corrige):
 
 **Sin definir:**
 
-- **Las opciones prellenadas "de los perfiles":** hoy un perfil no trae
-  opciones (guarda `fc`, `fr`, `pas`, `pam`, `pad` y un texto de `anamnesis`;
-  ver sección 4). Falta decir si los perfiles van a sumar opciones o si el
-  desplegable arranca solo con lo aprendido.
+- **Qué guarda un perfil para poder prellenar opciones:** hoy guarda `fc`,
+  `fr`, `pas`, `pam`, `pad` y un texto de `anamnesis` (ver sección 4), sin
+  `grupo`, `subgrupo` ni `opcion`. Que los profesionales los vayan guardando
+  (8.7x) no alcanza si el perfil no suma esos campos; es parte de la
+  migración de perfiles de 8.2.
 - **Cómo llegan las opciones al SPA:** el SPA no lee Supabase para datos
   clínicos (la lectura va por un webhook de n8n, igual que el autofill de
   8.1).
-- **Qué IA revisa los textos largos, dónde y cuándo** (P6): el workflow ya
-  tiene nodos de OpenAI, pero corren en n8n, después de enviar el formulario;
-  un aviso al profesional mientras escribe necesita una llamada desde el SPA
-  (por webhook) antes del envío. Falta también si el aviso frena el envío.
+- **Cuándo y dónde ve el profesional el aviso de los textos largos:** la IA
+  es la de n8n (8.7x), que corre después de enviar el formulario. A esa
+  altura el SPA ya no tiene el texto en pantalla: el aviso puede ir en el
+  mail al profesional o en una observación de la planilla, o hace falta una
+  llamada aparte desde el SPA (por webhook) antes del envío. Falta también si
+  se agrega a la instrucción del nodo que redacta o va en un nodo propio.
 - **Aprendizaje activo (8.2):** dónde se agendan los términos parecidos, a
   quién se le pregunta la diferencia y cuándo.
 
@@ -337,7 +339,8 @@ la que se elige del desplegable no se corrige):
 
 **Decidido:**
 
-- **Fase 1:** a mano.
+- **Fase 1:** a mano. Sin carga inicial (8.7x) no hay filas de Fase 1 por
+  ahora.
 - **Fase 2:** aprendizaje.
 - **`confianza` va de 0 a 1:** atenciones con la opción / atenciones de la
   patología.
