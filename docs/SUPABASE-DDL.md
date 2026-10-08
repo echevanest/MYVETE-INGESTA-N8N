@@ -85,7 +85,7 @@ Para una consulta de verificación, el mismo comando con
   `20261004_patrones_unique_minusculas.sql` el 2026-10-04,
   `20261005_medicacion.sql` el 2026-10-05, y
   `20261007_medicacion_notnull.sql` y `20261007_patrones_origen.sql` el
-  2026-10-07.
+  2026-10-07, y `20261008_patologia_origen.sql` el 2026-10-08.
 - Sin `read_only`, la consulta corre con un rol con permisos amplios: un
   `drop` o un `delete` sin `where` se ejecutan sin preguntar.
 - Esta vía **no registra la migración** en el historial de migraciones de

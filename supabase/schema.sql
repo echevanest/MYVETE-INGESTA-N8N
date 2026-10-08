@@ -256,7 +256,12 @@ create table public.atenciones_cardiologia (
   morfo_pulmonar                 text,
   eco_pulmonar_hallazgos         jsonb,
   -- 8.7p; not null + default desde 8.7q
-  medicacion                     jsonb not null default '[]'::jsonb
+  medicacion                     jsonb not null default '[]'::jsonb,
+  -- 8.7w (`20261008_patologia_origen.sql`). Patología de la atención, en
+  -- MAYÚSCULAS como `patrones.patologia`; sin CHECK. Hoy nada la escribe. Se
+  -- va a autocompletar (ACVIM B → MMVD, HTP → HP; más de una → todas; si no,
+  -- vacío): ver `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`, sección 4.
+  patologia                      text
 );
 
 create index atenciones_mascota_fecha_idx on public.atenciones_cardiologia (mascota_id, fecha desc);
@@ -469,12 +474,10 @@ create index idx_datos_eco_created_at  on public.datos_ecocardiografia (created_
 --     se conservan); `orden` es la posición dentro del grupo y lo manda el
 --     SPA; n8n inserta el arreglo entero en un solo pedido y, si falla, sigue
 --     de largo y alerta, como el tramo del eco.
---   * 8.7v (2026-10-08), respuestas de Marcelo pendientes de su OK final:
---     `opcion` sale de un desplegable y se normaliza entera, como `grupo`
---     (reemplazaría el "solo minúsculas" de 8.7u); `orden` reinicia en cada
---     grupo. La patología de la atención iría en una columna nueva,
---     `atenciones_cardiologia.patologia` (text, admite NULL): no existe
---     todavía, la migración no se ejecutó.
+--   * 8.7w (2026-10-08): `opcion` es el texto que se muestra (minúsculas,
+--     con acentos, sin guiones bajos) y es mixta: se elige de un desplegable
+--     o se escribe; `orden` reinicia en cada grupo, no en cada subgrupo. La
+--     patología de la atención va en `atenciones_cardiologia.patologia`.
 --     Detalle en `docs/APRENDIZAJE-DESCRIPCIONES-PATRONES.md`.
 --
 -- `grupo` (text, sin CHECK), 21 valores previstos: valvulas, camaras, funcion,
@@ -539,11 +542,9 @@ create index idx_descripciones_grupo_subgrupo on public.descripciones (grupo, su
 --
 -- `origen` (8.7u, migración `20261007_patrones_origen.sql`): `manual` para los
 -- patrones cargados a mano, `aprendido` para los que calcula el aprendizaje.
--- Default `'manual'`, admite NULL, sin CHECK. Sirve para que el recálculo de
--- la Fase 2 no pise lo cargado a mano.
--- 8.7v (2026-10-08): Marcelo respondió NOT NULL + CHECK (`manual` /
--- `aprendido`), pendiente de su OK final. No se ejecutó: la columna sigue
--- como está abajo.
+-- Sirve para que el recálculo de la Fase 2 no pise lo cargado a mano. Desde
+-- 8.7w (`20261008_patologia_origen.sql`): NOT NULL, default `'manual'` y
+-- CHECK `patrones_origen_check`; es la única columna de la tabla con CHECK.
 -- Nada en la base lo fuerza: `CMD` y `cmd` serían dos filas distintas para el
 -- UNIQUE, así que la normalización es responsabilidad de quien escribe.
 --
@@ -566,7 +567,8 @@ create table public.patrones (
   frecuencia integer not null default 0,      -- veces que se eligió la opción
   confianza  numeric,                         -- de 0 a 1 (8.7u); sin CHECK
   updated_at timestamptz not null default now(),  -- sin trigger: lo actualiza quien escribe
-  origen     text default 'manual',           -- 'manual' | 'aprendido' (8.7u); sin CHECK
+  origen     text not null default 'manual',  -- 8.7u; not null + CHECK desde 8.7w
+  constraint patrones_origen_check check (origen in ('manual', 'aprendido')),
   constraint patrones_unique unique nulls not distinct (patologia, grupo, subgrupo, opcion)
 );
 
